@@ -1,0 +1,71 @@
+import type { Place } from "@/lib/db/schema";
+import type { PublicUser } from "@/lib/auth";
+import { AudioClip } from "./AudioClip";
+import { AlertIcon, ClockIcon, PinIcon } from "./Icons";
+import { PlaceTile } from "./PlaceTile";
+import { cx } from "./ui";
+
+export function PlaceRow({
+  place,
+  index,
+  noteAuthor,
+  ownerId,
+  flagged,
+  expanded,
+}: {
+  place: Place;
+  index?: number;
+  noteAuthor?: PublicUser | null;
+  ownerId: string;
+  flagged?: string | null;
+  expanded?: boolean;
+}) {
+  const hours = place.hoursJson ? (JSON.parse(place.hoursJson) as string[]) : [];
+  const carried = noteAuthor && noteAuthor.id !== ownerId;
+  return (
+    <div id={`place-${place.id}`} className="flex gap-3 items-start scroll-mt-20">
+      <PlaceTile place={place} className="mt-0.5" />
+      <div className="flex-1 min-w-0">
+        <div className="flex items-baseline gap-2">
+          {index !== undefined && <span className="text-[11px] text-ink-faint font-medium tabular-nums">{String(index + 1).padStart(2, "0")}</span>}
+          <h3 className="font-semibold text-[15px] leading-snug">{place.name}</h3>
+        </div>
+        <div className="mt-0.5 text-[11.5px] text-ink-muted flex items-center gap-1 truncate">
+          <span className="rounded-full bg-cream-deep px-1.5 py-[1px] text-[10.5px] font-medium text-ink-muted shrink-0">{place.category}</span>
+          {place.address && <span className="truncate">· {place.address}</span>}
+        </div>
+        {place.note && (
+          <p className={cx("mt-1.5 text-[12.5px] italic leading-[1.45] text-ink-muted", !expanded && "line-clamp-3")}>
+            {place.note}
+            {carried && <span className="not-italic text-[11px] text-ink-faint"> — @{noteAuthor!.username}</span>}
+          </p>
+        )}
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+          {place.noteClipMediaId && <AudioClip mediaId={place.noteClipMediaId} label={carried ? `@${noteAuthor!.username}'s voice note` : "Voice note"} />}
+          {expanded && hours.length > 0 && (
+            <details className="text-[11px] text-ink-muted">
+              <summary className="cursor-pointer inline-flex items-center gap-1 list-none"><ClockIcon size={12} /> Hours</summary>
+              <ul className="mt-1 pl-4 space-y-0.5">{hours.map((h) => <li key={h}>{h}</li>)}</ul>
+            </details>
+          )}
+          {expanded && place.lat && place.lng && (
+            <a
+              className="text-[11px] text-ink-muted inline-flex items-center gap-1 hover:text-terracotta"
+              href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.name + " " + place.address)}${place.googlePlaceId && !place.googlePlaceId.startsWith("mock:") ? `&query_place_id=${place.googlePlaceId}` : ""}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <PinIcon size={12} /> Open in Maps
+            </a>
+          )}
+        </div>
+        {flagged && (
+          <div className="mt-2 inline-flex items-center gap-1.5 rounded-xl bg-ochre-soft/70 px-2.5 py-1.5 text-[11.5px] text-ink">
+            <AlertIcon size={13} />
+            {flagged === "CLOSED_PERMANENTLY" ? "This place may have closed permanently — check it." : "This place may be temporarily closed — check it."}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,124 @@
+@import "tailwindcss";
+
+@theme {
+  --color-cream: oklch(97% 0.015 75);
+  --color-cream-deep: oklch(91% 0.035 70);
+  --color-cream-line: oklch(83% 0.03 65);
+  --color-paper: oklch(99% 0.008 75);
+  --color-ink: oklch(22% 0.02 60);
+  --color-ink-muted: oklch(48% 0.02 60);
+  --color-ink-faint: oklch(66% 0.02 60);
+  --color-line: oklch(90% 0.02 70);
+  --color-terracotta: oklch(62% 0.13 45);
+  --color-terracotta-deep: oklch(52% 0.13 45);
+  --color-terracotta-soft: oklch(72% 0.09 55);
+  --color-terracotta-tint: oklch(94% 0.03 50);
+  --color-sage: oklch(62% 0.13 150);
+  --color-sage-soft: oklch(75% 0.08 130);
+  --color-sage-tint: oklch(94% 0.03 145);
+  --color-ochre: oklch(74% 0.11 80);
+  --color-ochre-soft: oklch(84% 0.08 85);
+  --color-danger: oklch(55% 0.17 25);
+  --color-danger-tint: oklch(95% 0.03 25);
+
+  --font-display: var(--font-instrument-serif), "Instrument Serif", Georgia, serif;
+  --font-sans: var(--font-work-sans), "Work Sans", system-ui, sans-serif;
+
+  --radius-tile: 16px;
+  --shadow-float: 0 6px 16px oklch(62% 0.13 45 / 0.35);
+  --shadow-card: 0 10px 30px oklch(22% 0.02 60 / 0.08);
+}
+
+html {
+  color-scheme: light;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--color-cream);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior-y: none;
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
+input,
+textarea {
+  font-size: 16px; /* prevents iOS zoom-on-focus */
+}
+
+.font-display {
+  font-family: var(--font-display);
+  font-weight: 400;
+}
+
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  scrollbar-width: none;
+}
+
+@keyframes pulse-ring {
+  0% {
+    transform: scale(1);
+    opacity: 0.55;
+  }
+  100% {
+    transform: scale(1.9);
+    opacity: 0;
+  }
+}
+.pulse-ring::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: var(--color-terracotta);
+  animation: pulse-ring 1.4s ease-out infinite;
+  z-index: -1;
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.fade-up {
+  animation: fade-up 0.25s ease-out both;
+}
+
+/* Leaflet tweaks so the map matches the journal look */
+.leaflet-container {
+  font-family: var(--font-sans);
+  background: var(--color-cream-deep);
+}
+.leaflet-popup-content-wrapper {
+  border-radius: 14px;
+  box-shadow: var(--shadow-card);
+  color: var(--color-ink);
+}
+.leaflet-popup-content {
+  margin: 10px 14px;
+  font-size: 13px;
+}
+.mg-pin {
+  background: transparent;
+  border: 0;
+}
