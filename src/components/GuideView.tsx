@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { GuideDetail } from "@/lib/guides";
+import type { PublicUser } from "@/lib/auth";
 import { forkGuide } from "@/lib/actions/guides";
 import { timeAgo } from "@/lib/utils";
 import { FollowButton } from "./FollowButton";
@@ -14,7 +15,7 @@ import { PlaceRow } from "./PlaceRow";
 import { ShareSheet } from "./ShareSheet";
 import { Avatar, Button, Chip, LinkButton, Spinner, Tag, cx } from "./ui";
 
-export function GuideView({ detail, viewerId, shareUrl, shareKey }: { detail: GuideDetail; viewerId: string | null; shareUrl: string; shareKey?: string | null }) {
+export function GuideView({ detail, viewerId, viewer, shareUrl, shareKey }: { detail: GuideDetail; viewerId: string | null; viewer: PublicUser | null; shareUrl: string; shareKey?: string | null }) {
   const { guide, owner, places, noteAuthors, forkedFrom } = detail;
   const [mode, setMode] = useState<"list" | "map">("list");
   const [category, setCategory] = useState<string | null>(null);
@@ -53,7 +54,7 @@ export function GuideView({ detail, viewerId, shareUrl, shareKey }: { detail: Gu
 
   return (
     <>
-      <GuideCover guide={guide} ownerUsername={owner.username} className="aspect-[390/220]" bare />
+      <GuideCover guide={guide} ownerUsername={owner.username} className="aspect-[390/220]" bare creditLinks />
 
       <div className="px-5 pt-[18px]">
         <h1 className="font-display text-[34px] leading-[1.05]">{guide.title}</h1>
@@ -72,7 +73,7 @@ export function GuideView({ detail, viewerId, shareUrl, shareKey }: { detail: Gu
           {detail.viewerCanEdit ? (
             <LinkButton href={`/g/${guide.slug}/edit`} size="sm" variant="outline"><EditIcon size={14} /> Edit</LinkButton>
           ) : (
-            <FollowButton userId={owner.id} initial={detail.viewerIsFollowing} next={`/g/${guide.slug}`} />
+            <FollowButton userId={owner.id} initial={detail.viewerFollowStatus} next={`/g/${guide.slug}`} />
           )}
         </div>
 
@@ -135,7 +136,7 @@ export function GuideView({ detail, viewerId, shareUrl, shareKey }: { detail: Gu
         <div className="px-5 mt-4 flex flex-col gap-[18px] pb-6">
           {visible.length === 0 && <p className="text-[13.5px] text-ink-muted">No places yet.</p>}
           {visible.map((p, i) => (
-            <PlaceRow key={p.id} place={p} index={i} ownerId={guide.ownerId} noteAuthor={p.noteAuthorId ? noteAuthors[p.noteAuthorId] : null} flagged={flags[p.id]} expanded />
+            <PlaceRow key={p.id} place={p} index={i} ownerId={guide.ownerId} guideSlug={guide.slug} noteAuthor={p.noteAuthorId ? noteAuthors[p.noteAuthorId] : null} flagged={flags[p.id]} comments={detail.placeComments[p.id] ?? []} currentUser={viewer} expanded />
           ))}
         </div>
       )}

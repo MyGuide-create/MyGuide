@@ -5,10 +5,12 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "../auth";
 import { getDb } from "../db";
-import { guideShares, guides, media, notifications, places, users, type Guide, type Place } from "../db/schema";
+import { guideShares, guides, media, notifications, placeTips, places, users, type Guide, type Place, type PlaceTip } from "../db/schema";
 import { canViewGuide, getGuideById } from "../guides";
 import { getPlacesProvider, isCategory, resolvePlaceByName, type PlaceResult } from "../places";
 import { findCity } from "../places/cities";
+import { getPlacePhotos } from "../places/google";
+import { claimUnsplashPhoto } from "../covers/unsplash";
 import { newId, newToken, slugify } from "../utils";
 
 async function requireOwner(guideId: string): Promise<{ guide: Guide; userId: string }> {
@@ -104,6 +106,7 @@ function placeValues(guideId: string, position: number, fallbackName: string, r:
     lng: r?.lng ?? null,
     category: r?.category ?? "Food & Drinks",
     photoUrl: r?.photoUrl ?? null,
+    phone: r?.phone ?? null,
     hoursJson: r?.hours ? JSON.stringify(r.hours) : null,
     googlePlaceId: r?.source === "google" ? r.providerId : r?.providerId ?? null,
     businessStatus: r?.businessStatus ?? null,
@@ -129,8 +132,66 @@ export async function updateGuideMeta(
   if (patch.country !== undefined) set.country = patch.country.trim();
   if (patch.description !== undefined) set.description = patch.description.trim();
   if (patch.allowFork !== undefined) set.allowFork = patch.allowFork;
-  if (patch.coverMediaId !== undefined) set.coverMediaId = patch.coverMediaId;
+  if (patch.coverMediaId !== undefined) {
+    set.coverMediaId = patch.coverMediaId;
+    // A cover is either the creator's own photo or an external one, never both.
+    set.coverUrl = null;
+    set.coverSource = null;
+    set.coverCredit = null;
+    set.coverCreditUrl = null;
+  }
   await db.update(guides).set(set).where(eq(guides.id, guideId));
+  revalidateGuide(guide.slug);
+}
+
+export type CoverChoice =
+  | { kind: "unsplash"; photoId: string }
+  | { kind: "google"; placeId: string; ref: string };
+
+export interface CoverResult {
+  coverMediaId: null;
+  coverUrl: string;
+  coverSource: string;
+  coverCredit: string;
+  coverCreditUrl: string | null;
+}
+
+/** Set a guide cover from Unsplash or from a Google Maps photo of one of the guide's places. */
+export async function setExternalCover(guideId: string, choice: CoverChoice): Promise<CoverResult> {
+  const { guide } = await requireOwner(guideId);
+  const db = await getDb();
+  let result: CoverResult;
+  if (choice.kind === "unsplash") {
+    const photo = await claimUnsplashPhoto(choice.photoId);
+    if (!photo) throw new Error("That photo isn't available any more. Try another one.");
+    result = { coverMediaId: null, coverUrl: photo.url, coverSource: "unsplash", coverCredit: photo.author, coverCreditUrl: photo.authorUrl };
+  } else {
+    const place = await db.query.places.findFirst({ where: and(eq(places.id, choice.placeId), eq(places.guideId, guide.id)) });
+    if (!place?.googlePlaceId) throw new Error("That place isn't in this guide.");
+    const photos = await getPlacePhotos(place.googlePlaceId, 10);
+    const photo = photos.find((p) => p.ref === choice.ref);
+    if (!photo) throw new Error("That photo isn't available any more. Try another one.");
+    result = {
+      coverMediaId: null,
+      coverUrl: `/api/places/photo?ref=${encodeURIComponent(photo.ref)}&w=1600`,
+      coverSource: "google",
+      coverCredit: photo.author,
+      coverCreditUrl: photo.authorUrl,
+    };
+  }
+  await db.update(guides).set({ ...result, updatedAt: new Date() }).where(eq(guides.id, guideId));
+  revalidateGuide(guide.slug);
+  return result;
+}
+
+/** Remove any cover photo and go back to the generated title card. */
+export async function clearCover(guideId: string): Promise<void> {
+  const { guide } = await requireOwner(guideId);
+  const db = await getDb();
+  await db
+    .update(guides)
+    .set({ coverMediaId: null, coverUrl: null, coverSource: null, coverCredit: null, coverCreditUrl: null, updatedAt: new Date() })
+    .where(eq(guides.id, guideId));
   revalidateGuide(guide.slug);
 }
 
@@ -195,6 +256,7 @@ export async function replacePlace(guideId: string, placeId: string, providerId:
       lng: resolved.lng,
       category: resolved.category,
       photoUrl: resolved.photoUrl,
+      phone: resolved.phone,
       hoursJson: resolved.hours ? JSON.stringify(resolved.hours) : null,
       googlePlaceId: resolved.providerId,
       businessStatus: resolved.businessStatus,
@@ -208,7 +270,7 @@ export async function replacePlace(guideId: string, placeId: string, providerId:
 export async function updatePlace(
   guideId: string,
   placeId: string,
-  patch: { name?: string; note?: string; category?: string; noteClipMediaId?: string | null; photoMediaId?: string | null },
+  patch: { name?: string; note?: string; category?: string; noteClipMediaId?: string | null; photoMediaId?: string | null; special?: string | null },
 ): Promise<void> {
   const { guide, userId } = await requireOwner(guideId);
   const db = await getDb();
@@ -224,10 +286,61 @@ export async function updatePlace(
     if (patch.noteClipMediaId) set.noteAuthorId = userId;
   }
   if (patch.photoMediaId !== undefined) set.photoMediaId = patch.photoMediaId;
+  if (patch.special !== undefined) set.special = patch.special?.trim() || null;
   if (Object.keys(set).length) {
     await db.update(places).set(set).where(and(eq(places.id, placeId), eq(places.guideId, guideId)));
     await touch(guideId);
   }
+  revalidateGuide(guide.slug);
+}
+
+async function requirePlaceInGuide(guideId: string, placeId: string): Promise<void> {
+  const db = await getDb();
+  const place = await db.query.places.findFirst({ where: and(eq(places.id, placeId), eq(places.guideId, guideId)) });
+  if (!place) throw new Error("That place isn't in this guide.");
+}
+
+/** A tip's place must belong to the given guide — throws otherwise (guards against a tipId from another guide). */
+async function requireTipInGuide(guideId: string, tipId: string): Promise<PlaceTip> {
+  const db = await getDb();
+  const tip = await db.query.placeTips.findFirst({ where: eq(placeTips.id, tipId) });
+  if (!tip) throw new Error("That tip no longer exists.");
+  await requirePlaceInGuide(guideId, tip.placeId);
+  return tip;
+}
+
+/** Add one expert tip to a place. A place can have as many as the creator wants. */
+export async function addPlaceTip(guideId: string, placeId: string, body: string): Promise<PlaceTip> {
+  const { guide } = await requireOwner(guideId);
+  const text = body.trim();
+  if (!text) throw new Error("Tip can't be empty.");
+  await requirePlaceInGuide(guideId, placeId);
+  const db = await getDb();
+  const [{ max }] = await db.select({ max: sql<number>`coalesce(max(${placeTips.position}), -1)` }).from(placeTips).where(eq(placeTips.placeId, placeId));
+  const id = newId();
+  await db.insert(placeTips).values({ id, placeId, body: text, position: Number(max) + 1, createdAt: new Date() });
+  await touch(guideId);
+  revalidateGuide(guide.slug);
+  return (await db.query.placeTips.findFirst({ where: eq(placeTips.id, id) }))!;
+}
+
+export async function updatePlaceTip(guideId: string, tipId: string, body: string): Promise<void> {
+  const { guide } = await requireOwner(guideId);
+  const text = body.trim();
+  if (!text) throw new Error("Tip can't be empty.");
+  await requireTipInGuide(guideId, tipId);
+  const db = await getDb();
+  await db.update(placeTips).set({ body: text }).where(eq(placeTips.id, tipId));
+  await touch(guideId);
+  revalidateGuide(guide.slug);
+}
+
+export async function removePlaceTip(guideId: string, tipId: string): Promise<void> {
+  const { guide } = await requireOwner(guideId);
+  await requireTipInGuide(guideId, tipId);
+  const db = await getDb();
+  await db.delete(placeTips).where(eq(placeTips.id, tipId));
+  await touch(guideId);
   revalidateGuide(guide.slug);
 }
 

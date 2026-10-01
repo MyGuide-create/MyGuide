@@ -10,7 +10,7 @@ import { CheckIcon, KeyboardIcon, MicIcon, PinIcon, StopIcon, XIcon } from "./Ic
 import { PlaceSearch } from "./PlaceSearch";
 import { Button, Input, Label, Spinner, Textarea, cx } from "./ui";
 
-type Stage = "talk" | "structuring" | "review" | "typed";
+type Stage = "talk" | "structuring" | "review" | "typed" | "paste";
 type DraftPlace = ParsedPlacesResponse["places"][number] & { key: string; removed?: boolean };
 
 /**
@@ -22,6 +22,7 @@ export function VoiceCreate({ initialMode }: { initialMode: "voice" | "type" }) 
   const speech = useSpeech({ continuous: true });
   const [stage, setStage] = useState<Stage>(initialMode === "type" ? "typed" : "talk");
   const [typed, setTyped] = useState("");
+  const [pastedList, setPastedList] = useState("");
   const [result, setResult] = useState<ParsedPlacesResponse | null>(null);
   const [draft, setDraft] = useState<DraftPlace[]>([]);
   const [title, setTitle] = useState("");
@@ -35,7 +36,7 @@ export function VoiceCreate({ initialMode }: { initialMode: "voice" | "type" }) 
   const transcript = [speech.text, speech.interim].filter(Boolean).join(" ");
   useEffect(() => { transcriptRef.current?.scrollTo({ top: 1e6 }); }, [transcript]);
 
-  const structure = async (text: string) => {
+  const structure = async (text: string, from: Stage = "talk") => {
     if (!text.trim()) { setError("Name at least one place first."); return; }
     setStage("structuring");
     setError(null);
@@ -50,7 +51,7 @@ export function VoiceCreate({ initialMode }: { initialMode: "voice" | "type" }) 
       setStage("review");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't structure that.");
-      setStage(initialMode === "type" ? "typed" : "talk");
+      setStage(from);
     }
   };
 
@@ -102,7 +103,37 @@ export function VoiceCreate({ initialMode }: { initialMode: "voice" | "type" }) 
         </div>
         {error && <p className="text-[12.5px] text-danger">{error}</p>}
         <Button size="lg" onClick={createTyped} disabled={creating}>{creating ? <Spinner /> : "Continue to add places"}</Button>
-        <button type="button" onClick={() => { setStage("talk"); setError(null); }} className="text-[13px] text-ink-muted inline-flex items-center justify-center gap-1.5"><MicIcon size={14} /> Or say your places instead</button>
+        <div className="flex flex-col items-center gap-2">
+          <button type="button" onClick={() => { setStage("talk"); setError(null); }} className="text-[13px] text-ink-muted inline-flex items-center justify-center gap-1.5"><MicIcon size={14} /> Or say your places instead</button>
+          <button type="button" onClick={() => { setStage("paste"); setError(null); }} className="text-[13px] text-ink-muted inline-flex items-center justify-center gap-1.5"><PinIcon size={14} /> Or import a list (e.g. Google Maps)</button>
+        </div>
+      </div>
+    );
+  }
+
+  /* ---------- paste-a-list import (Google Maps saved lists, etc.) ---------- */
+  if (stage === "paste") {
+    return (
+      <div className="px-6 pt-4 pb-10 flex flex-col gap-5">
+        <div>
+          <h1 className="font-display text-[34px] leading-[1.05]">Import a list.</h1>
+          <p className="mt-2 text-[13.5px] text-ink-muted leading-relaxed">
+            Paste in the places from a Google Maps saved list (or anywhere else) — one per line, or however they come out when you copy them. We&apos;ll match each one to a real place.
+          </p>
+          <p className="mt-2 text-[12px] text-ink-faint leading-relaxed">
+            Google doesn&apos;t offer a one-tap import for personal Maps lists, so this is copy-paste for now: open the list in Google Maps, select the place names and paste them below. A list exported from Google Takeout works too.
+          </p>
+        </div>
+        <Textarea
+          value={pastedList}
+          onChange={(e) => setPastedList(e.target.value)}
+          rows={10}
+          autoFocus
+          placeholder={"Tsuta ramen\nYanaka Coffee Ten\nIchiran, Shinjuku\n…"}
+        />
+        {error && <p className="text-[12.5px] text-danger">{error}</p>}
+        <Button size="lg" onClick={() => structure(pastedList, "paste")} disabled={!pastedList.trim()}>Build my guide</Button>
+        <button type="button" onClick={() => { setStage("typed"); setError(null); }} className="text-[13px] text-ink-muted text-center">Back</button>
       </div>
     );
   }
@@ -230,7 +261,7 @@ export function VoiceCreate({ initialMode }: { initialMode: "voice" | "type" }) 
           </button>
         ) : null}
         <p className="text-[12.5px] text-ink-muted">{speech.listening ? "Tap to stop when you're done." : speech.supported ? "Tap to talk." : ""}</p>
-        <Button size="lg" onClick={() => structure([speech.text || transcript, typed].filter((t) => t.trim()).join(", "))} disabled={speech.listening || !(transcript.trim() || typed.trim())} className="w-full">
+        <Button size="lg" onClick={() => structure([speech.text || transcript, typed].filter((t) => t.trim()).join(", "), "talk")} disabled={speech.listening || !(transcript.trim() || typed.trim())} className="w-full">
           Build my guide
         </Button>
         <div className="flex items-center gap-4 text-[13px] text-ink-muted">
@@ -247,5 +278,5 @@ export function VoiceCreate({ initialMode }: { initialMode: "voice" | "type" }) 
 }
 
 function emptyResolved(name: string, city: string): NonNullable<ParsedPlacesResponse["places"][number]["resolved"]> {
-  return { providerId: "", name, address: "", city, country: "", lat: 0, lng: 0, category: "Food & Drinks", photoUrl: null, hours: null, businessStatus: null, source: "mock" };
+  return { providerId: "", name, address: "", city, country: "", lat: 0, lng: 0, category: "Food & Drinks", photoUrl: null, photoUrls: [], phone: null, hours: null, businessStatus: null, source: "mock" };
 }

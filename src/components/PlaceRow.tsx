@@ -1,7 +1,9 @@
+import Link from "next/link";
 import type { Place } from "@/lib/db/schema";
 import type { PublicUser } from "@/lib/auth";
+import type { PlaceCommentView } from "@/lib/guides";
 import { AudioClip } from "./AudioClip";
-import { AlertIcon, ClockIcon, PinIcon } from "./Icons";
+import { AlertIcon, ChatIcon, ClockIcon, PinIcon } from "./Icons";
 import { PlaceTile } from "./PlaceTile";
 import { cx } from "./ui";
 
@@ -10,25 +12,36 @@ export function PlaceRow({
   index,
   noteAuthor,
   ownerId,
+  guideSlug,
   flagged,
+  comments,
+  currentUser,
   expanded,
 }: {
   place: Place;
   index?: number;
   noteAuthor?: PublicUser | null;
   ownerId: string;
+  guideSlug: string;
   flagged?: string | null;
+  comments?: PlaceCommentView[];
+  currentUser?: PublicUser | null;
   expanded?: boolean;
 }) {
   const hours = place.hoursJson ? (JSON.parse(place.hoursJson) as string[]) : [];
   const carried = noteAuthor && noteAuthor.id !== ownerId;
+  const detailHref = `/g/${guideSlug}/p/${place.id}`;
+  const commentCount = comments?.length ?? 0;
+  void currentUser;
   return (
     <div id={`place-${place.id}`} className="flex gap-3 items-start scroll-mt-20">
-      <PlaceTile place={place} className="mt-0.5" />
+      <Link href={detailHref}><PlaceTile place={place} className="mt-0.5" /></Link>
       <div className="flex-1 min-w-0">
         <div className="flex items-baseline gap-2">
           {index !== undefined && <span className="text-[11px] text-ink-faint font-medium tabular-nums">{String(index + 1).padStart(2, "0")}</span>}
-          <h3 className="font-semibold text-[15px] leading-snug">{place.name}</h3>
+          <Link href={detailHref} className="min-w-0">
+            <h3 className="font-semibold text-[15px] leading-snug hover:text-terracotta">{place.name}</h3>
+          </Link>
         </div>
         <div className="mt-0.5 text-[11.5px] text-ink-muted flex items-center gap-1 truncate">
           <span className="rounded-full bg-cream-deep px-1.5 py-[1px] text-[10.5px] font-medium text-ink-muted shrink-0">{place.category}</span>
@@ -58,6 +71,9 @@ export function PlaceRow({
               <PinIcon size={12} /> Open in Maps
             </a>
           )}
+          <Link href={detailHref} className="text-[11px] text-ink-muted inline-flex items-center gap-1 hover:text-terracotta">
+            <ChatIcon size={12} /> {commentCount > 0 ? `${commentCount} comment${commentCount === 1 ? "" : "s"}` : "More & comments"}
+          </Link>
         </div>
         {flagged && (
           <div className="mt-2 inline-flex items-center gap-1.5 rounded-xl bg-ochre-soft/70 px-2.5 py-1.5 text-[11.5px] text-ink">

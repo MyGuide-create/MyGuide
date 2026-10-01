@@ -8,6 +8,7 @@ import { Avatar, Tag, cx } from "./ui";
 export function GuideCard({ data, showOwner = true }: { data: GuideCardData; showOwner?: boolean }) {
   const { guide, owner, placeCount, categories, forkedFrom } = data;
   const isDraft = !guide.publishedAt;
+  const hasPhoto = !!(guide.coverMediaId || guide.coverUrl);
   return (
     <article className="fade-up rounded-[22px] bg-paper border border-line/80 overflow-hidden shadow-[0_1px_2px_oklch(22%_0.02_60/0.04)]">
       <Link href={`/g/${guide.slug}`} className="block">
@@ -21,14 +22,14 @@ export function GuideCard({ data, showOwner = true }: { data: GuideCardData; sho
             </Link>
           )}
           <div className="min-w-0 flex-1">
-            {guide.coverMediaId ? (
+            {hasPhoto ? (
               <Link href={`/g/${guide.slug}`} className="font-display text-[22px] leading-[1.05] block truncate">
                 {guide.title}
               </Link>
             ) : (
               <Link href={`/g/${guide.slug}`} className="sr-only">{guide.title}</Link>
             )}
-            <div className={cx("text-[12.5px] text-ink-muted flex flex-wrap items-center gap-x-1.5", guide.coverMediaId ? "mt-1" : "mt-1.5")}>
+            <div className={cx("text-[12.5px] text-ink-muted flex flex-wrap items-center gap-x-1.5", hasPhoto ? "mt-1" : "mt-1.5")}>
               {showOwner && (
                 <>
                   <Link href={`/u/${owner.username}`} className="font-medium text-ink hover:underline">

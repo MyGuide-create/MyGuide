@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { AppShell, TopBar } from "@/components/AppShell";
 import { GuideView } from "@/components/GuideView";
 import { LinkButton } from "@/components/ui";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser, toPublicUser } from "@/lib/auth";
 import { canViewGuide, getGuideBySlug, getGuideDetail } from "@/lib/guides";
 import { appUrl } from "@/lib/utils";
 
@@ -50,9 +50,9 @@ export default async function GuidePage({ params, searchParams }: PageProps<"/g/
   const shareUrl = `${base}/g/${guide.slug}${guide.visibility === "private" ? `?key=${guide.shareToken}` : ""}`;
   return (
     <AppShell>
-      <TopBar back={user ? `/u/${detail.owner.username}` : "/"} transparent title={null} />
+      <TopBar back={user ? `/u/${detail.owner.username}` : "/"} transparent title={null} avatarUser={user ? toPublicUser(user) : null} />
       <div className="-mt-14">
-        <GuideView detail={detail} viewerId={user?.id ?? null} shareUrl={shareUrl} shareKey={key} />
+        <GuideView detail={detail} viewerId={user?.id ?? null} viewer={user ? toPublicUser(user) : null} shareUrl={shareUrl} shareKey={key} />
       </div>
     </AppShell>
   );

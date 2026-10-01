@@ -4,7 +4,7 @@ import { GuideCard } from "@/components/GuideCard";
 import { SearchBar } from "@/components/SearchBar";
 import { EmptyState, LinkButton, Tag } from "@/components/ui";
 import { interpretSearch } from "@/lib/ai";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser, toPublicUser } from "@/lib/auth";
 import { listFeedCities, searchGuides } from "@/lib/guides";
 
 export const dynamic = "force-dynamic";
@@ -22,7 +22,7 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
 
   return (
     <AppShell>
-      <TopBar title="Search" />
+      <TopBar title="Search" avatarUser={user ? toPublicUser(user) : null} />
       <div className="px-4 pt-3">
         <SearchBar key={q} initial={q} />
       </div>

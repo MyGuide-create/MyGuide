@@ -8,6 +8,41 @@
       "when": 1789554759788,
       "tag": "0000_init",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1789980866073,
+      "tag": "0001_private_profiles_and_comments",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1790317250210,
+      "tag": "0002_place_comment_edited_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1790318894930,
+      "tag": "0003_place_detail_and_photos",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1790320844170,
+      "tag": "0004_place_tips",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1790856655843,
+      "tag": "0005_guide_cover_photos",
+      "breakpoints": true
     }
   ]
 }

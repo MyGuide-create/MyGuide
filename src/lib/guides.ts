@@ -1,8 +1,13 @@
 import { and, desc, eq, inArray, isNotNull, like, or, sql, type SQL } from "drizzle-orm";
 import { getDb } from "./db";
-import { follows, guideShares, guides, places, users, type Guide, type Place, type User } from "./db/schema";
+import { follows, guideShares, guides, placeComments, placePhotos, placeTips, places, users, type Guide, type Place, type PlaceComment, type PlacePhoto, type PlaceTip, type User } from "./db/schema";
 import { toPublicUser, type PublicUser } from "./auth";
 import type { SearchIntent } from "./ai";
+
+export interface PlaceCommentView {
+  comment: PlaceComment;
+  author: PublicUser;
+}
 
 export interface GuideCard {
   guide: Guide;
@@ -15,13 +20,36 @@ export interface GuideCard {
 export interface GuideDetail extends GuideCard {
   places: Place[];
   noteAuthors: Record<string, PublicUser>;
+  placeComments: Record<string, PlaceCommentView[]>;
+  /** Creator-uploaded photos for each place, most recent last, keyed by placeId. */
+  placePhotos: Record<string, PlacePhoto[]>;
+  /** Creator-authored expert tips for each place, in order, keyed by placeId. */
+  placeTips: Record<string, PlaceTip[]>;
   viewerCanEdit: boolean;
   viewerCanFork: boolean;
-  viewerIsFollowing: boolean;
+  /** "none" | "pending" | "accepted" */
+  viewerFollowStatus: "none" | "pending" | "accepted";
   sharedWith: PublicUser[];
 }
 
+
 const publicPublished = () => and(eq(guides.visibility, "public"), isNotNull(guides.publishedAt));
+
+/** Drop cards owned by a private account, unless the viewer is the owner or an approved follower. */
+async function filterVisibleCards(cards: GuideCard[], viewerId?: string | null): Promise<GuideCard[]> {
+  const lockedOwnerIds = [...new Set(cards.filter((c) => c.owner.profileVisibility === "private" && c.owner.id !== viewerId).map((c) => c.owner.id))];
+  if (!lockedOwnerIds.length) return cards;
+  let approved = new Set<string>();
+  if (viewerId) {
+    const db = await getDb();
+    const rows = await db
+      .select({ id: follows.followingId })
+      .from(follows)
+      .where(and(eq(follows.followerId, viewerId), inArray(follows.followingId, lockedOwnerIds), eq(follows.status, "accepted")));
+    approved = new Set(rows.map((r) => r.id));
+  }
+  return cards.filter((c) => c.owner.id === viewerId || c.owner.profileVisibility !== "private" || approved.has(c.owner.id));
+}
 
 async function hydrateCards(rows: Guide[]): Promise<GuideCard[]> {
   if (!rows.length) return [];
@@ -43,7 +71,7 @@ async function hydrateCards(rows: Guide[]): Promise<GuideCard[]> {
   }
   return rows.map((g) => ({
     guide: g,
-    owner: ownerMap.get(g.ownerId) ?? { id: g.ownerId, username: "unknown", displayName: "Unknown", bio: null, avatarMediaId: null, accountType: "personal" },
+    owner: ownerMap.get(g.ownerId) ?? { id: g.ownerId, username: "unknown", displayName: "Unknown", bio: null, avatarMediaId: null, accountType: "personal", profileVisibility: "public" },
     placeCount: counts.get(g.id)?.n ?? 0,
     categories: [...(counts.get(g.id)?.cats ?? [])],
     forkedFrom: g.forkedFromUserId ? ownerMap.get(g.forkedFromUserId) ?? null : null,
@@ -68,7 +96,7 @@ export async function listFeed(opts: { viewerId?: string | null; scope?: "public
     .where(and(...conds))
     .orderBy(desc(guides.publishedAt))
     .limit(opts.limit ?? 40);
-  return hydrateCards(rows);
+  return filterVisibleCards(await hydrateCards(rows), opts.viewerId);
 }
 
 export async function listFeedCities(): Promise<string[]> {
@@ -91,7 +119,8 @@ export async function listGuidesByOwner(ownerId: string, viewerId?: string | nul
     .from(guides)
     .where(own ? eq(guides.ownerId, ownerId) : and(eq(guides.ownerId, ownerId), publicPublished()))
     .orderBy(desc(guides.updatedAt));
-  return hydrateCards(rows);
+  const cards = await hydrateCards(rows);
+  return own ? cards : filterVisibleCards(cards, viewerId);
 }
 
 export async function listSharedWithUser(userId: string): Promise<GuideCard[]> {
@@ -106,10 +135,9 @@ export async function listSharedWithUser(userId: string): Promise<GuideCard[]> {
   return hydrateCards(rows);
 }
 
-/** Can this viewer see this guide? Owner, public+published, explicitly shared, or valid share link. */
+/** Can this viewer see this guide? Owner, public+published (and not locked behind a private account), explicitly shared, or valid share link. */
 export async function canViewGuide(guide: Guide, viewerId: string | null | undefined, shareKey?: string | null): Promise<boolean> {
   if (viewerId && guide.ownerId === viewerId) return true;
-  if (guide.visibility === "public" && guide.publishedAt) return true;
   if (shareKey && shareKey === guide.shareToken) return true;
   if (viewerId) {
     const db = await getDb();
@@ -117,6 +145,17 @@ export async function canViewGuide(guide: Guide, viewerId: string | null | undef
       where: and(eq(guideShares.guideId, guide.id), eq(guideShares.sharedWithId, viewerId)),
     });
     if (share) return true;
+  }
+  if (guide.visibility === "public" && guide.publishedAt) {
+    const db = await getDb();
+    const owner = await db.query.users.findFirst({ where: eq(users.id, guide.ownerId) });
+    if (!owner || owner.profileVisibility !== "private") return true;
+    if (viewerId) {
+      const f = await db.query.follows.findFirst({
+        where: and(eq(follows.followerId, viewerId), eq(follows.followingId, guide.ownerId), eq(follows.status, "accepted")),
+      });
+      if (f) return true;
+    }
   }
   return false;
 }
@@ -139,11 +178,35 @@ export async function getGuideDetail(guide: Guide, viewer: User | null): Promise
   const authors = authorIds.length ? await db.select().from(users).where(inArray(users.id, authorIds)) : [];
   const noteAuthors = Object.fromEntries(authors.map((u) => [u.id, toPublicUser(u)]));
 
+  const placeIds = placeRows.map((p) => p.id);
+  const commentRows = placeIds.length
+    ? await db.select().from(placeComments).where(inArray(placeComments.placeId, placeIds)).orderBy(placeComments.createdAt)
+    : [];
+  const photoRows = placeIds.length
+    ? await db.select().from(placePhotos).where(inArray(placePhotos.placeId, placeIds)).orderBy(placePhotos.position)
+    : [];
+  const placePhotosByPlace: Record<string, PlacePhoto[]> = {};
+  for (const ph of photoRows) (placePhotosByPlace[ph.placeId] ??= []).push(ph);
+  const tipRows = placeIds.length
+    ? await db.select().from(placeTips).where(inArray(placeTips.placeId, placeIds)).orderBy(placeTips.position, placeTips.createdAt)
+    : [];
+  const placeTipsByPlace: Record<string, PlaceTip[]> = {};
+  for (const t of tipRows) (placeTipsByPlace[t.placeId] ??= []).push(t);
+  const commentAuthorIds = [...new Set(commentRows.map((c) => c.authorId))];
+  const commentAuthors = commentAuthorIds.length ? await db.select().from(users).where(inArray(users.id, commentAuthorIds)) : [];
+  const commentAuthorMap = new Map(commentAuthors.map((u) => [u.id, toPublicUser(u)]));
+  const placeCommentsByPlace: Record<string, PlaceCommentView[]> = {};
+  for (const c of commentRows) {
+    const author = commentAuthorMap.get(c.authorId);
+    if (!author) continue;
+    (placeCommentsByPlace[c.placeId] ??= []).push({ comment: c, author });
+  }
+
   const viewerIsOwner = !!viewer && viewer.id === guide.ownerId;
-  let viewerIsFollowing = false;
+  let viewerFollowStatus: "none" | "pending" | "accepted" = "none";
   if (viewer && !viewerIsOwner) {
     const f = await db.query.follows.findFirst({ where: and(eq(follows.followerId, viewer.id), eq(follows.followingId, guide.ownerId)) });
-    viewerIsFollowing = !!f;
+    if (f) viewerFollowStatus = f.status === "accepted" ? "accepted" : "pending";
   }
   let sharedWith: PublicUser[] = [];
   if (viewerIsOwner) {
@@ -158,9 +221,12 @@ export async function getGuideDetail(guide: Guide, viewer: User | null): Promise
     ...card,
     places: placeRows,
     noteAuthors,
+    placeComments: placeCommentsByPlace,
+    placePhotos: placePhotosByPlace,
+    placeTips: placeTipsByPlace,
     viewerCanEdit: viewerIsOwner,
     viewerCanFork: !!viewer && !viewerIsOwner && guide.allowFork,
-    viewerIsFollowing,
+    viewerFollowStatus,
     sharedWith,
   };
 }
@@ -206,7 +272,7 @@ export async function searchGuides(intent: SearchIntent, viewerId?: string | nul
     if (!narrowed) conds.push(or(...kw)!);
   }
   const rows = await db.select().from(guides).where(and(...conds)).orderBy(desc(guides.publishedAt)).limit(40);
-  return hydrateCards(rows);
+  return filterVisibleCards(await hydrateCards(rows), viewerId);
 }
 
 export async function searchUsers(q: string, excludeId?: string, limit = 8): Promise<PublicUser[]> {
@@ -229,25 +295,35 @@ export async function getUserByUsername(username: string): Promise<User | null> 
 export async function getFollowStats(userId: string, viewerId?: string | null) {
   const db = await getDb();
   const [[followers], [following]] = await Promise.all([
-    db.select({ n: sql<number>`count(*)` }).from(follows).where(eq(follows.followingId, userId)),
-    db.select({ n: sql<number>`count(*)` }).from(follows).where(eq(follows.followerId, userId)),
+    db.select({ n: sql<number>`count(*)` }).from(follows).where(and(eq(follows.followingId, userId), eq(follows.status, "accepted"))),
+    db.select({ n: sql<number>`count(*)` }).from(follows).where(and(eq(follows.followerId, userId), eq(follows.status, "accepted"))),
   ]);
   let viewerFollows = false;
+  let viewerRequested = false;
   if (viewerId && viewerId !== userId) {
-    viewerFollows = !!(await db.query.follows.findFirst({ where: and(eq(follows.followerId, viewerId), eq(follows.followingId, userId)) }));
+    const f = await db.query.follows.findFirst({ where: and(eq(follows.followerId, viewerId), eq(follows.followingId, userId)) });
+    viewerFollows = f?.status === "accepted";
+    viewerRequested = f?.status === "pending";
   }
-  return { followers: Number(followers?.n ?? 0), following: Number(following?.n ?? 0), viewerFollows };
+  return { followers: Number(followers?.n ?? 0), following: Number(following?.n ?? 0), viewerFollows, viewerRequested };
 }
 
 export async function listFollowing(userId: string): Promise<PublicUser[]> {
   const db = await getDb();
-  const rows = await db.select({ u: users }).from(follows).innerJoin(users, eq(users.id, follows.followingId)).where(eq(follows.followerId, userId));
+  const rows = await db.select({ u: users }).from(follows).innerJoin(users, eq(users.id, follows.followingId)).where(and(eq(follows.followerId, userId), eq(follows.status, "accepted")));
   return rows.map((r) => toPublicUser(r.u));
 }
 
 export async function listFollowers(userId: string): Promise<PublicUser[]> {
   const db = await getDb();
-  const rows = await db.select({ u: users }).from(follows).innerJoin(users, eq(users.id, follows.followerId)).where(eq(follows.followingId, userId));
+  const rows = await db.select({ u: users }).from(follows).innerJoin(users, eq(users.id, follows.followerId)).where(and(eq(follows.followingId, userId), eq(follows.status, "accepted")));
+  return rows.map((r) => toPublicUser(r.u));
+}
+
+/** Pending follow requests awaiting this user's approval (private accounts only). */
+export async function listFollowRequests(userId: string): Promise<PublicUser[]> {
+  const db = await getDb();
+  const rows = await db.select({ u: users }).from(follows).innerJoin(users, eq(users.id, follows.followerId)).where(and(eq(follows.followingId, userId), eq(follows.status, "pending")));
   return rows.map((r) => toPublicUser(r.u));
 }
 

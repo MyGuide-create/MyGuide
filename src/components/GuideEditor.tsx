@@ -4,15 +4,17 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useState, useTransition } from "react";
 import type { GuideDetail } from "@/lib/guides";
-import type { Place } from "@/lib/db/schema";
+import type { Place, PlaceTip } from "@/lib/db/schema";
 import { addPlace, deleteGuide, publishGuide, removePlace, reorderPlaces, replacePlace, updateGuideMeta, updatePlace } from "@/lib/actions/guides";
 import { CATEGORIES } from "@/lib/places/categories";
 import type { PlaceSuggestion } from "@/lib/places/types";
+import { CoverPicker } from "./CoverPicker";
 import { GuideCover } from "./GuideCover";
-import { CameraIcon, ChevronDown, ChevronUp, ForkIcon, GlobeIcon, LockIcon, PinIcon, TrashIcon, XIcon } from "./Icons";
+import { CameraIcon, ChevronDown, ChevronUp, ForkIcon, GlobeIcon, LockIcon, PinIcon, SparkleIcon, TrashIcon } from "./Icons";
 import { NoteEditor } from "./NoteEditor";
 import { PhotoPicker } from "./PhotoPicker";
 import { PlaceSearch } from "./PlaceSearch";
+import { TipsEditor } from "./TipsEditor";
 import { PlaceTile } from "./PlaceTile";
 import { Sheet } from "./ShareSheet";
 import { Button, Input, Label, Spinner, Tag, Textarea, cx } from "./ui";
@@ -23,6 +25,7 @@ export function GuideEditor({ detail, justForked, justCreated }: { detail: Guide
   const [places, setPlaces] = useState<Place[]>(detail.places);
   const [adding, setAdding] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
+  const [coverOpen, setCoverOpen] = useState(false);
   const [saving, setSaving] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -109,14 +112,18 @@ export function GuideEditor({ detail, justForked, justCreated }: { detail: Guide
       <div className="relative mt-3 mx-4 rounded-[22px] overflow-hidden">
         <GuideCover guide={guide} ownerUsername={owner.username} className="aspect-[16/9]" />
         <div className="absolute bottom-3 right-3 flex gap-2">
-          {guide.coverMediaId && (
-            <button type="button" onClick={() => saveMeta({ coverMediaId: null })} className="rounded-full bg-paper/90 backdrop-blur px-3 py-1.5 text-[12px] font-medium inline-flex items-center gap-1"><XIcon size={13} /> Use title card</button>
-          )}
-          <PhotoPicker onUploaded={(id) => saveMeta({ coverMediaId: id })} className="rounded-full bg-paper/90 backdrop-blur px-3 py-1.5 text-[12px] font-medium">
-            <CameraIcon size={14} /> {guide.coverMediaId ? "Change photo" : "Use my photo"}
-          </PhotoPicker>
+          <button type="button" onClick={() => setCoverOpen(true)} className="rounded-full bg-paper/90 backdrop-blur px-3 py-1.5 text-[12px] font-medium inline-flex items-center gap-1.5">
+            <CameraIcon size={14} /> {guide.coverMediaId || guide.coverUrl ? "Change cover" : "Add cover photo"}
+          </button>
         </div>
       </div>
+      {coverOpen && (
+        <CoverPicker
+          guide={guide}
+          onClose={() => setCoverOpen(false)}
+          onChange={(fields) => setGuide((g) => ({ ...g, ...fields }))}
+        />
+      )}
 
       {/* Meta */}
       <div className="px-5 mt-5 flex flex-col gap-4">
@@ -171,7 +178,9 @@ export function GuideEditor({ detail, justForked, justCreated }: { detail: Guide
               index={i}
               total={places.length}
               guideId={guide.id}
+              guideSlug={guide.slug}
               cityHint={guide.city}
+              tips={detail.placeTips[p.id] ?? []}
               noteAuthor={p.noteAuthorId && p.noteAuthorId !== owner.id ? detail.noteAuthors[p.noteAuthorId] : null}
               onMove={(d) => move(i, d)}
               onRemove={() => remove(p)}
@@ -226,7 +235,9 @@ function EditablePlace({
   index,
   total,
   guideId,
+  guideSlug,
   cityHint,
+  tips,
   noteAuthor,
   onMove,
   onRemove,
@@ -237,7 +248,9 @@ function EditablePlace({
   index: number;
   total: number;
   guideId: string;
+  guideSlug: string;
   cityHint: string;
+  tips: PlaceTip[];
   noteAuthor: { username: string } | null | undefined;
   onMove: (dir: -1 | 1) => void;
   onRemove: () => void;
@@ -256,7 +269,7 @@ function EditablePlace({
   };
 
   return (
-    <li className="rounded-[20px] border border-line/80 bg-paper p-3.5">
+    <li id={`place-edit-${place.id}`} className="rounded-[20px] border border-line/80 bg-paper p-3.5 scroll-mt-20">
       <div className="flex gap-3 items-start">
         <div className="relative shrink-0">
           <PlaceTile place={place} size={64} />
@@ -308,8 +321,20 @@ function EditablePlace({
           </button>
         )}
       </div>
+      <div className="mt-3 pt-3 border-t border-line/70">
+        <p className="text-[11px] font-medium uppercase tracking-[0.06em] text-ink-faint mb-2 inline-flex items-center gap-1"><SparkleIcon size={12} /> Shown on the place page</p>
+        <div className="flex flex-col gap-3">
+          <div>
+            <Label>What makes it special</Label>
+            <Textarea rows={2} defaultValue={place.special ?? ""} placeholder="What sets this place apart…" onBlur={(e) => e.target.value.trim() !== (place.special ?? "") && onPatch({ special: e.target.value })} />
+          </div>
+          <TipsEditor guideId={guideId} placeId={place.id} initial={tips} />
+        </div>
+      </div>
+      <Link href={`/g/${guideSlug}/p/${place.id}`} className="mt-2 inline-block text-[11px] text-ink-faint hover:text-terracotta">View place page →</Link>
     </li>
   );
 }
+
 
 export type { PlaceSuggestion };

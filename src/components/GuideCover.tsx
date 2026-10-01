@@ -1,4 +1,5 @@
 import { hashInt } from "@/lib/utils";
+import { UNSPLASH_HOME } from "@/lib/covers/shared";
 import { cx } from "./ui";
 
 /**
@@ -11,19 +12,41 @@ export function GuideCover({
   className,
   compact,
   bare,
+  creditLinks,
 }: {
-  guide: { id: string; title: string; city: string; country: string; coverMediaId?: string | null };
+  guide: {
+    id: string;
+    title: string;
+    city: string;
+    country: string;
+    coverMediaId?: string | null;
+    coverUrl?: string | null;
+    coverSource?: string | null;
+    coverCredit?: string | null;
+    coverCreditUrl?: string | null;
+  };
   ownerUsername: string;
   className?: string;
   compact?: boolean;
   /** Illustration only, no title text (used above the guide heading). */
   bare?: boolean;
+  /** Render the photo credit as links (off inside cards, which are already one big link). */
+  creditLinks?: boolean;
 }) {
   if (guide.coverMediaId) {
     return (
       <div className={cx("relative overflow-hidden bg-cream-deep", className)}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={`/api/media/${guide.coverMediaId}`} alt="" className="absolute inset-0 w-full h-full object-cover" />
+      </div>
+    );
+  }
+  if (guide.coverUrl) {
+    return (
+      <div className={cx("relative overflow-hidden bg-cream-deep", className)}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={guide.coverUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
+        <CoverCredit guide={guide} links={creditLinks} />
       </div>
     );
   }
@@ -75,6 +98,33 @@ export function GuideCover({
         <div className={cx("text-ink-muted font-medium", compact ? "text-[10px]" : "text-[12px]")}>@{ownerUsername}{place ? ` · ${place}` : ""}</div>
         <div className={cx("font-display text-ink leading-[1.02] mt-0.5 line-clamp-2", compact ? "text-[19px]" : "text-[30px]")}>{guide.title}</div>
       </div>}
+    </div>
+  );
+}
+
+/** Photographer attribution, required by both Unsplash and Google Maps. */
+function CoverCredit({
+  guide,
+  links,
+}: {
+  guide: { coverSource?: string | null; coverCredit?: string | null; coverCreditUrl?: string | null };
+  links?: boolean;
+}) {
+  if (!guide.coverCredit) return null;
+  const isUnsplash = guide.coverSource === "unsplash";
+  const name = links && guide.coverCreditUrl ? (
+    <a href={guide.coverCreditUrl} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">{guide.coverCredit}</a>
+  ) : (
+    guide.coverCredit
+  );
+  const source = isUnsplash ? (
+    links ? <a href={UNSPLASH_HOME} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">Unsplash</a> : "Unsplash"
+  ) : (
+    "Google Maps"
+  );
+  return (
+    <div className="absolute top-2 left-2 max-w-[85%] truncate rounded-full bg-ink/45 backdrop-blur-sm px-2 py-0.5 text-[10px] leading-4 text-white/95">
+      Photo: {name} · {source}
     </div>
   );
 }

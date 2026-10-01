@@ -1,9 +1,10 @@
 import { categoryFromGoogleTypes } from "./categories";
 import { findCity } from "./cities";
+import { haversineMeters } from "./geo";
 import type { PlaceResult, PlaceSuggestion, PlacesProvider } from "./types";
 
 const BASE = "https://places.googleapis.com/v1";
-const FIELD_MASK = [
+const FIELDS = [
   "id",
   "displayName",
   "formattedAddress",
@@ -14,19 +15,22 @@ const FIELD_MASK = [
   "photos",
   "regularOpeningHours",
   "businessStatus",
-].join(",");
+  "nationalPhoneNumber",
+];
+const FIELD_MASK = FIELDS.join(",");
 
 interface GooglePlace {
   id: string;
   displayName?: { text: string };
   formattedAddress?: string;
-  addressComponents?: Array<{ longText: string; types: string[] }>;
+  addressComponents?: Array<{ longText: string; types?: string[] }>;
   location?: { latitude: number; longitude: number };
   primaryType?: string;
   types?: string[];
   photos?: Array<{ name: string }>;
   regularOpeningHours?: { weekdayDescriptions?: string[] };
   businessStatus?: string;
+  nationalPhoneNumber?: string;
 }
 
 function key(): string {
@@ -34,10 +38,10 @@ function key(): string {
 }
 
 function toResult(p: GooglePlace): PlaceResult {
-  const comp = (type: string) => p.addressComponents?.find((c) => c.types.includes(type))?.longText ?? "";
+  const comp = (type: string) => p.addressComponents?.find((c) => c.types?.includes(type))?.longText ?? "";
   const city = comp("locality") || comp("postal_town") || comp("administrative_area_level_2") || comp("administrative_area_level_1");
   const country = comp("country");
-  const photo = p.photos?.[0]?.name;
+  const photoUrls = (p.photos ?? []).slice(0, 8).map((ph) => `/api/places/photo?ref=${encodeURIComponent(ph.name)}`);
   const status = p.businessStatus;
   return {
     providerId: p.id,
@@ -48,7 +52,9 @@ function toResult(p: GooglePlace): PlaceResult {
     lat: p.location?.latitude ?? 0,
     lng: p.location?.longitude ?? 0,
     category: categoryFromGoogleTypes(p.primaryType, p.types),
-    photoUrl: photo ? `/api/places/photo?ref=${encodeURIComponent(photo)}` : null,
+    photoUrl: photoUrls[0] ?? null,
+    photoUrls,
+    phone: p.nationalPhoneNumber ?? null,
     hours: p.regularOpeningHours?.weekdayDescriptions ?? null,
     businessStatus:
       status === "OPERATIONAL" || status === "CLOSED_TEMPORARILY" || status === "CLOSED_PERMANENTLY" ? status : null,
@@ -103,7 +109,7 @@ export const googleProvider: PlacesProvider = {
     const textQuery = cityHint && !query.toLowerCase().includes(cityHint.toLowerCase()) ? `${query}, ${cityHint}` : query;
     const data = await gfetch<{ places?: GooglePlace[] }>("/places:searchText", {
       method: "POST",
-      fieldMask: FIELD_MASK.split(",").map((f) => `places.${f}`).join(","),
+      fieldMask: FIELDS.map((f) => `places.${f}`).join(","),
       body: JSON.stringify({ textQuery, pageSize: 1, locationBias: locationBias(cityHint) }),
     });
     const p = data?.places?.[0];
@@ -120,6 +126,24 @@ export const googleProvider: PlacesProvider = {
     const s = p?.businessStatus;
     return s === "OPERATIONAL" || s === "CLOSED_TEMPORARILY" || s === "CLOSED_PERMANENTLY" ? s : null;
   },
+
+  async nearby(lat, lng, radiusMeters = 600) {
+    const data = await gfetch<{ places?: GooglePlace[] }>("/places:searchNearby", {
+      method: "POST",
+      fieldMask: FIELDS.map((f) => `places.${f}`).join(","),
+      body: JSON.stringify({
+        maxResultCount: 8,
+        rankPreference: "DISTANCE",
+        locationRestriction: { circle: { center: { latitude: lat, longitude: lng }, radius: radiusMeters } },
+      }),
+    });
+    return (data?.places ?? [])
+      .map((p) => {
+        const r = toResult(p);
+        return { ...r, distanceMeters: haversineMeters(lat, lng, r.lat, r.lng) };
+      })
+      .sort((a, b) => a.distanceMeters - b.distanceMeters);
+  },
 };
 
 /** Resolve a Google photo resource name to a CDN URL (no API key in the URL). */
@@ -131,4 +155,24 @@ export async function resolvePhotoUri(photoName: string, maxWidthPx = 900): Prom
   if (!res.ok) return null;
   const data = (await res.json()) as { photoUri?: string };
   return data.photoUri ?? null;
+}
+
+export interface GooglePhotoOption {
+  ref: string;
+  author: string;
+  authorUrl: string | null;
+}
+
+/** Photos (with the photographer attribution Google requires) for one place. */
+export async function getPlacePhotos(googlePlaceId: string, limit = 4): Promise<GooglePhotoOption[]> {
+  if (!key() || !googlePlaceId) return [];
+  const data = await gfetch<{ photos?: Array<{ name: string; authorAttributions?: Array<{ displayName?: string; uri?: string }> }> }>(
+    `/places/${encodeURIComponent(googlePlaceId)}`,
+    { method: "GET", fieldMask: "photos" },
+  );
+  return (data?.photos ?? []).slice(0, limit).map((ph) => ({
+    ref: ph.name,
+    author: ph.authorAttributions?.[0]?.displayName ?? "Google Maps contributor",
+    authorUrl: ph.authorAttributions?.[0]?.uri ?? null,
+  }));
 }

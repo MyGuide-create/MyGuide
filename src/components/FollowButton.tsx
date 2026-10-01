@@ -1,31 +1,34 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { toggleFollow } from "@/lib/actions/social";
+import { toggleFollow, type FollowStatus } from "@/lib/actions/social";
 import { Button } from "./ui";
 
-export function FollowButton({ userId, initial, next, size = "sm" }: { userId: string; initial: boolean; next?: string; size?: "sm" | "md" }) {
-  const [following, setFollowing] = useState(initial);
+export function FollowButton({ userId, initial, next, size = "sm" }: { userId: string; initial: FollowStatus | boolean; next?: string; size?: "sm" | "md" }) {
+  const initialStatus: FollowStatus = typeof initial === "boolean" ? (initial ? "accepted" : "none") : initial;
+  const [status, setStatus] = useState<FollowStatus>(initialStatus);
   const [pending, start] = useTransition();
+  const label = status === "accepted" ? "Following" : status === "pending" ? "Requested" : "Follow";
   return (
     <Button
       size={size}
-      variant={following ? "ghost" : "outline"}
-      className={following ? "border border-line text-ink-muted" : ""}
+      variant={status === "none" ? "outline" : "ghost"}
+      className={status !== "none" ? "border border-line text-ink-muted" : ""}
       disabled={pending}
       onClick={() =>
         start(async () => {
-          setFollowing((f) => !f);
+          const prev = status;
+          setStatus(status === "none" ? "pending" : "none"); // optimistic; corrected below
           try {
             const r = await toggleFollow(userId, next);
-            setFollowing(r.following);
+            setStatus(r.status);
           } catch {
-            setFollowing((f) => !f);
+            setStatus(prev);
           }
         })
       }
     >
-      {following ? "Following" : "Follow"}
+      {label}
     </Button>
   );
 }

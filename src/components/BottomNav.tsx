@@ -2,13 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BellIcon, HomeIcon, PlusIcon, SearchIcon, UserIcon } from "./Icons";
+import { BellIcon, HomeIcon, PinIcon, PlusIcon, SearchIcon } from "./Icons";
 import { cx } from "./ui";
 
-export function BottomNav({ signedIn, username, unread }: { signedIn: boolean; username: string | null; unread: number }) {
+export function BottomNav({ signedIn, unread }: { signedIn: boolean; unread: number }) {
   const path = usePathname();
   const is = (p: string) => (p === "/" ? path === "/" : path.startsWith(p));
-  const profileHref = signedIn ? "/me" : "/login?next=/me";
   const item = "flex flex-col items-center justify-center w-14 h-12 rounded-2xl transition-colors";
   return (
     <nav className="fixed bottom-0 inset-x-0 z-40 flex justify-center pointer-events-none">
@@ -34,8 +33,8 @@ export function BottomNav({ signedIn, username, unread }: { signedIn: boolean; u
             </span>
           )}
         </Link>
-        <Link href={profileHref} aria-label="Profile" className={cx(item, is("/me") || (username && is(`/u/${username}`)) ? "text-ink" : "text-ink-muted")}>
-          <UserIcon size={24} />
+        <Link href={signedIn ? "/record" : "/login?next=/record"} aria-label="Record a place" className={cx(item, "relative", is("/record") ? "text-terracotta" : "text-ink-muted")}>
+          <PinIcon size={24} />
         </Link>
       </div>
     </nav>

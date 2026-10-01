@@ -30,6 +30,8 @@ export const users = sqliteTable("users", {
   bio: text("bio"),
   avatarMediaId: text("avatar_media_id"),
   accountType: text("account_type").notNull().default("personal"),
+  /** "public" | "private" — private accounts require an approved follow request before their guides are visible. */
+  profileVisibility: text("profile_visibility").notNull().default("public"),
   createdAt: integer("created_at", { mode: "timestamp_ms" })
     .notNull()
     .default(sql`(unixepoch() * 1000)`),
@@ -48,6 +50,13 @@ export const guides = sqliteTable(
     country: text("country").notNull().default(""),
     description: text("description").notNull().default(""),
     coverMediaId: text("cover_media_id"),
+    /** External cover photo (Unsplash hotlink or Google Places photo proxy). Ignored when coverMediaId is set. */
+    coverUrl: text("cover_url"),
+    /** "unsplash" | "google" */
+    coverSource: text("cover_source"),
+    /** Photographer name, shown as attribution on the cover. */
+    coverCredit: text("cover_credit"),
+    coverCreditUrl: text("cover_credit_url"),
     /** "public" | "private" */
     visibility: text("visibility").notNull().default("private"),
     allowFork: integer("allow_fork", { mode: "boolean" }).notNull().default(true),
@@ -90,6 +99,9 @@ export const places = sqliteTable(
     googlePlaceId: text("google_place_id"),
     /** OPERATIONAL | CLOSED_TEMPORARILY | CLOSED_PERMANENTLY | null */
     businessStatus: text("business_status"),
+    phone: text("phone"),
+    /** Creator-authored: "What makes it special", shown on the place detail page. Expert tips are a separate table (many per place). */
+    special: text("special"),
     note: text("note").notNull().default(""),
     noteClipMediaId: text("note_clip_media_id"),
     /** Who wrote the current note (differs from guide owner on forked guides). */
@@ -97,6 +109,51 @@ export const places = sqliteTable(
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   },
   (t) => [index("places_guide_idx").on(t.guideId, t.position)],
+);
+
+export const placePhotos = sqliteTable(
+  "place_photos",
+  {
+    id: text("id").primaryKey(),
+    placeId: text("place_id")
+      .notNull()
+      .references(() => places.id, { onDelete: "cascade" }),
+    mediaId: text("media_id").notNull(),
+    position: integer("position").notNull().default(0),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [index("place_photos_place_idx").on(t.placeId, t.position)],
+);
+
+export const placeTips = sqliteTable(
+  "place_tips",
+  {
+    id: text("id").primaryKey(),
+    placeId: text("place_id")
+      .notNull()
+      .references(() => places.id, { onDelete: "cascade" }),
+    body: text("body").notNull(),
+    position: integer("position").notNull().default(0),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [index("place_tips_place_idx").on(t.placeId, t.position)],
+);
+
+export const placeComments = sqliteTable(
+  "place_comments",
+  {
+    id: text("id").primaryKey(),
+    placeId: text("place_id")
+      .notNull()
+      .references(() => places.id, { onDelete: "cascade" }),
+    authorId: text("author_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    body: text("body").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    editedAt: integer("edited_at", { mode: "timestamp_ms" }),
+  },
+  (t) => [index("place_comments_place_idx").on(t.placeId, t.createdAt)],
 );
 
 export const follows = sqliteTable(
@@ -108,6 +165,8 @@ export const follows = sqliteTable(
     followingId: text("following_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
+    /** "accepted" | "pending" — pending means a follow request awaiting the target's approval (private accounts only). */
+    status: text("status").notNull().default("accepted"),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   },
   (t) => [
@@ -144,10 +203,12 @@ export const notifications = sqliteTable(
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    /** "guide_shared" | "new_follower" */
+    /** "guide_shared" | "new_follower" | "follow_request" | "follow_accepted" | "place_comment" */
     type: text("type").notNull(),
     actorId: text("actor_id").references(() => users.id, { onDelete: "cascade" }),
     guideId: text("guide_id").references(() => guides.id, { onDelete: "cascade" }),
+    /** Soft reference to a place, for deep-linking a place_comment notification — not a hard FK, matching forkedFromGuideId's pattern. */
+    placeId: text("place_id"),
     readAt: integer("read_at", { mode: "timestamp_ms" }),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   },
@@ -171,5 +232,8 @@ export const media = sqliteTable("media", {
 export type User = typeof users.$inferSelect;
 export type Guide = typeof guides.$inferSelect;
 export type Place = typeof places.$inferSelect;
+export type PlacePhoto = typeof placePhotos.$inferSelect;
+export type PlaceTip = typeof placeTips.$inferSelect;
+export type PlaceComment = typeof placeComments.$inferSelect;
 export type Notification = typeof notifications.$inferSelect;
 export type Media = typeof media.$inferSelect;

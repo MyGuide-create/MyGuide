@@ -46,3 +46,7 @@ next-env.d.ts
 *.db-journal
 
 !.env.example
+
+# local backups
+/backups/
+/_to_delete/

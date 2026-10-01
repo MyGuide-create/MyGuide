@@ -26,6 +26,7 @@ export async function signUp(_prev: AuthState, formData: FormData): Promise<Auth
 
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { error: "Please enter a valid email address." };
   if (password.length < 8) return { error: "Use at least 8 characters for your password." };
+  if (password !== String(formData.get("confirmPassword") ?? "")) return { error: "The two passwords don't match." };
   if (!USERNAME_RE.test(username)) return { error: "Usernames are 3–24 characters: letters, numbers, dots or underscores." };
 
   const db = await getDb();

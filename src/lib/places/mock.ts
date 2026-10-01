@@ -1,7 +1,8 @@
 import { guessCategoryFromName } from "./categories";
 import { CITIES, detectCityInText, findCity } from "./cities";
+import { haversineMeters } from "./geo";
 import { MOCK_PLACES, type MockPlace } from "./mock-data";
-import type { PlaceResult, PlaceSuggestion, PlacesProvider } from "./types";
+import type { NearbyPlaceResult, PlaceResult, PlaceSuggestion, PlacesProvider } from "./types";
 
 const norm = (s: string) =>
   s
@@ -23,6 +24,8 @@ function toResult(p: MockPlace): PlaceResult {
     lng: p.lng,
     category: p.category,
     photoUrl: null,
+    photoUrls: [],
+    phone: null,
     hours: p.hours,
     businessStatus: "OPERATIONAL",
     source: "mock",
@@ -87,6 +90,8 @@ function synthesize(rawName: string, cityHint?: string): PlaceResult | null {
     lng: +(city.lng + dLng).toFixed(5),
     category,
     photoUrl: null,
+    photoUrls: [],
+    phone: null,
     hours: category === "Nature" || category === "Scenic Spots" ? ["Open daily"] : ["Hours not available in demo mode"],
     businessStatus: "OPERATIONAL",
     source: "mock",
@@ -147,5 +152,13 @@ export const mockProvider: PlacesProvider = {
 
   async businessStatus() {
     return "OPERATIONAL";
+  },
+
+  async nearby(lat, lng, radiusMeters = 600): Promise<NearbyPlaceResult[]> {
+    return MOCK_PLACES.map((p) => ({ p, d: haversineMeters(lat, lng, p.lat, p.lng) }))
+      .filter((x) => x.d <= radiusMeters)
+      .sort((a, b) => a.d - b.d)
+      .slice(0, 6)
+      .map(({ p, d }) => ({ ...toResult(p), distanceMeters: d }));
   },
 };

@@ -1,10 +1,11 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import type { PublicUser } from "@/lib/auth";
 import { getCurrentUser } from "@/lib/auth";
 import { unreadNotificationCount } from "@/lib/guides";
 import { BottomNav } from "./BottomNav";
 import { ChevronLeft } from "./Icons";
-import { cx } from "./ui";
+import { Avatar, cx } from "./ui";
 
 /**
  * Phone-first shell: content is capped at ~480px and centred on larger
@@ -26,7 +27,7 @@ export async function AppShell({
       <div className={cx("w-full max-w-[480px] flex-1 flex flex-col relative min-h-dvh", nav && "pb-24", className)}>
         {children}
       </div>
-      {nav && <BottomNav signedIn={!!user} username={user?.username ?? null} unread={unread} />}
+      {nav && <BottomNav signedIn={!!user} unread={unread} />}
     </div>
   );
 }
@@ -36,11 +37,14 @@ export function TopBar({
   back,
   right,
   transparent,
+  avatarUser,
 }: {
   title?: ReactNode;
   back?: string;
   right?: ReactNode;
   transparent?: boolean;
+  /** Shown top-right, linking to the user's profile, when `right` isn't already occupied. */
+  avatarUser?: PublicUser | null;
 }) {
   return (
     <div
@@ -59,7 +63,11 @@ export function TopBar({
       <div className="flex-1 min-w-0">
         {typeof title === "string" ? <h1 className="font-display text-[22px] leading-none truncate">{title}</h1> : title}
       </div>
-      {right}
+      {right ?? (avatarUser ? (
+        <Link href={`/u/${avatarUser.username}`} aria-label="Your profile">
+          <Avatar user={avatarUser} size={32} />
+        </Link>
+      ) : null)}
     </div>
   );
 }

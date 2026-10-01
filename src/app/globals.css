@@ -21,7 +21,8 @@
   --color-danger: oklch(55% 0.17 25);
   --color-danger-tint: oklch(95% 0.03 25);
 
-  --font-display: var(--font-instrument-serif), "Instrument Serif", Georgia, serif;
+  /* Unified on one sans-serif app-wide (was Instrument Serif) — easier to read on phone screens. */
+  --font-display: var(--font-work-sans), "Work Sans", system-ui, sans-serif;
   --font-sans: var(--font-work-sans), "Work Sans", system-ui, sans-serif;
 
   --radius-tile: 16px;
@@ -104,21 +105,3 @@ textarea {
   animation: fade-up 0.25s ease-out both;
 }
 
-/* Leaflet tweaks so the map matches the journal look */
-.leaflet-container {
-  font-family: var(--font-sans);
-  background: var(--color-cream-deep);
-}
-.leaflet-popup-content-wrapper {
-  border-radius: 14px;
-  box-shadow: var(--shadow-card);
-  color: var(--color-ink);
-}
-.leaflet-popup-content {
-  margin: 10px 14px;
-  font-size: 13px;
-}
-.mg-pin {
-  background: transparent;
-  border: 0;
-}

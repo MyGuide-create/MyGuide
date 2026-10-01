@@ -76,7 +76,7 @@ export async function requireUser(next?: string): Promise<User> {
   return user;
 }
 
-export type PublicUser = Pick<User, "id" | "username" | "displayName" | "bio" | "avatarMediaId" | "accountType">;
+export type PublicUser = Pick<User, "id" | "username" | "displayName" | "bio" | "avatarMediaId" | "accountType" | "profileVisibility">;
 
 export function toPublicUser(u: User): PublicUser {
   return {
@@ -86,5 +86,6 @@ export function toPublicUser(u: User): PublicUser {
     bio: u.bio,
     avatarMediaId: u.avatarMediaId,
     accountType: u.accountType,
+    profileVisibility: u.profileVisibility,
   };
 }

@@ -33,6 +33,12 @@ export function AuthForm({ mode, next }: { mode: "login" | "signup"; next?: stri
         <Label>Password</Label>
         <Input name="password" type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} placeholder={mode === "signup" ? "At least 8 characters" : "••••••••"} required minLength={mode === "signup" ? 8 : undefined} />
       </div>
+      {mode === "signup" && (
+        <div>
+          <Label>Confirm password</Label>
+          <Input name="confirmPassword" type="password" autoComplete="new-password" placeholder="Type it again" required minLength={8} />
+        </div>
+      )}
       {state.error && <p className="text-[13px] text-danger bg-danger-tint rounded-xl px-3 py-2">{state.error}</p>}
       <Button type="submit" size="lg" disabled={pending} className="mt-1">
         {pending ? <Spinner /> : mode === "login" ? "Log in" : "Create account"}

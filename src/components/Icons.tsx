@@ -103,6 +103,9 @@ export const KeyboardIcon = ({ size, ...p }: P) => (
 export const AlertIcon = ({ size, ...p }: P) => (
   <svg {...base(size, p)}><path d="M12 3 2.5 20h19z" /><path d="M12 9v5" /><path d="M12 17h.01" /></svg>
 );
+export const ChatIcon = ({ size, ...p }: P) => (
+  <svg {...base(size, p)}><path d="M4 5h16v11H8l-4 4V5z" /></svg>
+);
 
 /* Category glyphs used on place tiles (white strokes on a gradient). */
 export const CategoryGlyph = ({ name, size = 26 }: { name: string; size?: number }) => {
