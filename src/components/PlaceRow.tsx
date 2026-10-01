@@ -5,6 +5,7 @@ import type { PlaceCommentView } from "@/lib/guides";
 import { AudioClip } from "./AudioClip";
 import { AlertIcon, ChatIcon, ClockIcon, PinIcon } from "./Icons";
 import { PlaceTile } from "./PlaceTile";
+import { trackAttrs } from "@/lib/track";
 import { cx } from "./ui";
 
 export function PlaceRow({
@@ -67,6 +68,7 @@ export function PlaceRow({
               href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.name + " " + place.address)}${place.googlePlaceId && !place.googlePlaceId.startsWith("mock:") ? `&query_place_id=${place.googlePlaceId}` : ""}`}
               target="_blank"
               rel="noreferrer"
+              {...trackAttrs("tap_directions", place.guideId, place.id)}
             >
               <PinIcon size={12} /> Open in Maps
             </a>

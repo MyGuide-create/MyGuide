@@ -8,6 +8,7 @@ import type { PublicUser } from "@/lib/auth";
 import { forkGuide } from "@/lib/actions/guides";
 import { CATEGORIES } from "@/lib/places/categories";
 import { timeAgo } from "@/lib/utils";
+import { track } from "@/lib/track";
 import { FollowButton } from "./FollowButton";
 import { GuideCover } from "./GuideCover";
 import { GuideMap } from "./GuideMap";
@@ -41,6 +42,11 @@ export function GuideView({ detail, viewerId, viewer, shareUrl, shareKey }: { de
   const showHeadings = groups.length > 1;
   const isDraft = !guide.publishedAt;
 
+  // Pilot analytics: one guide_view per page load (the API marks whether the viewer is the creator).
+  useEffect(() => {
+    track("guide_view", guide.id);
+  }, [guide.id]);
+
   // Stretch feature: re-check business status on view (owner only, live Maps key only).
   useEffect(() => {
     if (!detail.viewerCanEdit) return;
@@ -54,6 +60,7 @@ export function GuideView({ detail, viewerId, viewer, shareUrl, shareKey }: { de
 
   const fork = () => {
     setForkError(null);
+    track("fork", guide.id);
     startFork(async () => {
       try {
         const slug = await forkGuide(guide.id, shareKey);
@@ -109,7 +116,7 @@ export function GuideView({ detail, viewerId, viewer, shareUrl, shareKey }: { de
             </Button>
           )}
           {!viewerId && guide.allowFork && (
-            <LinkButton href={`/login?next=${encodeURIComponent(`/g/${guide.slug}${shareKey ? `?key=${shareKey}` : ""}`)}`} size="sm" variant="outline" className="flex-1"><ForkIcon size={15} /> Use this guide</LinkButton>
+            <LinkButton href={`/signup?why=fork&next=${encodeURIComponent(`/g/${guide.slug}${shareKey ? `?key=${shareKey}` : ""}`)}`} size="sm" variant="outline" className="flex-1"><ForkIcon size={15} /> Use this guide</LinkButton>
           )}
           <div className="flex rounded-full border border-line p-0.5">
             <button type="button" aria-label="List view" onClick={() => setMode("list")} className={cx("w-9 h-8 rounded-full flex items-center justify-center", mode === "list" ? "bg-ink text-cream" : "text-ink-muted")}><ListIcon size={17} /></button>
@@ -166,6 +173,8 @@ export function GuideView({ detail, viewerId, viewer, shareUrl, shareKey }: { de
       {sharing && (
         <ShareSheet
           guideId={guide.id}
+          guideTitle={guide.title}
+          ownerName={owner.displayName}
           shareUrl={shareUrl}
           isPrivate={guide.visibility === "private"}
           isOwner={detail.viewerCanEdit}

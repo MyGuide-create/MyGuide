@@ -36,7 +36,7 @@ export default async function ProfilePage({ params }: PageProps<"/u/[username]">
             </h1>
             <div className="mt-1.5 text-[12.5px] text-ink-muted flex gap-3">
               <span><b className="text-ink font-semibold">{published.length}</b> guide{published.length === 1 ? "" : "s"}</span>
-              <Link href={`/u/${profile.username}/followers`} className="hover:underline"><b className="text-ink font-semibold">{stats.followers}</b> followers</Link>
+              <Link href={`/u/${profile.username}/followers`} className="hover:underline"><b className="text-ink font-semibold">{stats.followers}</b> {stats.followers === 1 ? "follower" : "followers"}</Link>
               <Link href={`/u/${profile.username}/following`} className="hover:underline"><b className="text-ink font-semibold">{stats.following}</b> following</Link>
             </div>
           </div>

@@ -54,7 +54,14 @@ export function TopBar({
       )}
     >
       {back ? (
-        <Link href={back} aria-label="Back" className="w-10 h-10 -ml-1 flex items-center justify-center rounded-full hover:bg-cream-deep/60 text-ink">
+        <Link
+          href={back}
+          aria-label="Back"
+          className={cx(
+            "w-10 h-10 -ml-1 flex items-center justify-center rounded-full text-ink",
+            transparent ? "bg-cream/90 backdrop-blur shadow-sm border border-line/60" : "hover:bg-cream-deep/60",
+          )}
+        >
           <ChevronLeft size={22} />
         </Link>
       ) : (

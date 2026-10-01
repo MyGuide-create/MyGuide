@@ -89,12 +89,15 @@ export function heuristicSearchIntent(query: string): SearchIntent {
     [/\b(views?|viewpoints?|scenic|landmarks?|sights?|sightseeing)\b/, "Scenic Spots"],
   ];
   if (!intent.category) for (const [re, c] of catSynonyms) if (re.test(lower)) { intent.category = c; break; }
+  const categoryWords = catSynonyms.filter(([, c]) => c === intent.category).map(([re]) => re);
 
-  const stop = new Set(["show", "me", "find", "search", "for", "guides", "guide", "to", "in", "of", "the", "a", "an", "by", "people", "i", "am", "im", "following", "follow", "my", "friends", "public", "any", "all", "some", "what", "are", "there", "good", "best", "please", "with", "and", "from", "about", "on", "around", "near", "want", "looking", "list", "lists"]);
+  const stop = new Set(["show", "me", "find", "search", "for", "guides", "guide", "to", "in", "of", "the", "a", "an", "by", "people", "i", "am", "im", "following", "follow", "my", "friends", "public", "any", "all", "some", "what", "are", "there", "good", "best", "please", "with", "and", "from", "about", "on", "around", "near", "want", "looking", "list", "lists", "where", "when", "which", "who", "how", "should", "can", "could", "would", "things", "thing", "places", "place", "spots", "spot", "visit", "visiting", "see", "go", "going", "get", "top", "nice", "cool", "great", "favorite", "favourite", "favorites", "favourites", "recommend", "recommendations", "recs", "trip", "travel", "tell", "give", "need", "something", "anything", "this", "that", "weekend", "today", "tonight"]);
   intent.keywords = lower
     .replace(/[^\p{L}\p{N}\s]/gu, " ")
     .split(/\s+/)
     .filter((w) => w.length > 2 && !stop.has(w))
+    .filter((w) => !categoryWords.some((re) => re.test(w)))
+    .filter((w) => !(intent.category && intent.category.toLowerCase().includes(w)))
     .filter((w) => !(intent.city && intent.city.toLowerCase().split(" ").includes(w)))
     .filter((w) => !(intent.byUsername && w === intent.byUsername))
     .slice(0, 6);

@@ -52,10 +52,10 @@ export function GuideCard({ data, showOwner = true }: { data: GuideCardData; sho
           {forkedFrom && (
             <Tag tone="sage"><ForkIcon size={11} /> based on @{forkedFrom.username}</Tag>
           )}
-          {categories.slice(0, 3).map((c) => (
+          {(categories.length <= 4 ? categories : categories.slice(0, 3)).map((c) => (
             <Tag key={c}>{c}</Tag>
           ))}
-          {categories.length > 3 && <Tag>+{categories.length - 3}</Tag>}
+          {categories.length > 4 && <Tag>+{categories.length - 3}</Tag>}
         </div>
       </div>
     </article>

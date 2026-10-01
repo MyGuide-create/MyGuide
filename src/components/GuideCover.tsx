@@ -123,7 +123,7 @@ function CoverCredit({
     "Google Maps"
   );
   return (
-    <div className="absolute top-2 left-2 max-w-[85%] truncate rounded-full bg-ink/45 backdrop-blur-sm px-2 py-0.5 text-[10px] leading-4 text-white/95">
+    <div className="absolute bottom-2 right-2 max-w-[85%] truncate rounded-full bg-ink/45 backdrop-blur-sm px-2 py-0.5 text-[10px] leading-4 text-white/95">
       Photo: {name} · {source}
     </div>
   );

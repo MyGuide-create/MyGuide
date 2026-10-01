@@ -5,7 +5,7 @@ import { AppShell, TopBar } from "@/components/AppShell";
 import { GuideView } from "@/components/GuideView";
 import { LinkButton } from "@/components/ui";
 import { getCurrentUser, toPublicUser } from "@/lib/auth";
-import { canViewGuide, getGuideBySlug, getGuideDetail } from "@/lib/guides";
+import { canViewGuide, countGuidePlaces, getGuideBySlug, getGuideDetail, getUserById } from "@/lib/guides";
 import { appUrl } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -14,7 +14,22 @@ export async function generateMetadata({ params }: PageProps<"/g/[slug]">): Prom
   const { slug } = await params;
   const guide = await getGuideBySlug(slug);
   if (!guide || guide.visibility !== "public" || !guide.publishedAt) return { title: "Guide" };
-  return { title: guide.title, description: guide.description || `${guide.city} guide on MyGuide` };
+  const base = await origin();
+  const [owner, count] = await Promise.all([getUserById(guide.ownerId), countGuidePlaces(guide.id)]);
+  const byline = [owner ? `by ${owner.displayName}` : null, `${count} ${count === 1 ? "place" : "places"}`, guide.city].filter(Boolean).join(" · ");
+  const description = guide.description ? `${byline} — ${guide.description}` : `${byline} on MyGuide`;
+  const rel = guide.coverMediaId ? `/api/media/${guide.coverMediaId}` : guide.coverUrl;
+  const image = rel
+    ? rel.startsWith("http") ? rel : `${base}${rel}`
+    : `${base}/api/og?${new URLSearchParams({ title: guide.title, sub: byline })}`;
+  const url = `${base}/g/${guide.slug}`;
+  return {
+    title: guide.title,
+    description,
+    alternates: { canonical: url },
+    openGraph: { type: "article", siteName: "MyGuide", title: guide.title, description, url, images: [{ url: image, alt: guide.title }] },
+    twitter: { card: "summary_large_image", title: guide.title, description, images: [image] },
+  };
 }
 
 async function origin(): Promise<string> {

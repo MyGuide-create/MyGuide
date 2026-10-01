@@ -3,11 +3,14 @@
 import { useEffect, useState, useTransition } from "react";
 import type { PublicUser } from "@/lib/auth";
 import { shareGuideWithUser, unshareGuideWithUser } from "@/lib/actions/guides";
+import { track } from "@/lib/track";
 import { CheckIcon, LinkIcon, ShareIcon, XIcon } from "./Icons";
 import { Avatar, Button, Input, Spinner, cx } from "./ui";
 
 export function ShareSheet({
   guideId,
+  guideTitle,
+  ownerName,
   shareUrl,
   isPrivate,
   isOwner,
@@ -15,6 +18,8 @@ export function ShareSheet({
   onClose,
 }: {
   guideId: string;
+  guideTitle: string;
+  ownerName: string;
   shareUrl: string;
   isPrivate: boolean;
   isOwner: boolean;
@@ -48,6 +53,7 @@ export function ShareSheet({
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(shareUrl);
+      track("share", guideId);
       setCopied(true);
       setTimeout(() => setCopied(false), 1800);
     } catch {
@@ -57,7 +63,8 @@ export function ShareSheet({
 
   const nativeShare = async () => {
     try {
-      await navigator.share({ title: "A guide on MyGuide", url: shareUrl });
+      await navigator.share({ title: guideTitle, text: `${guideTitle} by ${ownerName} on MyGuide`, url: shareUrl });
+      track("share", guideId);
     } catch { /* user cancelled */ }
   };
 
@@ -65,6 +72,7 @@ export function ShareSheet({
     start(async () => {
       const r = await shareGuideWithUser(guideId, u.username);
       if (r.ok) {
+        track("share", guideId);
         setShared((s) => [...s, u]);
         setResults((rs) => rs.filter((x) => x.id !== u.id));
         setQ("");

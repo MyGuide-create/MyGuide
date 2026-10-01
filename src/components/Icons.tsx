@@ -133,3 +133,9 @@ export const CategoryGlyph = ({ name, size = 26 }: { name: string; size?: number
       return <svg {...p}><path d="M12 21s7-7.5 7-12a7 7 0 1 0-14 0c0 4.5 7 12 7 12z" /></svg>;
   }
 };
+export const EyeIcon = ({ size, ...p }: P) => (
+  <svg {...base(size, p)}><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" /><circle cx="12" cy="12" r="3" /></svg>
+);
+export const EyeOffIcon = ({ size, ...p }: P) => (
+  <svg {...base(size, p)}><path d="M3 3l18 18" /><path d="M10.6 5.1A10.6 10.6 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 4.1M6.6 6.6C3.7 8.4 2 12 2 12s3.5 7 10 7a9.9 9.9 0 0 0 5.4-1.6" /><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" /></svg>
+);

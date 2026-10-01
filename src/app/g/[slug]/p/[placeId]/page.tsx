@@ -5,11 +5,14 @@ import { PlaceComments } from "@/components/PlaceComments";
 import { GuideMap } from "@/components/GuideMap";
 import { PlaceTile } from "@/components/PlaceTile";
 import { TipsEditor } from "@/components/TipsEditor";
+import { TrackView } from "@/components/Tracking";
 import { AlertIcon, ClockIcon, PinIcon, SparkleIcon } from "@/components/Icons";
 import { LinkButton, Tag } from "@/components/ui";
 import { getCurrentUser, toPublicUser } from "@/lib/auth";
 import { canViewGuide, getGuideBySlug, getGuideDetail } from "@/lib/guides";
 import { getPlacesProvider } from "@/lib/places";
+import { displayPhone, telHref } from "@/lib/phone";
+import { trackAttrs } from "@/lib/track";
 
 export const dynamic = "force-dynamic";
 
@@ -57,6 +60,7 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
 
   return (
     <AppShell>
+      <TrackView type="place_view" guideId={place.guideId} placeId={place.id} />
       <TopBar back={`/g/${slug}${key ? `?key=${key}` : ""}`} title={place.name} avatarUser={user ? toPublicUser(user) : null} />
 
       {gallery.length > 0 ? (
@@ -89,7 +93,7 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
         </div>
 
         <div className="flex flex-col gap-2.5 rounded-2xl border border-line bg-paper p-4">
-          <a href={mapsHref} target="_blank" rel="noreferrer" className="flex items-center gap-2.5 text-[13.5px] font-medium hover:text-terracotta">
+          <a href={mapsHref} target="_blank" rel="noreferrer" {...trackAttrs("tap_directions", place.guideId, place.id)} className="flex items-center gap-2.5 text-[13.5px] font-medium hover:text-terracotta">
             <PinIcon size={17} className="text-terracotta shrink-0" /> Open in Google Maps
           </a>
           {(hours.length > 0 || place.phone) && (
@@ -103,9 +107,9 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
                 <span />
               )}
               {place.phone && (
-                <a href={`tel:${place.phone.replace(/[^\d+]/g, "")}`} className="shrink-0 flex items-center gap-1.5 text-[13.5px] hover:text-terracotta">
+                <a href={telHref(place.phone, place.country)} {...trackAttrs("tap_call", place.guideId, place.id)} className="shrink-0 flex items-center gap-1.5 text-[13.5px] hover:text-terracotta">
                   <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="text-terracotta shrink-0"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2C10.5 21 3 13.5 3 6a2 2 0 0 1 2-2z" /></svg>
-                  {place.phone}
+                  {displayPhone(place.phone, place.country)}
                 </a>
               )}
             </div>

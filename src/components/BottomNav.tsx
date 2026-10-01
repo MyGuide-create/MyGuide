@@ -8,33 +8,38 @@ import { cx } from "./ui";
 export function BottomNav({ signedIn, unread }: { signedIn: boolean; unread: number }) {
   const path = usePathname();
   const is = (p: string) => (p === "/" ? path === "/" : path.startsWith(p));
-  const item = "flex flex-col items-center justify-center w-14 h-12 rounded-2xl transition-colors";
+  const item = "flex flex-col items-center justify-center gap-0.5 w-16 h-12 rounded-2xl transition-colors";
+  const label = "text-[10px] leading-none font-medium";
   return (
     <nav className="fixed bottom-0 inset-x-0 z-40 flex justify-center pointer-events-none">
       <div className="pointer-events-auto w-full max-w-[480px] safe-bottom bg-paper/95 backdrop-blur border-t border-line flex items-end justify-around px-2 pt-2 pb-2">
         <Link href="/" aria-label="Home" className={cx(item, is("/") ? "text-ink" : "text-ink-muted")}>
-          <HomeIcon size={24} />
+          <HomeIcon size={22} />
+          <span className={label}>Home</span>
         </Link>
         <Link href="/search" aria-label="Search" className={cx(item, is("/search") ? "text-ink" : "text-ink-muted")}>
-          <SearchIcon size={24} />
+          <SearchIcon size={22} />
+          <span className={label}>Search</span>
         </Link>
         <Link
-          href={signedIn ? "/create" : "/login?next=/create"}
+          href={signedIn ? "/create" : "/signup?next=/create&why=create"}
           aria-label="Create a guide"
           className="-mt-8 w-[54px] h-[54px] rounded-full bg-terracotta text-white flex items-center justify-center shadow-float active:scale-95 transition-transform"
         >
           <PlusIcon size={26} />
         </Link>
-        <Link href={signedIn ? "/notifications" : "/login?next=/notifications"} aria-label="Notifications" className={cx(item, "relative", is("/notifications") ? "text-ink" : "text-ink-muted")}>
-          <BellIcon size={24} />
+        <Link href={signedIn ? "/notifications" : "/login?next=/notifications&why=notifications"} aria-label="Notifications" className={cx(item, "relative", is("/notifications") ? "text-ink" : "text-ink-muted")}>
+          <BellIcon size={22} />
+          <span className={label}>Activity</span>
           {unread > 0 && (
-            <span className="absolute top-1 right-3 min-w-[18px] h-[18px] px-1 rounded-full bg-terracotta text-white text-[10.5px] font-semibold flex items-center justify-center">
+            <span className="absolute -top-0.5 right-3 min-w-[18px] h-[18px] px-1 rounded-full bg-terracotta text-white text-[10.5px] font-semibold flex items-center justify-center">
               {unread > 9 ? "9+" : unread}
             </span>
           )}
         </Link>
-        <Link href={signedIn ? "/record" : "/login?next=/record"} aria-label="Record a place" className={cx(item, "relative", is("/record") ? "text-terracotta" : "text-ink-muted")}>
-          <PinIcon size={24} />
+        <Link href={signedIn ? "/record" : "/signup?next=/record&why=record"} aria-label="Record a place" className={cx(item, "relative", is("/record") ? "text-terracotta" : "text-ink-muted")}>
+          <PinIcon size={22} />
+          <span className={label}>Record</span>
         </Link>
       </div>
     </nav>

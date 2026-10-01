@@ -50,7 +50,7 @@ export default async function HomePage({ searchParams }: PageProps<"/">) {
           className="mt-4 flex items-center gap-3 rounded-2xl border border-line bg-paper px-4 py-3 text-[14px] text-ink-faint"
         >
           <SearchIcon size={18} className="text-ink-muted" />
-          <span className="flex-1">“Show me guides to Athens…”</span>
+          <span className="flex-1">“Search a city, place or person…”</span>
           <span className="w-8 h-8 rounded-full bg-terracotta text-white flex items-center justify-center"><MicIcon size={16} /></span>
         </Link>
       </header>
@@ -82,7 +82,7 @@ export default async function HomePage({ searchParams }: PageProps<"/">) {
           <EmptyState
             title={user ? "Nothing from your people yet" : "Log in to see your people"}
             body={user ? "Follow a few creators and their public guides will show up here." : "Following shows guides from creators you follow."}
-            action={user ? undefined : <LinkButton href="/login?next=/?scope=following" size="sm">Log in</LinkButton>}
+            action={user ? undefined : <LinkButton href="/login?next=%2F%3Fscope%3Dfollowing&why=following" size="sm">Log in</LinkButton>}
           />
         )}
         {feed.length === 0 && scope === "public" && (

@@ -380,3 +380,30 @@ export async function listConnections(userId: string, kind: "followers" | "follo
   }
   return people.map((u) => ({ user: u, viewerStatus: u.id === viewerId ? "self" : status.get(u.id) ?? "none" }));
 }
+
+export async function getUserById(id: string): Promise<User | null> {
+  const db = await getDb();
+  return (await db.query.users.findFirst({ where: eq(users.id, id) })) ?? null;
+}
+
+export async function countGuidePlaces(guideId: string): Promise<number> {
+  const db = await getDb();
+  const [row] = await db.select({ n: sql<number>`count(*)` }).from(places).where(eq(places.guideId, guideId));
+  return Number(row?.n ?? 0);
+}
+
+/** Most common place categories across public guides, optionally within one city. */
+export async function topPlaceCategories(city?: string, limit = 3): Promise<string[]> {
+  const db = await getDb();
+  const conds: SQL[] = [publicPublished()!];
+  if (city) conds.push(eq(guides.city, city));
+  const rows = await db
+    .select({ c: places.category, n: sql<number>`count(*)` })
+    .from(places)
+    .innerJoin(guides, eq(guides.id, places.guideId))
+    .where(and(...conds))
+    .groupBy(places.category)
+    .orderBy(desc(sql`count(*)`))
+    .limit(limit);
+  return rows.map((r) => r.c).filter((c): c is NonNullable<typeof c> => !!c);
+}

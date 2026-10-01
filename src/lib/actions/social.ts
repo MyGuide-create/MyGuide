@@ -13,7 +13,7 @@ export type FollowStatus = "none" | "pending" | "accepted";
 /** Follow, request-to-follow (private accounts), cancel a pending request, or unfollow — toggled from current state. */
 export async function toggleFollow(targetUserId: string, next?: string): Promise<{ status: FollowStatus }> {
   const user = await getCurrentUser();
-  if (!user) redirect(`/login?next=${encodeURIComponent(next ?? "/")}`);
+  if (!user) redirect(`/signup?next=${encodeURIComponent(next ?? "/")}&why=follow`);
   if (user.id === targetUserId) return { status: "none" };
   const db = await getDb();
   const existing = await db.query.follows.findFirst({ where: and(eq(follows.followerId, user.id), eq(follows.followingId, targetUserId)) });

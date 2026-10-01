@@ -33,7 +33,7 @@ export function SearchBar({ initial }: { initial: string }) {
       <input
         value={value}
         onChange={(e) => setQ(e.target.value)}
-        placeholder={speech.listening ? "Listening…" : "Show me guides to Athens…"}
+        placeholder={speech.listening ? "Listening…" : "Search a city, place or person…"}
         className="flex-1 min-w-0 bg-transparent outline-none text-[15px] placeholder:text-ink-faint"
         enterKeyHint="search"
         autoFocus={!initial}

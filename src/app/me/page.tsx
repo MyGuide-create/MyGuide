@@ -22,7 +22,7 @@ export default async function MePage() {
       <div className="px-5 pt-4 pb-8 flex flex-col gap-8">
         <div>
           <div className="text-[12.5px] text-ink-muted">@{user.username} · {user.email}</div>
-          <div className="mt-1 text-[12.5px] text-ink-muted"><Link href={`/u/${user.username}/followers`} className="hover:underline">{stats.followers} followers</Link> · <Link href={`/u/${user.username}/following`} className="hover:underline">{stats.following} following</Link></div>
+          <div className="mt-1 text-[12.5px] text-ink-muted"><Link href={`/u/${user.username}/followers`} className="hover:underline">{stats.followers} {stats.followers === 1 ? "follower" : "followers"}</Link> · <Link href={`/u/${user.username}/following`} className="hover:underline">{stats.following} following</Link></div>
         </div>
         <ProfileForm user={user} />
 
@@ -73,11 +73,13 @@ export default async function MePage() {
           </section>
         )}
 
+        {process.env.NODE_ENV !== "production" && (
         <section className="rounded-2xl border border-line/70 bg-paper/70 px-4 py-3 text-[12px] text-ink-muted leading-relaxed">
           <div className="font-medium text-ink mb-1">Integrations</div>
           <div>Google Maps: {hasGoogleKey() ? "live Places data" : "demo mode (mock places) — add GOOGLE_MAPS_API_KEY to go live"}</div>
           <div>AI: {hasAnthropicKey() ? "Claude is structuring places and search" : "built-in heuristics — add ANTHROPIC_API_KEY for smarter parsing"}</div>
         </section>
+        )}
 
         <form action={logOut}>
           <Button type="submit" variant="ghost" className="border border-line w-full">Log out</Button>

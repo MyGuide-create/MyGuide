@@ -229,6 +229,29 @@ export const media = sqliteTable("media", {
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 });
 
+/**
+ * Usage events for the pilot (and later, booking-link attribution).
+ * Soft references only (no FKs) so analytics never block deletes.
+ * type: "guide_view" | "place_view" | "share" | "fork" | "tap_directions" | "tap_call"
+ */
+export const events = sqliteTable(
+  "events",
+  {
+    id: text("id").primaryKey(),
+    type: text("type").notNull(),
+    guideId: text("guide_id").notNull(),
+    placeId: text("place_id"),
+    /** Signed-in viewer, if any. */
+    userId: text("user_id"),
+    /** Anonymous per-browser id (mg_vid cookie), so signed-out viewers can be counted once. */
+    visitorId: text("visitor_id"),
+    /** True when the viewer is the guide's creator — excluded from "used by others" stats. */
+    isOwner: integer("is_owner", { mode: "boolean" }).notNull().default(false),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [index("events_type_idx").on(t.type, t.createdAt), index("events_guide_idx").on(t.guideId, t.type)],
+);
+
 export type User = typeof users.$inferSelect;
 export type Guide = typeof guides.$inferSelect;
 export type Place = typeof places.$inferSelect;
@@ -237,3 +260,4 @@ export type PlaceTip = typeof placeTips.$inferSelect;
 export type PlaceComment = typeof placeComments.$inferSelect;
 export type Notification = typeof notifications.$inferSelect;
 export type Media = typeof media.$inferSelect;
+export type UsageEvent = typeof events.$inferSelect;

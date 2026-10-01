@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useState, useTransition } from "react";
 import type { PublicUser } from "@/lib/auth";
 import { addPlaceComment, deletePlaceComment, editPlaceComment } from "@/lib/actions/comments";
@@ -22,6 +24,8 @@ export function PlaceComments({ placeId, initial, currentUser }: { placeId: stri
   const [error, setError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
+  const path = usePathname();
+  const joinHref = `/signup?why=comment&next=${encodeURIComponent(path)}`;
 
   const post = () => {
     const body = text.trim();
@@ -74,6 +78,11 @@ export function PlaceComments({ placeId, initial, currentUser }: { placeId: stri
 
   return (
     <div className="mt-2">
+      {!currentUser && rows.length === 0 && (
+        <p className="text-[11.5px] text-ink-muted">
+          No comments yet. <Link href={joinHref} className="text-terracotta font-medium">Sign up to comment</Link>
+        </p>
+      )}
       {!open && rows.length === 0 && currentUser && (
         <button type="button" onClick={() => setOpen(true)} className="text-[11px] text-ink-muted inline-flex items-center gap-1 hover:text-terracotta">
           <ChatIcon size={12} /> Add a comment
@@ -143,7 +152,9 @@ export function PlaceComments({ placeId, initial, currentUser }: { placeId: stri
                 {pending ? <Spinner className="w-3.5 h-3.5" /> : "Post"}
               </button>
             </div>
-          ) : null}
+          ) : (
+            <Link href={joinHref} className="text-[11.5px] text-terracotta font-medium mt-0.5">Sign up to join the conversation</Link>
+          )}
           {error && <p className="text-[11px] text-danger">{error}</p>}
         </div>
       )}

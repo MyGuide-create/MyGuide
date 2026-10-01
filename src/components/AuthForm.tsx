@@ -1,11 +1,31 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState } from "react";
+import { useActionState, useState, type InputHTMLAttributes } from "react";
 import { logIn, signUp, type AuthState } from "@/lib/actions/auth";
+import { authHref, SUPPORT_CONTACT, type AuthReason } from "@/lib/authContext";
+import { EyeIcon, EyeOffIcon } from "./Icons";
 import { Button, Input, Label, Spinner } from "./ui";
 
-export function AuthForm({ mode, next }: { mode: "login" | "signup"; next?: string }) {
+function PasswordInput(props: InputHTMLAttributes<HTMLInputElement>) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="relative">
+      <Input {...props} type={show ? "text" : "password"} className="pr-12" />
+      <button
+        type="button"
+        onClick={() => setShow((v) => !v)}
+        aria-label={show ? "Hide password" : "Show password"}
+        className="absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 flex items-center justify-center rounded-full text-ink-faint hover:text-ink"
+      >
+        {show ? <EyeOffIcon size={18} /> : <EyeIcon size={18} />}
+      </button>
+    </div>
+  );
+}
+
+export function AuthForm({ mode, next, why }: { mode: "login" | "signup"; next?: string; why?: AuthReason | null }) {
+  const [forgot, setForgot] = useState(false);
   const [state, action, pending] = useActionState<AuthState, FormData>(mode === "login" ? logIn : signUp, {});
   return (
     <form action={action} className="flex flex-col gap-4">
@@ -31,12 +51,22 @@ export function AuthForm({ mode, next }: { mode: "login" | "signup"; next?: stri
       </div>
       <div>
         <Label>Password</Label>
-        <Input name="password" type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} placeholder={mode === "signup" ? "At least 8 characters" : "••••••••"} required minLength={mode === "signup" ? 8 : undefined} />
+        <PasswordInput name="password" autoComplete={mode === "login" ? "current-password" : "new-password"} placeholder={mode === "signup" ? "At least 8 characters" : "Your password"} required minLength={mode === "signup" ? 8 : undefined} />
+        {mode === "login" && (
+          <div className="mt-1.5 text-right">
+            <button type="button" onClick={() => setForgot((v) => !v)} className="text-[12.5px] text-ink-muted hover:text-terracotta">Forgot password?</button>
+          </div>
+        )}
+        {mode === "login" && forgot && (
+          <p className="mt-1 text-[12.5px] text-ink-muted bg-cream-deep/60 rounded-xl px-3 py-2 leading-relaxed">
+            No problem — message {SUPPORT_CONTACT} with your email or username and he&apos;ll reset it for you.
+          </p>
+        )}
       </div>
       {mode === "signup" && (
         <div>
           <Label>Confirm password</Label>
-          <Input name="confirmPassword" type="password" autoComplete="new-password" placeholder="Type it again" required minLength={8} />
+          <PasswordInput name="confirmPassword" autoComplete="new-password" placeholder="Type it again" required minLength={8} />
         </div>
       )}
       {state.error && <p className="text-[13px] text-danger bg-danger-tint rounded-xl px-3 py-2">{state.error}</p>}
@@ -45,9 +75,9 @@ export function AuthForm({ mode, next }: { mode: "login" | "signup"; next?: stri
       </Button>
       <p className="text-center text-[13px] text-ink-muted">
         {mode === "login" ? (
-          <>New here? <Link className="text-terracotta font-medium" href={`/signup${next ? `?next=${encodeURIComponent(next)}` : ""}`}>Create an account</Link></>
+          <>New here? <Link className="text-terracotta font-medium" href={authHref("signup", next, why)}>Create an account</Link></>
         ) : (
-          <>Already have an account? <Link className="text-terracotta font-medium" href={`/login${next ? `?next=${encodeURIComponent(next)}` : ""}`}>Log in</Link></>
+          <>Already have an account? <Link className="text-terracotta font-medium" href={authHref("login", next, why)}>Log in</Link></>
         )}
       </p>
     </form>
