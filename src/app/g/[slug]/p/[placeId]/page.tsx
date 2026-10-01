@@ -100,7 +100,7 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
           </div>
           <div className="mt-2 flex items-start gap-3">
             <h1 className="flex-1 font-display text-[28px] leading-[1.05]">{place.name}</h1>
-            <SaveButton placeId={place.id} initial={detail.savedPlaceIds.includes(place.id)} signedIn={!!user} variant="pill" className="mt-1 shrink-0" />
+            {!detail.viewerCanEdit && <SaveButton placeId={place.id} initial={detail.savedPlaceIds.includes(place.id)} signedIn={!!user} variant="pill" className="mt-1 shrink-0" />}
           </div>
           {pos >= 0 && <p className="mt-1 text-[11.5px] text-ink-faint">Place {pos + 1} of {ordered.length} in {detail.guide.title}</p>}
           {place.address && <p className="mt-1 text-[13px] text-ink-muted">{place.address}</p>}

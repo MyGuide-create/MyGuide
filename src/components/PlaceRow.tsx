@@ -57,7 +57,7 @@ export function PlaceRow({
               <h3 className="font-semibold text-[15px] leading-snug hover:text-terracotta">{place.name}</h3>
             </Link>
           </div>
-          <SaveButton placeId={place.id} initial={!!saved} signedIn={!!currentUser} className="shrink-0" />
+          {currentUser?.id !== ownerId && <SaveButton placeId={place.id} initial={!!saved} signedIn={!!currentUser} className="shrink-0" />}
         </div>
         <div className="mt-0.5 text-[11.5px] text-ink-muted flex items-center gap-1 truncate">
           <span className="rounded-full bg-cream-deep px-1.5 py-[1px] text-[10.5px] font-medium text-ink-muted shrink-0">{place.category}</span>
