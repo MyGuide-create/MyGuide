@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import type { GuideDetail } from "@/lib/guides";
 import type { PublicUser } from "@/lib/auth";
 import { forkGuide } from "@/lib/actions/guides";
+import { CATEGORIES } from "@/lib/places/categories";
 import { timeAgo } from "@/lib/utils";
 import { FollowButton } from "./FollowButton";
 import { GuideCover } from "./GuideCover";
@@ -25,8 +26,19 @@ export function GuideView({ detail, viewerId, viewer, shareUrl, shareKey }: { de
   const [forkError, setForkError] = useState<string | null>(null);
   const router = useRouter();
 
-  const categories = [...new Set(places.map((p) => p.category))];
-  const visible = category ? places.filter((p) => p.category === category) : places;
+  // Group places by category (fixed category order, guide order within each group).
+  const rank = (c: string) => {
+    const i = (CATEGORIES as readonly string[]).indexOf(c);
+    return i === -1 ? CATEGORIES.length : i;
+  };
+  const categories = [...new Set(places.map((p) => p.category))].sort((a, b) => rank(a) - rank(b));
+  const groups = categories
+    .filter((c) => !category || c === category)
+    .map((c) => ({ category: c, places: places.filter((p) => p.category === c) }));
+  // One running order shared by the list numbers and the map pins.
+  const visible = groups.flatMap((g) => g.places);
+  const numberOf = new Map(visible.map((p, i) => [p.id, i]));
+  const showHeadings = groups.length > 1;
   const isDraft = !guide.publishedAt;
 
   // Stretch feature: re-check business status on view (owner only, live Maps key only).
@@ -135,8 +147,18 @@ export function GuideView({ detail, viewerId, viewer, shareUrl, shareKey }: { de
       ) : (
         <div className="px-5 mt-4 flex flex-col gap-[18px] pb-6">
           {visible.length === 0 && <p className="text-[13.5px] text-ink-muted">No places yet.</p>}
-          {visible.map((p, i) => (
-            <PlaceRow key={p.id} place={p} index={i} ownerId={guide.ownerId} guideSlug={guide.slug} noteAuthor={p.noteAuthorId ? noteAuthors[p.noteAuthorId] : null} flagged={flags[p.id]} comments={detail.placeComments[p.id] ?? []} currentUser={viewer} expanded />
+          {groups.map((g) => (
+            <section key={g.category} aria-label={g.category} className="flex flex-col gap-[18px]">
+              {showHeadings && (
+                <h2 className="flex items-baseline gap-2 border-b border-line pb-1.5 pt-2">
+                  <span className="font-display text-[24px] leading-none">{g.category}</span>
+                  <span className="text-[12.5px] text-ink-faint tabular-nums">{g.places.length}</span>
+                </h2>
+              )}
+              {g.places.map((p) => (
+                <PlaceRow key={p.id} place={p} index={numberOf.get(p.id)} ownerId={guide.ownerId} guideSlug={guide.slug} noteAuthor={p.noteAuthorId ? noteAuthors[p.noteAuthorId] : null} flagged={flags[p.id]} comments={detail.placeComments[p.id] ?? []} currentUser={viewer} expanded />
+              ))}
+            </section>
           ))}
         </div>
       )}
