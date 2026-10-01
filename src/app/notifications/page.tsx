@@ -2,7 +2,7 @@ import Link from "next/link";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { AppShell, TopBar } from "@/components/AppShell";
 import { GuideCard } from "@/components/GuideCard";
-import { ChatIcon, ForkIcon, LockIcon, ShareIcon, UserIcon } from "@/components/Icons";
+import { ChatIcon, ForkIcon, LockIcon, PinIcon, PlusIcon, ShareIcon, UserIcon } from "@/components/Icons";
 import { Avatar, Button, EmptyState, LinkButton } from "@/components/ui";
 import { respondToFollowRequest } from "@/lib/actions/social";
 import { requireUser, toPublicUser } from "@/lib/auth";
@@ -12,7 +12,7 @@ import { listSharedWithUser } from "@/lib/guides";
 import { timeAgo } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Notifications" };
+export const metadata = { title: "Activity" };
 
 export default async function NotificationsPage() {
   const user = await requireUser("/notifications");
@@ -42,14 +42,19 @@ export default async function NotificationsPage() {
 
   return (
     <AppShell>
-      <TopBar title="Notification Centre" avatarUser={toPublicUser(user)} />
+      <TopBar title="Activity" avatarUser={toPublicUser(user)} />
       <main className="px-4 pt-3 pb-6 flex flex-col gap-3">
         {rows.length === 0 && (
-          <EmptyState title="Nothing here yet" body="When someone shares a guide with you, it lands here. Publishing alone never pings anyone." action={<LinkButton href="/" size="sm" variant="outline">Browse the feed</LinkButton>} />
+          <EmptyState title="Nothing here yet" body="New guides and places from people you follow, guides shared with you, and new followers all land here." action={<LinkButton href="/" size="sm" variant="outline">Browse the feed</LinkButton>} />
         )}
         {rows.map((n) => {
           const actor = n.actorId ? actorMap.get(n.actorId) : undefined;
-          const guide = n.guideId ? guideMap.get(n.guideId) : undefined;
+          const rawGuide = n.guideId ? guideMap.get(n.guideId) : undefined;
+          const followerUpdate = n.type === "guide_published" || n.type === "places_added";
+          // Follower updates only make sense while the guide is still public.
+          const guide = followerUpdate && rawGuide && (rawGuide.visibility !== "public" || !rawGuide.publishedAt) ? undefined : rawGuide;
+          const addedPlace = n.type === "places_added" && n.placeId ? placeMap.get(n.placeId) : undefined;
+          const who = <Link href={`/u/${actor?.username ?? ""}`} className="font-semibold">{actor?.displayName ?? "Someone"}</Link>;
           return (
             <div key={n.id} className={`rounded-2xl border px-3.5 py-3 flex gap-3 items-start ${n.readAt ? "border-line/70 bg-paper/60" : "border-terracotta-soft bg-paper"}`}>
               {actor ? <Link href={`/u/${actor.username}`}><Avatar user={actor} size={38} /></Link> : <div className="w-[38px] h-[38px] rounded-full bg-cream-deep" />}
@@ -80,7 +85,18 @@ export default async function NotificationsPage() {
                       <Link href={`/u/${actor?.username ?? ""}`} className="font-semibold">{actor?.displayName ?? "Someone"}</Link> commented on {n.placeId && placeMap.get(n.placeId) ? <span className="font-medium">{placeMap.get(n.placeId)!.name}</span> : "a place"} in <span className="font-display text-[16px]">“{guide.title}”</span>.
                     </>
                   )}
+                  {n.type === "guide_published" && guide && (
+                    <>
+                      {who} published a new guide: <span className="font-display text-[16px]">“{guide.title}”</span>{guide.city ? ` · ${guide.city}` : ""}
+                    </>
+                  )}
+                  {n.type === "places_added" && guide && (
+                    <>
+                      {who} added {n.count === 1 && addedPlace ? <span className="font-medium">{addedPlace.name}</span> : <>{n.count} {n.count === 1 ? "place" : "places"}</>} to <span className="font-display text-[16px]">“{guide.title}”</span>.
+                    </>
+                  )}
                   {n.type === "guide_shared" && !guide && <span className="text-ink-muted">A shared guide that has since been deleted.</span>}
+                  {followerUpdate && !guide && <span className="text-ink-muted">A guide that&apos;s no longer available.</span>}
                 </p>
                 <div className="mt-1.5 flex items-center gap-3 text-[11.5px] text-ink-muted">
                   <span className="inline-flex items-center gap-1">
@@ -88,9 +104,14 @@ export default async function NotificationsPage() {
                     {n.type === "new_follower" && <UserIcon size={12} />}
                     {(n.type === "follow_request" || n.type === "follow_accepted") && <LockIcon size={12} />}
                     {n.type === "place_comment" && <ChatIcon size={12} />}
+                    {n.type === "guide_published" && <PlusIcon size={12} />}
+                    {n.type === "places_added" && <PinIcon size={12} />}
                     {timeAgo(n.createdAt)}
                   </span>
-                  {guide && n.type !== "place_comment" && <Link href={`/g/${guide.slug}`} className="font-medium text-terracotta">Open guide →</Link>}
+                  {guide && n.type !== "place_comment" && n.type !== "places_added" && <Link href={`/g/${guide.slug}`} className="font-medium text-terracotta">Open guide →</Link>}
+                  {guide && n.type === "places_added" && (
+                    <Link href={n.count === 1 && addedPlace ? `/g/${guide.slug}/p/${addedPlace.id}` : `/g/${guide.slug}`} className="font-medium text-terracotta">{n.count === 1 && addedPlace ? "See the place →" : "See what's new →"}</Link>
+                  )}
                   {guide && n.type === "place_comment" && <Link href={`/g/${guide.slug}${n.placeId ? `#place-${n.placeId}` : ""}`} className="font-medium text-terracotta">Open guide →</Link>}
                   {(n.type === "new_follower" || n.type === "follow_accepted") && actor && <Link href={`/u/${actor.username}`} className="font-medium text-terracotta">View profile →</Link>}
                 </div>

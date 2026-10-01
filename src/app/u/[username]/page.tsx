@@ -46,7 +46,7 @@ export default async function ProfilePage({ params }: PageProps<"/u/[username]">
           {own ? (
             <div className="flex gap-2">
               <LinkButton href="/create" size="sm">Create a guide</LinkButton>
-              <LinkButton href="/saved" size="sm" variant="outline"><HeartIcon size={14} /> Saved places</LinkButton>
+              <LinkButton href="/saved" size="sm" variant="outline"><HeartIcon size={14} /> Favourites</LinkButton>
             </div>
           ) : (
             <FollowButton userId={profile.id} initial={stats.viewerRequested ? "pending" : stats.viewerFollows} next={`/u/${profile.username}`} size="md" />

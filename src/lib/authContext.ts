@@ -11,7 +11,7 @@ const REASONS: Record<AuthReason, string> = {
   notifications: "Log in to see guides people have shared with you.",
   comment: "Create a free account to comment on places.",
   following: "Log in to see guides from people you follow.",
-  save: "Create a free account to save places to your own shortlist.",
+  save: "Create a free account to keep favourite places in your own shortlist.",
 };
 
 export function parseReason(v: unknown): AuthReason | null {

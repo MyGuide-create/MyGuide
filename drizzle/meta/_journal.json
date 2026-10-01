@@ -57,6 +57,13 @@
       "when": 1790880000000,
       "tag": "0007_saved_places",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1790890000000,
+      "tag": "0008_notification_count",
+      "breakpoints": true
     }
   ]
 }

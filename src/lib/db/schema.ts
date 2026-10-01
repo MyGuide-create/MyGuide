@@ -203,13 +203,15 @@ export const notifications = sqliteTable(
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    /** "guide_shared" | "new_follower" | "follow_request" | "follow_accepted" | "place_comment" */
+    /** "guide_shared" | "new_follower" | "follow_request" | "follow_accepted" | "place_comment" | "guide_published" | "places_added" */
     type: text("type").notNull(),
     actorId: text("actor_id").references(() => users.id, { onDelete: "cascade" }),
     guideId: text("guide_id").references(() => guides.id, { onDelete: "cascade" }),
     /** Soft reference to a place, for deep-linking a place_comment notification — not a hard FK, matching forkedFromGuideId's pattern. */
     placeId: text("place_id"),
     readAt: integer("read_at", { mode: "timestamp_ms" }),
+    /** How many things this notification covers (e.g. places added in one batch). */
+    count: integer("count").notNull().default(1),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   },
   (t) => [index("notifications_user_idx").on(t.userId, t.createdAt)],

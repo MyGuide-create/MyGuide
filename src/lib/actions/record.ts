@@ -9,6 +9,7 @@ import { guides, placePhotos, placeTips, places, type Guide } from "../db/schema
 import { getGuideById } from "../guides";
 import { getPlacesProvider, resolvePlaceByName, type PlaceResult } from "../places";
 import { findCity } from "../places/cities";
+import { notifyPlacesAdded } from "../notify";
 import { newId, newToken, slugify } from "../utils";
 
 const STASH_TITLE = "Saved places";
@@ -142,6 +143,7 @@ export async function saveRecordedPlace(input: RecordPlaceInput): Promise<{ guid
     await db.update(guides).set({ updatedAt: now }).where(eq(guides.id, guide.id));
   }
 
+  await notifyPlacesAdded(guide, placeId);
   revalidatePath(`/g/${guide.slug}`);
   revalidatePath(`/g/${guide.slug}/edit`);
   revalidatePath("/me");

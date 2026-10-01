@@ -30,7 +30,7 @@ export function SaveButton({
     return () => clearTimeout(t);
   }, [toast]);
   const path = usePathname();
-  const label = saved ? "Saved" : "Save";
+  const label = saved ? "Favourited" : "Favourite";
   const base =
     variant === "pill"
       ? cx("inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12.5px] font-medium", saved ? "border-terracotta bg-terracotta-tint text-terracotta-deep" : "border-line text-ink")
@@ -38,7 +38,7 @@ export function SaveButton({
 
   if (!signedIn) {
     return (
-      <Link href={`/signup?why=save&next=${encodeURIComponent(path)}`} aria-label="Save this place" className={cx(base, className)}>
+      <Link href={`/signup?why=save&next=${encodeURIComponent(path)}`} aria-label="Add to favourites" className={cx(base, className)}>
         <HeartIcon size={variant === "pill" ? 15 : 19} />
         {variant === "pill" && label}
       </Link>
@@ -70,7 +70,7 @@ export function SaveButton({
   };
   return (
     <>
-    <button type="button" onClick={toggle} aria-pressed={saved} aria-label={saved ? "Remove from saved" : "Save this place"} className={cx(base, className)}>
+    <button type="button" onClick={toggle} aria-pressed={saved} aria-label={saved ? "Remove from favourites" : "Add to favourites"} className={cx(base, className)}>
       <HeartIcon size={variant === "pill" ? 15 : 19} filled={saved} />
       {variant === "pill" && label}
     </button>
@@ -80,11 +80,11 @@ export function SaveButton({
           <HeartIcon size={16} filled className="text-terracotta-soft shrink-0" />
           {toast === "first" ? (
             <span>
-              Saved to your list. Find it any time under <b>You → Saved places</b>.{" "}
+              Added to your favourites. Find them any time under <b>You → Favourites</b>.{" "}
               <Link href="/saved" className="underline underline-offset-2 font-medium">Open</Link>
             </span>
           ) : (
-            <span>Saved</span>
+            <span>Added to favourites</span>
           )}
         </div>
       </div>

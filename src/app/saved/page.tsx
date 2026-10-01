@@ -8,7 +8,7 @@ import { listSavedPlaces } from "@/lib/guides";
 import { neighbourhood } from "@/lib/places/neighbourhood";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Saved places" };
+export const metadata = { title: "Favourites" };
 
 export default async function SavedPage() {
   const user = await requireUser("/saved");
@@ -20,12 +20,12 @@ export default async function SavedPage() {
   }
   return (
     <AppShell>
-      <TopBar back={`/u/${user.username}`} title="Saved places" avatarUser={toPublicUser(user)} />
+      <TopBar back={`/u/${user.username}`} title="Favourites" avatarUser={toPublicUser(user)} />
       <div className="px-4 pt-4 pb-8 flex flex-col gap-6">
         {saved.length === 0 ? (
           <EmptyState
-            title="Nothing saved yet"
-            body="Tap the heart on any place in a guide to keep it here — your own shortlist for the trip."
+            title="No favourites yet"
+            body="Tap the heart on any place in someone’s guide to keep it here — your own shortlist for the trip."
             action={<LinkButton href="/" size="sm">Browse guides</LinkButton>}
           />
         ) : (

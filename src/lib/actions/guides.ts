@@ -7,6 +7,7 @@ import { getCurrentUser } from "../auth";
 import { getDb } from "../db";
 import { guideShares, guides, media, notifications, placeTips, places, users, type Guide, type Place, type PlaceTip } from "../db/schema";
 import { canViewGuide, getGuideById } from "../guides";
+import { notifyGuidePublished, notifyPlacesAdded } from "../notify";
 import { getPlacesProvider, isCategory, resolvePlaceByName, type PlaceResult } from "../places";
 import { findCity } from "../places/cities";
 import { getPlacePhotos } from "../places/google";
@@ -202,6 +203,11 @@ export async function publishGuide(guideId: string, visibility: "public" | "priv
     .update(guides)
     .set({ visibility, publishedAt: guide.publishedAt ?? new Date(), updatedAt: new Date() })
     .where(eq(guides.id, guideId));
+  // Tell followers the first time a guide goes public (re-publishing doesn't ping again).
+  if (visibility === "public") {
+    const fresh = await getGuideById(guideId);
+    if (fresh) await notifyGuidePublished(fresh);
+  }
   revalidateGuide(guide.slug);
 }
 
@@ -235,6 +241,7 @@ export async function addPlace(guideId: string, input: { providerId?: string; na
     await db.update(guides).set({ city: resolved.city, country: resolved.country }).where(eq(guides.id, guideId));
   }
   await touch(guideId);
+  await notifyPlacesAdded(guide, values.id!);
   revalidateGuide(guide.slug);
   const row = await db.query.places.findFirst({ where: eq(places.id, values.id!) });
   return row!;
