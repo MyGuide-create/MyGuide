@@ -227,8 +227,9 @@ export async function addPlace(guideId: string, input: { providerId?: string; na
   } catch (e) {
     console.warn("[addPlace] resolve failed", e);
   }
-  const [{ max }] = await db.select({ max: sql<number>`coalesce(max(${places.position}), -1)` }).from(places).where(eq(places.guideId, guideId));
-  const values = placeValues(guideId, Number(max) + 1, input.name, resolved, userId);
+  // Newest place goes to the top of the guide, right under the add box.
+  const [{ min }] = await db.select({ min: sql<number>`coalesce(min(${places.position}), 1)` }).from(places).where(eq(places.guideId, guideId));
+  const values = placeValues(guideId, Number(min) - 1, input.name, resolved, userId);
   await db.insert(places).values(values);
   if (!guide.city && resolved?.city) {
     await db.update(guides).set({ city: resolved.city, country: resolved.country }).where(eq(guides.id, guideId));

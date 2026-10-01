@@ -53,7 +53,7 @@ export function GuideEditor({ detail, justForked, justCreated }: { detail: Guide
     setAdding(true);
     try {
       const p = await addPlace(guide.id, { providerId, name, cityHint: guide.city || undefined });
-      setPlaces((ps) => [...ps, p]);
+      setPlaces((ps) => [p, ...ps]);
       if (!guide.city && p.city) setGuide((g) => ({ ...g, city: p.city, country: p.country }));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't add that place.");

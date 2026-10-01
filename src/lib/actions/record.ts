@@ -102,7 +102,8 @@ export async function saveRecordedPlace(input: RecordPlaceInput): Promise<{ guid
     guide = await findOrCreateStash(user.id);
   }
 
-  const [{ max }] = await db.select({ max: sql<number>`coalesce(max(${places.position}), -1)` }).from(places).where(eq(places.guideId, guide.id));
+  // Newest place goes to the top of the guide.
+  const [{ min }] = await db.select({ min: sql<number>`coalesce(min(${places.position}), 1)` }).from(places).where(eq(places.guideId, guide.id));
   const placeId = newId();
   const now = new Date();
   const liked = input.special.trim();
@@ -110,7 +111,7 @@ export async function saveRecordedPlace(input: RecordPlaceInput): Promise<{ guid
   await db.insert(places).values({
     id: placeId,
     guideId: guide.id,
-    position: Number(max) + 1,
+    position: Number(min) - 1,
     name: resolved?.name ?? input.name,
     address: resolved?.address ?? "",
     city: resolved?.city ?? "",
