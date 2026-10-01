@@ -1,5 +1,5 @@
 /** Why someone landed on the login / sign-up screen, so we can tell them. */
-export type AuthReason = "follow" | "fork" | "create" | "record" | "notifications" | "comment" | "following";
+export type AuthReason = "follow" | "fork" | "create" | "record" | "notifications" | "comment" | "following" | "save";
 
 export const SUPPORT_CONTACT = "Hisham";
 
@@ -11,6 +11,7 @@ const REASONS: Record<AuthReason, string> = {
   notifications: "Log in to see guides people have shared with you.",
   comment: "Create a free account to comment on places.",
   following: "Log in to see guides from people you follow.",
+  save: "Create a free account to save places to your own shortlist.",
 };
 
 export function parseReason(v: unknown): AuthReason | null {

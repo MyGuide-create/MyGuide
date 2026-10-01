@@ -27,7 +27,7 @@ export async function AppShell({
       <div className={cx("w-full max-w-[480px] flex-1 flex flex-col relative min-h-dvh", nav && "pb-24", className)}>
         {children}
       </div>
-      {nav && <BottomNav signedIn={!!user} unread={unread} />}
+      {nav && <BottomNav signedIn={!!user} username={user?.username ?? null} unread={unread} />}
     </div>
   );
 }

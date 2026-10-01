@@ -1,6 +1,6 @@
 import { and, desc, eq, inArray, isNotNull, like, or, sql, type SQL } from "drizzle-orm";
 import { getDb } from "./db";
-import { follows, guideShares, guides, placeComments, placePhotos, placeTips, places, users, type Guide, type Place, type PlaceComment, type PlacePhoto, type PlaceTip, type User } from "./db/schema";
+import { follows, guideShares, guides, placeComments, placePhotos, placeTips, places, savedPlaces, users, type Guide, type Place, type PlaceComment, type PlacePhoto, type PlaceTip, type User } from "./db/schema";
 import { toPublicUser, type PublicUser } from "./auth";
 import type { SearchIntent } from "./ai";
 
@@ -27,6 +27,8 @@ export interface GuideDetail extends GuideCard {
   placeTips: Record<string, PlaceTip[]>;
   viewerCanEdit: boolean;
   viewerCanFork: boolean;
+  /** Places in this guide the viewer has saved. */
+  savedPlaceIds: string[];
   /** "none" | "pending" | "accepted" */
   viewerFollowStatus: "none" | "pending" | "accepted";
   sharedWith: PublicUser[];
@@ -202,6 +204,10 @@ export async function getGuideDetail(guide: Guide, viewer: User | null): Promise
     (placeCommentsByPlace[c.placeId] ??= []).push({ comment: c, author });
   }
 
+  const savedRows = viewer && placeIds.length
+    ? await db.select({ id: savedPlaces.placeId }).from(savedPlaces).where(and(eq(savedPlaces.userId, viewer.id), inArray(savedPlaces.placeId, placeIds)))
+    : [];
+
   const viewerIsOwner = !!viewer && viewer.id === guide.ownerId;
   let viewerFollowStatus: "none" | "pending" | "accepted" = "none";
   if (viewer && !viewerIsOwner) {
@@ -226,6 +232,7 @@ export async function getGuideDetail(guide: Guide, viewer: User | null): Promise
     placeTips: placeTipsByPlace,
     viewerCanEdit: viewerIsOwner,
     viewerCanFork: !!viewer && !viewerIsOwner && guide.allowFork,
+    savedPlaceIds: savedRows.map((r) => r.id),
     viewerFollowStatus,
     sharedWith,
   };
@@ -406,4 +413,79 @@ export async function topPlaceCategories(city?: string, limit = 3): Promise<stri
     .orderBy(desc(sql`count(*)`))
     .limit(limit);
   return rows.map((r) => r.c).filter((c): c is NonNullable<typeof c> => !!c);
+}
+
+
+export interface SavedPlaceView {
+  place: Place;
+  guide: Pick<Guide, "id" | "slug" | "title" | "shareToken" | "visibility" | "ownerId">;
+  savedAt: Date;
+}
+
+/** A reader's saved places, newest first, limited to guides they can still open. */
+export async function listSavedPlaces(userId: string): Promise<SavedPlaceView[]> {
+  const db = await getDb();
+  const rows = await db
+    .select({ place: places, guide: guides, savedAt: savedPlaces.createdAt })
+    .from(savedPlaces)
+    .innerJoin(places, eq(places.id, savedPlaces.placeId))
+    .innerJoin(guides, eq(guides.id, places.guideId))
+    .where(eq(savedPlaces.userId, userId))
+    .orderBy(desc(savedPlaces.createdAt));
+  const visible = new Map<string, boolean>();
+  const out: SavedPlaceView[] = [];
+  for (const r of rows) {
+    if (!visible.has(r.guide.id)) visible.set(r.guide.id, await canViewGuide(r.guide, userId));
+    if (!visible.get(r.guide.id)) continue;
+    const { id, slug, title, shareToken, visibility, ownerId } = r.guide;
+    out.push({ place: r.place, guide: { id, slug, title, shareToken, visibility, ownerId }, savedAt: r.savedAt });
+  }
+  return out;
+}
+
+export interface PlaceSearchHit {
+  place: Place;
+  guide: { slug: string; title: string };
+  owner: PublicUser;
+}
+
+/** Individual places from public guides matching a search (by name, note, "what makes it special" or tips). */
+export async function searchPlaces(intent: SearchIntent, viewerId?: string | null, limit = 12): Promise<PlaceSearchHit[]> {
+  if (!intent.keywords.length && !intent.category) return [];
+  const db = await getDb();
+  const conds: SQL[] = [publicPublished()!];
+  if (intent.scope === "following") {
+    if (!viewerId) return [];
+    const followed = await db.select({ id: follows.followingId }).from(follows).where(and(eq(follows.followerId, viewerId), eq(follows.status, "accepted")));
+    if (!followed.length) return [];
+    conds.push(inArray(guides.ownerId, followed.map((f) => f.id)));
+  }
+  if (intent.byUsername) {
+    const u = await db.query.users.findFirst({ where: like(users.username, intent.byUsername) });
+    if (!u) return [];
+    conds.push(eq(guides.ownerId, u.id));
+  }
+  if (intent.city) conds.push(or(like(places.city, `%${intent.city}%`), like(guides.city, `%${intent.city}%`), like(places.address, `%${intent.city}%`))!);
+  else if (intent.country) conds.push(or(like(places.country, `%${intent.country}%`), like(guides.country, `%${intent.country}%`))!);
+  if (intent.category) conds.push(eq(places.category, intent.category));
+  if (intent.keywords.length) {
+    const tipMatch = (k: string) => inArray(places.id, db.select({ id: placeTips.placeId }).from(placeTips).where(like(placeTips.body, `%${k}%`)));
+    conds.push(
+      or(
+        ...intent.keywords.map((k) => or(like(places.name, `%${k}%`), like(places.note, `%${k}%`), like(places.special, `%${k}%`), tipMatch(k))!),
+      )!,
+    );
+  }
+  const rows = await db
+    .select({ place: places, guide: guides, owner: users })
+    .from(places)
+    .innerJoin(guides, eq(guides.id, places.guideId))
+    .innerJoin(users, eq(users.id, guides.ownerId))
+    .where(and(...conds))
+    .orderBy(desc(guides.publishedAt), places.position)
+    .limit(limit * 2);
+  return rows
+    .filter((r) => r.owner.profileVisibility !== "private" || r.owner.id === viewerId)
+    .slice(0, limit)
+    .map((r) => ({ place: r.place, guide: { slug: r.guide.slug, title: r.guide.title }, owner: toPublicUser(r.owner) }));
 }

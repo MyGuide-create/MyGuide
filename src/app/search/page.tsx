@@ -5,7 +5,9 @@ import { SearchBar } from "@/components/SearchBar";
 import { EmptyState, LinkButton, Tag } from "@/components/ui";
 import { interpretSearch } from "@/lib/ai";
 import { getCurrentUser, toPublicUser } from "@/lib/auth";
-import { listFeedCities, searchGuides, suggestedCreators, topPlaceCategories } from "@/lib/guides";
+import { listFeedCities, searchGuides, searchPlaces, suggestedCreators, topPlaceCategories } from "@/lib/guides";
+import { PlaceTile } from "@/components/PlaceTile";
+import { neighbourhood } from "@/lib/places/neighbourhood";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Search" };
@@ -43,7 +45,7 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
   const q = typeof sp.q === "string" ? sp.q.trim() : "";
   const user = await getCurrentUser();
   const intent = q ? await interpretSearch(q) : null;
-  const results = intent ? await searchGuides(intent, user?.id) : [];
+  const [results, placeHits] = intent ? await Promise.all([searchGuides(intent, user?.id), searchPlaces(intent, user?.id)]) : [[], []];
   const cities = q ? [] : await listFeedCities();
   const examples = q ? [] : await buildExamples(cities, !!user);
 
@@ -93,7 +95,27 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
           {intent.scope === "following" && !user && (
             <EmptyState title="Log in to search your people" body="“By people I'm following” needs to know who you follow." action={<LinkButton href={`/login?next=${encodeURIComponent(`/search?q=${q}`)}`} size="sm">Log in</LinkButton>} />
           )}
-          {results.length === 0 && (user || intent.scope !== "following") && (
+          {placeHits.length > 0 && (
+            <section>
+              <h2 className="px-1 text-[12px] font-medium uppercase tracking-[0.08em] text-ink-muted mb-2">Places</h2>
+              <ul className="flex flex-col gap-2">
+                {placeHits.map((h) => (
+                  <li key={h.place.id}>
+                    <Link href={`/g/${h.guide.slug}/p/${h.place.id}`} className="flex gap-3 items-center rounded-2xl border border-line/70 bg-paper p-2.5 hover:border-terracotta-soft">
+                      <PlaceTile place={h.place} size={52} />
+                      <span className="flex-1 min-w-0">
+                        <span className="block font-semibold text-[14px] truncate">{h.place.name}</span>
+                        <span className="block text-[11.5px] text-ink-muted truncate">{[h.place.category, neighbourhood(h.place.address, h.place.city, h.place.country)].filter(Boolean).join(" · ")}</span>
+                        <span className="block text-[11.5px] text-ink-faint truncate">in {h.guide.title} · {h.owner.displayName}</span>
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+          {results.length > 0 && placeHits.length > 0 && <h2 className="px-1 -mb-1 text-[12px] font-medium uppercase tracking-[0.08em] text-ink-muted">Guides</h2>}
+          {results.length === 0 && placeHits.length === 0 && (user || intent.scope !== "following") && (
             <EmptyState title="No guides match yet" body={intent.city ? `Nobody has published a ${intent.city} guide${intent.scope === "following" ? " that you follow" : ""}. Maybe that's you?` : "Try a city name, or say what you're looking for."} action={<LinkButton href="/create" size="sm">Create a guide</LinkButton>} />
           )}
           {results.map((g) => <GuideCard key={g.guide.id} data={g} />)}

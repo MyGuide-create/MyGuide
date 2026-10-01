@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { AppShell, TopBar } from "@/components/AppShell";
 import { FollowButton } from "@/components/FollowButton";
 import { GuideCard } from "@/components/GuideCard";
-import { LockIcon } from "@/components/Icons";
+import { HeartIcon, LockIcon } from "@/components/Icons";
 import { Avatar, EmptyState, LinkButton } from "@/components/ui";
 import { getCurrentUser } from "@/lib/auth";
 import { getFollowStats, getUserByUsername, listGuidesByOwner } from "@/lib/guides";
@@ -44,7 +44,10 @@ export default async function ProfilePage({ params }: PageProps<"/u/[username]">
         {profile.bio && <p className="mt-3 text-[13.5px] leading-relaxed italic">{profile.bio}</p>}
         <div className="mt-4">
           {own ? (
-            <LinkButton href="/create" size="sm">Create a guide</LinkButton>
+            <div className="flex gap-2">
+              <LinkButton href="/create" size="sm">Create a guide</LinkButton>
+              <LinkButton href="/saved" size="sm" variant="outline"><HeartIcon size={14} /> Saved places</LinkButton>
+            </div>
           ) : (
             <FollowButton userId={profile.id} initial={stats.viewerRequested ? "pending" : stats.viewerFollows} next={`/u/${profile.username}`} size="md" />
           )}

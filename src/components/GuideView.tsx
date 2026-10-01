@@ -6,7 +6,8 @@ import { useRouter } from "next/navigation";
 import type { GuideDetail } from "@/lib/guides";
 import type { PublicUser } from "@/lib/auth";
 import { forkGuide } from "@/lib/actions/guides";
-import { CATEGORIES } from "@/lib/places/categories";
+import { orderedCategories } from "@/lib/places/order";
+import { neighbourhood } from "@/lib/places/neighbourhood";
 import { timeAgo } from "@/lib/utils";
 import { track } from "@/lib/track";
 import { FollowButton } from "./FollowButton";
@@ -28,11 +29,9 @@ export function GuideView({ detail, viewerId, viewer, shareUrl, shareKey }: { de
   const router = useRouter();
 
   // Group places by category (fixed category order, guide order within each group).
-  const rank = (c: string) => {
-    const i = (CATEGORIES as readonly string[]).indexOf(c);
-    return i === -1 ? CATEGORIES.length : i;
-  };
-  const categories = [...new Set(places.map((p) => p.category))].sort((a, b) => rank(a) - rank(b));
+  const categories = orderedCategories(places);
+  const saved = new Set(detail.savedPlaceIds);
+  const keyQuery = shareKey ? `?key=${shareKey}` : "";
   const groups = categories
     .filter((c) => !category || c === category)
     .map((c) => ({ category: c, places: places.filter((p) => p.category === c) }));
@@ -138,16 +137,29 @@ export function GuideView({ detail, viewerId, viewer, shareUrl, shareKey }: { de
       {mode === "map" ? (
         <div className="px-4 mt-4">
           <GuideMap
-            places={visible.map((p) => ({ id: p.id, name: p.name, lat: p.lat, lng: p.lng, category: p.category, note: p.note }))}
-            height="min(58dvh, 520px)"
-            onSelect={(id) => {
-              setMode("list");
-              setTimeout(() => document.getElementById(`place-${id}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
-            }}
+            places={visible.map((p) => ({
+              id: p.id,
+              name: p.name,
+              lat: p.lat,
+              lng: p.lng,
+              category: p.category,
+              note: p.note,
+              photoUrl: p.photoUrl,
+              photoMediaId: p.photoMediaId,
+              subtitle: neighbourhood(p.address, p.city, p.country),
+              href: `/g/${guide.slug}/p/${p.id}${keyQuery}`,
+              mapsHref: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.name + " " + p.address)}${p.googlePlaceId && !p.googlePlaceId.startsWith("mock:") ? `&query_place_id=${p.googlePlaceId}` : ""}`,
+            }))}
+            height="min(62dvh, 560px)"
           />
           <ol className="mt-3 flex flex-col gap-1.5 text-[12.5px]">
             {visible.map((p, i) => (
-              <li key={p.id} className="flex gap-2"><span className="w-5 text-ink-faint tabular-nums">{i + 1}.</span><span className="font-medium">{p.name}</span></li>
+              <li key={p.id}>
+                <Link href={`/g/${guide.slug}/p/${p.id}${keyQuery}`} className="flex gap-2 hover:text-terracotta">
+                  <span className="w-5 text-ink-faint tabular-nums">{i + 1}.</span>
+                  <span className="font-medium">{p.name}</span>
+                </Link>
+              </li>
             ))}
           </ol>
         </div>
@@ -163,7 +175,7 @@ export function GuideView({ detail, viewerId, viewer, shareUrl, shareKey }: { de
                 </h2>
               )}
               {g.places.map((p) => (
-                <PlaceRow key={p.id} place={p} index={numberOf.get(p.id)} ownerId={guide.ownerId} guideSlug={guide.slug} noteAuthor={p.noteAuthorId ? noteAuthors[p.noteAuthorId] : null} flagged={flags[p.id]} comments={detail.placeComments[p.id] ?? []} currentUser={viewer} expanded />
+                <PlaceRow key={p.id} place={p} index={numberOf.get(p.id)} ownerId={guide.ownerId} guideSlug={guide.slug} noteAuthor={p.noteAuthorId ? noteAuthors[p.noteAuthorId] : null} flagged={flags[p.id]} comments={detail.placeComments[p.id] ?? []} currentUser={viewer} tips={detail.placeTips[p.id]} saved={saved.has(p.id)} shareKey={shareKey} expanded />
               ))}
             </section>
           ))}

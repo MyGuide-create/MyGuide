@@ -6,7 +6,11 @@ import { GuideMap } from "@/components/GuideMap";
 import { PlaceTile } from "@/components/PlaceTile";
 import { TipsEditor } from "@/components/TipsEditor";
 import { TrackView } from "@/components/Tracking";
-import { AlertIcon, ClockIcon, PinIcon, SparkleIcon } from "@/components/Icons";
+import { AlertIcon, ChevronLeft, ChevronRight, PinIcon, SparkleIcon } from "@/components/Icons";
+import { HoursSummary } from "@/components/HoursSummary";
+import { SaveButton } from "@/components/SaveButton";
+import { orderPlaces } from "@/lib/places/order";
+import { placeTimeZone } from "@/lib/places/hours";
 import { LinkButton, Tag } from "@/components/ui";
 import { getCurrentUser, toPublicUser } from "@/lib/auth";
 import { canViewGuide, getGuideBySlug, getGuideDetail } from "@/lib/guides";
@@ -56,6 +60,12 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
   const tips = detail.placeTips[place.id] ?? [];
   const hours = place.hoursJson ? (JSON.parse(place.hoursJson) as string[]) : [];
   const mapsHref = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.name + " " + place.address)}${place.googlePlaceId && !place.googlePlaceId.startsWith("mock:") ? `&query_place_id=${place.googlePlaceId}` : ""}`;
+  const ordered = orderPlaces(detail.places);
+  const pos = ordered.findIndex((p) => p.id === place.id);
+  const prev = pos > 0 ? ordered[pos - 1] : null;
+  const next = pos >= 0 && pos < ordered.length - 1 ? ordered[pos + 1] : null;
+  const keyQuery = key ? `?key=${key}` : "";
+  const placeHref = (id: string) => `/g/${slug}/p/${id}${keyQuery}`;
   const noteAuthor = place.noteAuthorId && place.noteAuthorId !== detail.owner.id ? detail.noteAuthors[place.noteAuthorId] : null;
 
   return (
@@ -88,7 +98,11 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
             {place.businessStatus === "CLOSED_TEMPORARILY" && <Tag tone="warn"><AlertIcon size={11} /> Temporarily closed</Tag>}
             {place.businessStatus === "CLOSED_PERMANENTLY" && <Tag tone="warn"><AlertIcon size={11} /> May have closed permanently</Tag>}
           </div>
-          <h1 className="mt-2 font-display text-[28px] leading-[1.05]">{place.name}</h1>
+          <div className="mt-2 flex items-start gap-3">
+            <h1 className="flex-1 font-display text-[28px] leading-[1.05]">{place.name}</h1>
+            <SaveButton placeId={place.id} initial={detail.savedPlaceIds.includes(place.id)} signedIn={!!user} variant="pill" className="mt-1 shrink-0" />
+          </div>
+          {pos >= 0 && <p className="mt-1 text-[11.5px] text-ink-faint">Place {pos + 1} of {ordered.length} in {detail.guide.title}</p>}
           {place.address && <p className="mt-1 text-[13px] text-ink-muted">{place.address}</p>}
         </div>
 
@@ -99,10 +113,9 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
           {(hours.length > 0 || place.phone) && (
             <div className="flex items-start justify-between gap-3">
               {hours.length > 0 ? (
-                <details className="flex-1 min-w-0">
-                  <summary className="cursor-pointer list-none flex items-center gap-2.5 text-[13.5px]"><ClockIcon size={17} className="text-terracotta shrink-0" /> Hours</summary>
-                  <ul className="mt-2 pl-[27px] space-y-1 text-[12.5px] text-ink-muted">{hours.map((h) => <li key={h}>{h}</li>)}</ul>
-                </details>
+                <div className="flex-1 min-w-0">
+                  <HoursSummary hours={hours} tz={placeTimeZone(place.country, place.lng)} size="md" />
+                </div>
               ) : (
                 <span />
               )}
@@ -118,8 +131,9 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
 
         {place.lat != null && place.lng != null && (
           <GuideMap
-            places={[{ id: place.id, name: place.name, lat: place.lat, lng: place.lng, category: place.category }]}
+            places={[{ id: place.id, name: place.name, lat: place.lat, lng: place.lng, category: place.category, n: pos >= 0 ? pos + 1 : 1 }]}
             height={180}
+            showCard={false}
           />
         )}
 
@@ -167,7 +181,28 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
           <PlaceComments placeId={place.id} initial={detail.placeComments[place.id] ?? []} currentUser={user ? toPublicUser(user) : null} />
         </div>
 
-        <Link href={`/g/${slug}${key ? `?key=${key}` : ""}`} className="text-[12.5px] text-ink-muted hover:text-terracotta">← Back to {detail.guide.title}</Link>
+        {(prev || next) && (
+          <nav aria-label="More places in this guide" className="grid grid-cols-2 gap-2.5">
+            {prev ? (
+              <Link href={placeHref(prev.id)} className="rounded-2xl border border-line bg-paper px-3 py-2.5 hover:border-terracotta-soft">
+                <span className="flex items-center gap-1 text-[11px] text-ink-faint"><ChevronLeft size={13} /> Previous</span>
+                <span className="block mt-0.5 text-[13px] font-medium truncate">{prev.name}</span>
+              </Link>
+            ) : (
+              <span />
+            )}
+            {next ? (
+              <Link href={placeHref(next.id)} className="rounded-2xl border border-line bg-paper px-3 py-2.5 text-right hover:border-terracotta-soft">
+                <span className="flex items-center justify-end gap-1 text-[11px] text-ink-faint">Next <ChevronRight size={13} /></span>
+                <span className="block mt-0.5 text-[13px] font-medium truncate">{next.name}</span>
+              </Link>
+            ) : (
+              <span />
+            )}
+          </nav>
+        )}
+
+        <Link href={`/g/${slug}${keyQuery}`} className="text-[12.5px] text-ink-muted hover:text-terracotta">← Back to {detail.guide.title}</Link>
       </div>
     </AppShell>
   );
