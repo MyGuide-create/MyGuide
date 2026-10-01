@@ -351,3 +351,32 @@ export async function unreadNotificationCount(userId: string): Promise<number> {
     .where(and(eq(notifications.userId, userId), sql`${notifications.readAt} is null`));
   return Number(row?.n ?? 0);
 }
+
+export interface ConnectionRow {
+  user: PublicUser;
+  /** The viewer's own follow status towards this user ("self" when it's the viewer). */
+  viewerStatus: "self" | "none" | "pending" | "accepted";
+}
+
+/** Followers or following of a profile, newest first, with the viewer's follow status for each person. */
+export async function listConnections(userId: string, kind: "followers" | "following", viewerId?: string | null): Promise<ConnectionRow[]> {
+  const db = await getDb();
+  const other = kind === "followers" ? follows.followerId : follows.followingId;
+  const self = kind === "followers" ? follows.followingId : follows.followerId;
+  const rows = await db
+    .select({ u: users })
+    .from(follows)
+    .innerJoin(users, eq(users.id, other))
+    .where(and(eq(self, userId), eq(follows.status, "accepted")))
+    .orderBy(desc(follows.createdAt));
+  const people = rows.map((r) => toPublicUser(r.u));
+  const status = new Map<string, "pending" | "accepted">();
+  if (viewerId && people.length) {
+    const mine = await db
+      .select({ id: follows.followingId, status: follows.status })
+      .from(follows)
+      .where(and(eq(follows.followerId, viewerId), inArray(follows.followingId, people.map((p) => p.id))));
+    for (const m of mine) status.set(m.id, m.status === "pending" ? "pending" : "accepted");
+  }
+  return people.map((u) => ({ user: u, viewerStatus: u.id === viewerId ? "self" : status.get(u.id) ?? "none" }));
+}

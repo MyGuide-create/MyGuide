@@ -22,7 +22,7 @@ export default async function MePage() {
       <div className="px-5 pt-4 pb-8 flex flex-col gap-8">
         <div>
           <div className="text-[12.5px] text-ink-muted">@{user.username} · {user.email}</div>
-          <div className="mt-1 text-[12.5px] text-ink-muted">{stats.followers} followers · {stats.following} following</div>
+          <div className="mt-1 text-[12.5px] text-ink-muted"><Link href={`/u/${user.username}/followers`} className="hover:underline">{stats.followers} followers</Link> · <Link href={`/u/${user.username}/following`} className="hover:underline">{stats.following} following</Link></div>
         </div>
         <ProfileForm user={user} />
 
