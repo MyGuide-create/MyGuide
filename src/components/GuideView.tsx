@@ -17,6 +17,7 @@ import { CheckIcon, EditIcon, ForkIcon, ListIcon, LockIcon, MapIcon, ShareIcon }
 import { PlaceRow } from "./PlaceRow";
 import { ShareSheet } from "./ShareSheet";
 import { ReportButton } from "./ReportButton";
+import { SaveGuideButton } from "./SaveGuideButton";
 import { Avatar, Button, Chip, LinkButton, Spinner, Tag, cx } from "./ui";
 
 export function GuideView({ detail, viewerId, viewer, shareUrl, shareKey }: { detail: GuideDetail; viewerId: string | null; viewer: PublicUser | null; shareUrl: string; shareKey?: string | null }) {
@@ -125,6 +126,7 @@ export function GuideView({ detail, viewerId, viewer, shareUrl, shareKey }: { de
         {guide.description && <p className="mt-3.5 text-[13.5px] leading-[1.5] italic">{guide.description}</p>}
 
         <div className="mt-4 flex gap-2">
+          {!detail.viewerCanEdit && <SaveGuideButton guideId={guide.id} initial={detail.viewerSavedGuide} signedIn={!!viewerId} />}
           <Button size="sm" variant="secondary" onClick={() => setSharing(true)} className="flex-1"><ShareIcon size={15} /> Share</Button>
           {detail.viewerCanFork && (
             <Button size="sm" variant="outline" onClick={fork} disabled={forking} className="flex-1">

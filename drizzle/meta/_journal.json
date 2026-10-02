@@ -78,6 +78,13 @@
       "when": 1790900000000,
       "tag": "0010_social_safety_trips",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1790910000000,
+      "tag": "0011_saved_guides",
+      "breakpoints": true
     }
   ]
 }

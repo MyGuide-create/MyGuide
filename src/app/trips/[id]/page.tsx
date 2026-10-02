@@ -24,7 +24,7 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
   if (!trip) notFound();
   const plan = await planTrip(user.id, trip.city);
   const dates = formatTripDates(trip.startDate, trip.endDate);
-  const nothing = !plan.favourites.length && !plan.fromFollowing.length && !plan.more.length;
+  const nothing = !plan.savedGuides.length && !plan.favourites.length && !plan.fromFollowing.length && !plan.more.length;
   const remove = deleteTrip.bind(null, trip.id);
 
   return (
@@ -42,6 +42,12 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
             body="Nobody you can see has published one. Ask a friend who knows it to make one — or start your own and fill it in as you go."
             action={<LinkButton href="/create" size="sm">Start a guide</LinkButton>}
           />
+        )}
+
+        {plan.savedGuides.length > 0 && (
+          <Section title="Guides you saved" count={plan.savedGuides.length}>
+            <div className="flex flex-col gap-4">{plan.savedGuides.map((c) => <GuideCard key={c.guide.id} data={c} />)}</div>
+          </Section>
         )}
 
         {plan.favourites.length > 0 && (

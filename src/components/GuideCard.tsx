@@ -4,6 +4,7 @@ import { timeAgo } from "@/lib/utils";
 import { GuideCover } from "./GuideCover";
 import { ForkIcon, LockIcon } from "./Icons";
 import { Avatar, Tag, cx } from "./ui";
+import { SaveGuideButton } from "./SaveGuideButton";
 
 export function GuideCard({ data, showOwner = true }: { data: GuideCardData; showOwner?: boolean }) {
   const { guide, owner, placeCount, categories, forkedFrom } = data;
@@ -43,6 +44,7 @@ export function GuideCard({ data, showOwner = true }: { data: GuideCardData; sho
               <span>{isDraft ? "Draft" : `Updated ${timeAgo(guide.updatedAt)}`}</span>
             </div>
           </div>
+          {data.viewerSaved !== undefined && !isDraft && <SaveGuideButton guideId={guide.id} initial={data.viewerSaved} signedIn variant="icon" className="mt-1" />}
         </div>
         {guide.description && <p className="mt-2.5 text-[13.5px] italic leading-relaxed text-ink line-clamp-2">{guide.description}</p>}
         <div className="mt-3 flex flex-wrap gap-1.5">

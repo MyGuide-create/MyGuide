@@ -4,15 +4,27 @@ import { PlaceTile } from "@/components/PlaceTile";
 import { SaveButton } from "@/components/SaveButton";
 import { EmptyState, LinkButton } from "@/components/ui";
 import { requireUser, toPublicUser } from "@/lib/auth";
-import { listSavedPlaces } from "@/lib/guides";
+import { listSavedGuides, listSavedPlaces } from "@/lib/guides";
+import { GuideCard } from "@/components/GuideCard";
+import { cx } from "@/components/ui";
 import { neighbourhood } from "@/lib/places/neighbourhood";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Favourites" };
 
-export default async function SavedPage() {
+export default async function SavedPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  const sp = await searchParams;
   const user = await requireUser("/saved");
-  const saved = await listSavedPlaces(user.id);
+  const [saved, guides] = await Promise.all([listSavedPlaces(user.id), listSavedGuides(user.id)]);
+  const tab = sp.tab === "guides" || (sp.tab !== "places" && saved.length === 0 && guides.length > 0) ? "guides" : "places";
+  const tabLink = (t: "places" | "guides", label: string, n: number) => (
+    <Link
+      href={`/saved?tab=${t}`}
+      className={cx("px-1 pb-2 text-[14px] font-medium border-b-2 transition-colors", tab === t ? "border-terracotta text-ink" : "border-transparent text-ink-muted")}
+    >
+      {label} <span className="text-ink-faint tabular-nums">{n}</span>
+    </Link>
+  );
   const byCity = new Map<string, typeof saved>();
   for (const s of saved) {
     const city = s.place.city || s.place.country || "Other places";
@@ -21,6 +33,19 @@ export default async function SavedPage() {
   return (
     <AppShell>
       <TopBar back={`/u/${user.username}`} title="Favourites" avatarUser={toPublicUser(user)} />
+      <div className="px-5 pt-3 flex gap-5 border-b border-line/70">
+        {tabLink("places", "Places", saved.length)}
+        {tabLink("guides", "Guides", guides.length)}
+      </div>
+      {tab === "guides" ? (
+        <div className="px-4 pt-4 pb-8 flex flex-col gap-4">
+          {guides.length === 0 ? (
+            <EmptyState title="No saved guides yet" body="Tap the heart next to Share on any guide to keep the whole guide here." action={<LinkButton href="/" size="sm">Browse guides</LinkButton>} />
+          ) : (
+            guides.map((g) => <GuideCard key={g.guide.id} data={g} />)
+          )}
+        </div>
+      ) : (
       <div className="px-4 pt-4 pb-8 flex flex-col gap-6">
         {saved.length === 0 ? (
           <EmptyState
@@ -57,6 +82,7 @@ export default async function SavedPage() {
           ))
         )}
       </div>
+      )}
     </AppShell>
   );
 }

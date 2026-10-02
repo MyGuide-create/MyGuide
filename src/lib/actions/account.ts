@@ -22,6 +22,7 @@ import {
   placeTips,
   pushSubscriptions,
   reports,
+  savedGuides,
   savedPlaces,
   trips,
   users,
@@ -61,6 +62,7 @@ export async function deleteAccount(_prev: DeleteAccountState, formData: FormDat
   if (guideIds.length) {
     await db.delete(guideShares).where(inArray(guideShares.guideId, guideIds));
     await db.delete(guideCollaborators).where(inArray(guideCollaborators.guideId, guideIds));
+    await db.delete(savedGuides).where(inArray(savedGuides.guideId, guideIds));
     await db.delete(notifications).where(inArray(notifications.guideId, guideIds));
     await db.delete(events).where(inArray(events.guideId, guideIds));
     await db.delete(guides).where(inArray(guides.id, guideIds));
@@ -71,6 +73,7 @@ export async function deleteAccount(_prev: DeleteAccountState, formData: FormDat
 
   await db.delete(placeComments).where(eq(placeComments.authorId, user.id));
   await db.delete(savedPlaces).where(eq(savedPlaces.userId, user.id));
+  await db.delete(savedGuides).where(eq(savedGuides.userId, user.id));
   await db.delete(placeReactions).where(eq(placeReactions.userId, user.id));
   await db.delete(follows).where(or(eq(follows.followerId, user.id), eq(follows.followingId, user.id)));
   await db.delete(guideShares).where(or(eq(guideShares.sharedById, user.id), eq(guideShares.sharedWithId, user.id)));

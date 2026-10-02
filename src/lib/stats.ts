@@ -1,6 +1,6 @@
 import { and, desc, eq, gt, inArray, sql } from "drizzle-orm";
 import { getDb } from "./db";
-import { events, feedback, follows, guides, placeReactions, places, reports, savedPlaces, users } from "./db/schema";
+import { events, feedback, follows, guides, placeReactions, places, reports, savedGuides, savedPlaces, users } from "./db/schema";
 import { TAP_TYPES } from "./track";
 
 export interface GuideStats {
@@ -15,6 +15,7 @@ export interface GuideStats {
   taps: number;
   shares: number;
   copies: number;
+  guideSaves: number;
   favourites: number;
   loved: number;
   topPlaces: Array<{ name: string; views: number; favourites: number }>;
@@ -29,6 +30,7 @@ export async function creatorStats(ownerId: string): Promise<GuideStats[]> {
   if (!gs.length) return [];
   const ids = gs.map((g) => g.id);
   const week = new Date(Date.now() - 7 * 86400000);
+  const gsaves = await db.select({ id: savedGuides.guideId, c: sql<number>`count(*)` }).from(savedGuides).where(inArray(savedGuides.guideId, ids)).groupBy(savedGuides.guideId);
   const [ev, ev7, viewers, copies, ps] = await Promise.all([
     db
       .select({ guideId: events.guideId, type: events.type, c: sql<number>`count(*)` })
@@ -80,6 +82,7 @@ export async function creatorStats(ownerId: string): Promise<GuideStats[]> {
       taps: sum((t) => taps.has(t)),
       shares: sum((t) => t === "share"),
       copies: n(copies.find((c) => c.id === g.id)?.c),
+      guideSaves: n(gsaves.find((c) => c.id === g.id)?.c),
       favourites: gp.reduce((a, p) => a + (fav.get(p.id) ?? 0), 0),
       loved: gp.reduce((a, p) => a + (love.get(p.id) ?? 0), 0),
       topPlaces: gp
@@ -101,6 +104,7 @@ export interface PilotStats {
   places: number;
   follows: number;
   favourites: number;
+  savedGuides: number;
   views7d: number;
   taps7d: number;
   shares7d: number;
@@ -116,6 +120,7 @@ export async function pilotStats(): Promise<PilotStats> {
   const week = new Date(Date.now() - 7 * 86400000);
   const one = async (q: Promise<Array<{ c: number }>>) => n((await q)[0]?.c);
   const others = and(eq(events.isOwner, false), gt(events.createdAt, week));
+  const sg = await one(db.select({ c: sql<number>`count(*)` }).from(savedGuides));
   const [u, nu, au, vis, g, pg, p, f, fav, v7, t7, s7] = await Promise.all([
     one(db.select({ c: sql<number>`count(*)` }).from(users)),
     one(db.select({ c: sql<number>`count(*)` }).from(users).where(gt(users.createdAt, week))),
@@ -171,6 +176,7 @@ export async function pilotStats(): Promise<PilotStats> {
     places: p,
     follows: f,
     favourites: fav,
+    savedGuides: sg,
     views7d: v7,
     taps7d: t7,
     shares7d: s7,

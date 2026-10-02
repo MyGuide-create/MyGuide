@@ -1,6 +1,6 @@
 import { and, desc, eq, inArray, isNotNull, like, or, sql, type SQL } from "drizzle-orm";
 import { getDb } from "./db";
-import { follows, guideCollaborators, guideShares, guides, placeComments, placePhotos, placeReactions, placeTips, places, savedPlaces, users, type Guide, type Place, type PlaceComment, type PlacePhoto, type PlaceTip, type User } from "./db/schema";
+import { follows, guideCollaborators, guideShares, guides, placeComments, placePhotos, placeReactions, placeTips, places, savedGuides, savedPlaces, users, type Guide, type Place, type PlaceComment, type PlacePhoto, type PlaceTip, type User } from "./db/schema";
 import { toPublicUser, type PublicUser } from "./auth";
 import type { SearchIntent } from "./ai";
 import { hiddenUserIds } from "./blocks";
@@ -16,6 +16,8 @@ export interface GuideCard {
   placeCount: number;
   categories: string[];
   forkedFrom?: PublicUser | null;
+  /** Set for signed-in viewers: whether they've saved this guide. */
+  viewerSaved?: boolean;
 }
 
 export interface GuideDetail extends GuideCard {
@@ -34,6 +36,9 @@ export interface GuideDetail extends GuideCard {
   viewerCanFork: boolean;
   /** Places in this guide the viewer has saved. */
   savedPlaceIds: string[];
+  /** Whether the viewer saved the whole guide, and how many people have. */
+  viewerSavedGuide: boolean;
+  guideSaves: number;
   /** Per place: how many readers have been / loved it, and how many favourited it. */
   placeSocial: Record<string, { been: number; loved: number; favourites: number }>;
   /** Per place: the viewer's own reactions. */
@@ -53,6 +58,11 @@ async function filterVisibleCards(cards: GuideCard[], viewerId?: string | null):
   if (viewerId && cards.length) {
     const hidden = await hiddenUserIds(viewerId);
     if (hidden.size) cards = cards.filter((c) => !hidden.has(c.owner.id));
+    const db = await getDb();
+    const saved = new Set(
+      (await db.select({ id: savedGuides.guideId }).from(savedGuides).where(and(eq(savedGuides.userId, viewerId), inArray(savedGuides.guideId, cards.map((c) => c.guide.id))))).map((r) => r.id),
+    );
+    cards = cards.map((c) => (c.owner.id === viewerId ? c : { ...c, viewerSaved: saved.has(c.guide.id) }));
   }
   const lockedOwnerIds = [...new Set(cards.filter((c) => c.owner.profileVisibility === "private" && c.owner.id !== viewerId).map((c) => c.owner.id))];
   if (!lockedOwnerIds.length) return cards;
@@ -274,6 +284,8 @@ export async function getGuideDetail(guide: Guide, viewer: User | null): Promise
     collaborators,
     viewerCanFork: !!viewer && !viewerIsOwner && !viewerIsCollaborator && guide.allowFork,
     savedPlaceIds: savedRows.map((r) => r.id),
+    viewerSavedGuide: !!viewer && !!(await db.query.savedGuides.findFirst({ where: and(eq(savedGuides.userId, viewer.id), eq(savedGuides.guideId, guide.id)) })),
+    guideSaves: Number((await db.select({ n: sql<number>`count(*)` }).from(savedGuides).where(eq(savedGuides.guideId, guide.id)))[0]?.n ?? 0),
     placeSocial: social.counts,
     viewerReactions: social.mine,
     friendsWhoLike: social.friends,
@@ -538,6 +550,7 @@ export async function searchPlaces(intent: SearchIntent, viewerId?: string | nul
 }
 
 export interface TripPlan {
+  savedGuides: GuideCard[];
   favourites: SavedPlaceView[];
   fromFollowing: GuideCard[];
   more: GuideCard[];
@@ -562,8 +575,12 @@ export async function planTrip(userId: string, city: string): Promise<TripPlan> 
   const followed = new Set(
     (await db.select({ id: follows.followingId }).from(follows).where(and(eq(follows.followerId, userId), eq(follows.status, "accepted")))).map((r) => r.id),
   );
-  const fromFollowing = cards.filter((c) => followed.has(c.owner.id));
-  const more = cards.filter((c) => !followed.has(c.owner.id));
+  const savedHere = (await listSavedGuides(userId)).filter(
+    (c) => c.guide.city.toLowerCase() === cityLower || c.guide.title.toLowerCase().includes(cityLower),
+  );
+  const savedIds = new Set(savedHere.map((c) => c.guide.id));
+  const fromFollowing = cards.filter((c) => followed.has(c.owner.id) && !savedIds.has(c.guide.id));
+  const more = cards.filter((c) => !followed.has(c.owner.id) && !savedIds.has(c.guide.id));
 
   // Most-loved places in this city across public guides: favourites + "loved it" reactions.
   const visibleGuideIds = new Set(cards.map((c) => c.guide.id));
@@ -592,7 +609,7 @@ export async function planTrip(userId: string, city: string): Promise<TripPlan> 
         .slice(0, 8);
     }
   }
-  return { favourites: saved, fromFollowing, more, topPlaces };
+  return { savedGuides: savedHere, favourites: saved, fromFollowing, more, topPlaces };
 }
 
 
@@ -634,4 +651,19 @@ export async function placeSocialFor(placeIds: string[], viewerId: string | null
     }
   }
   return { counts, mine, friends };
+}
+
+
+/** Guides a reader has saved, newest first (only ones they can still open). */
+export async function listSavedGuides(userId: string): Promise<GuideCard[]> {
+  const db = await getDb();
+  const rows = await db
+    .select({ g: guides })
+    .from(savedGuides)
+    .innerJoin(guides, eq(guides.id, savedGuides.guideId))
+    .where(eq(savedGuides.userId, userId))
+    .orderBy(desc(savedGuides.createdAt));
+  const visible: Guide[] = [];
+  for (const r of rows) if (await canViewGuide(r.g, userId)) visible.push(r.g);
+  return filterVisibleCards(await hydrateCards(visible), userId);
 }

@@ -289,6 +289,21 @@ export const savedPlaces = sqliteTable(
 );
 
 export type SavedPlace = typeof savedPlaces.$inferSelect;
+
+/** A reader's saved (favourited) guides. */
+export const savedGuides = sqliteTable(
+  "saved_guides",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    guideId: text("guide_id")
+      .notNull()
+      .references(() => guides.id, { onDelete: "cascade" }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.guideId] }), index("saved_guides_guide_idx").on(t.guideId)],
+);
 export type PlaceTip = typeof placeTips.$inferSelect;
 export type PlaceComment = typeof placeComments.$inferSelect;
 export type Notification = typeof notifications.$inferSelect;

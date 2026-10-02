@@ -11,7 +11,7 @@ export default async function StatsPage() {
   const user = await requireUser("/stats");
   const stats = await creatorStats(user.id);
   const published = stats.filter((s) => s.published);
-  const total = (k: "views" | "viewers" | "favourites" | "copies" | "taps") => published.reduce((a, s) => a + s[k], 0);
+  const total = (k: "views" | "viewers" | "favourites" | "copies" | "taps" | "guideSaves") => published.reduce((a, s) => a + s[k], 0);
   return (
     <AppShell>
       <TopBar back={`/u/${user.username}`} title="Guide stats" avatarUser={toPublicUser(user)} />
@@ -27,7 +27,7 @@ export default async function StatsPage() {
               <Tile label="Favourites" value={total("favourites")} />
               <Tile label="Taps out" value={total("taps")} hint="Directions, call, website, booking" />
               <Tile label="Copies" value={total("copies")} hint="People who used your guide" />
-              <Tile label="Guides" value={published.length} />
+              <Tile label="Guide saves" value={total("guideSaves")} hint="People who saved a whole guide" />
             </div>
             <ul className="flex flex-col gap-3">
               {published.map((s) => (
@@ -40,7 +40,7 @@ export default async function StatsPage() {
                     <Mini label="taps out" value={s.taps} />
                   </div>
                   <div className="mt-2 text-[11.5px] text-ink-muted">
-                    {s.placeViews} place views · {s.shares} shares · {s.copies} copies · {s.loved} “loved it”
+                    {s.guideSaves} saved the guide · {s.placeViews} place views · {s.shares} shares · {s.copies} copies · {s.loved} “loved it”
                   </div>
                   {s.topPlaces.length > 0 && (
                     <div className="mt-2 text-[12px]">

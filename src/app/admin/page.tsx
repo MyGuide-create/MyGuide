@@ -38,7 +38,7 @@ export default async function AdminPage() {
             <Tile label="Places" value={s.places} />
             <Tile label="Public guides" value={s.publicGuides} />
             <Tile label="Follows" value={s.follows} />
-            <Tile label="Favourites" value={s.favourites} />
+            <Tile label="Favourites" value={s.favourites} hint={`${s.savedGuides} whole guides saved`} />
           </div>
         </section>
 
