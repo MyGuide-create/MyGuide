@@ -100,6 +100,14 @@ export const places = sqliteTable(
     /** OPERATIONAL | CLOSED_TEMPORARILY | CLOSED_PERMANENTLY | null */
     businessStatus: text("business_status"),
     phone: text("phone"),
+    /** Venue website (from Google Places, editable by the creator). */
+    website: text("website"),
+    /** Instagram handle without "@" (creator-entered). */
+    instagram: text("instagram"),
+    /** WhatsApp number in international form, digits only with leading "+" (creator-entered). */
+    whatsapp: text("whatsapp"),
+    /** Reservation / booking link (creator-entered; later swappable for a partner or venue-tracked link). */
+    reserveUrl: text("reserve_url"),
     /** Creator-authored: "What makes it special", shown on the place detail page. Expert tips are a separate table (many per place). */
     special: text("special"),
     note: text("note").notNull().default(""),

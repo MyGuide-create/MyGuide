@@ -14,6 +14,8 @@ export interface PlaceResult {
   /** Additional photo URLs (Google Places proxy or mock), including photoUrl as the first entry when present. */
   photoUrls: string[];
   phone: string | null;
+  /** Venue website, when Google has one. */
+  website: string | null;
   /** Weekday descriptions, e.g. "Monday: 11:00 AM – 9:00 PM". */
   hours: string[] | null;
   businessStatus: "OPERATIONAL" | "CLOSED_TEMPORARILY" | "CLOSED_PERMANENTLY" | null;

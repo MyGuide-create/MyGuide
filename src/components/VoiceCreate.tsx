@@ -278,5 +278,5 @@ export function VoiceCreate({ initialMode }: { initialMode: "voice" | "type" }) 
 }
 
 function emptyResolved(name: string, city: string): NonNullable<ParsedPlacesResponse["places"][number]["resolved"]> {
-  return { providerId: "", name, address: "", city, country: "", lat: 0, lng: 0, category: "Food & Drinks", photoUrl: null, photoUrls: [], phone: null, hours: null, businessStatus: null, source: "mock" };
+  return { providerId: "", name, address: "", city, country: "", lat: 0, lng: 0, category: "Food & Drinks", photoUrl: null, photoUrls: [], phone: null, website: null, hours: null, businessStatus: null, source: "mock" };
 }

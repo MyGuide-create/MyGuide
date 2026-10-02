@@ -13,6 +13,7 @@ import { findCity } from "../places/cities";
 import { getPlacePhotos } from "../places/google";
 import { claimUnsplashPhoto } from "../covers/unsplash";
 import { newId, newToken, slugify } from "../utils";
+import { normaliseInstagram, normaliseReserve, normaliseWebsite, normaliseWhatsapp, type Normalised } from "@/lib/placeLinks";
 
 async function requireOwner(guideId: string): Promise<{ guide: Guide; userId: string }> {
   const user = await getCurrentUser();
@@ -108,6 +109,7 @@ function placeValues(guideId: string, position: number, fallbackName: string, r:
     category: r?.category ?? "Food & Drinks",
     photoUrl: r?.photoUrl ?? null,
     phone: r?.phone ?? null,
+    website: r?.website ?? null,
     hoursJson: r?.hours ? JSON.stringify(r.hours) : null,
     googlePlaceId: r?.source === "google" ? r.providerId : r?.providerId ?? null,
     businessStatus: r?.businessStatus ?? null,
@@ -265,6 +267,7 @@ export async function replacePlace(guideId: string, placeId: string, providerId:
       category: resolved.category,
       photoUrl: resolved.photoUrl,
       phone: resolved.phone,
+      website: resolved.website,
       hoursJson: resolved.hours ? JSON.stringify(resolved.hours) : null,
       googlePlaceId: resolved.providerId,
       businessStatus: resolved.businessStatus,
@@ -278,7 +281,18 @@ export async function replacePlace(guideId: string, placeId: string, providerId:
 export async function updatePlace(
   guideId: string,
   placeId: string,
-  patch: { name?: string; note?: string; category?: string; noteClipMediaId?: string | null; photoMediaId?: string | null; special?: string | null },
+  patch: {
+    name?: string;
+    note?: string;
+    category?: string;
+    noteClipMediaId?: string | null;
+    photoMediaId?: string | null;
+    special?: string | null;
+    website?: string | null;
+    instagram?: string | null;
+    whatsapp?: string | null;
+    reserveUrl?: string | null;
+  },
 ): Promise<void> {
   const { guide, userId } = await requireOwner(guideId);
   const db = await getDb();
@@ -295,6 +309,17 @@ export async function updatePlace(
   }
   if (patch.photoMediaId !== undefined) set.photoMediaId = patch.photoMediaId;
   if (patch.special !== undefined) set.special = patch.special?.trim() || null;
+  if (patch.website !== undefined || patch.instagram !== undefined || patch.whatsapp !== undefined || patch.reserveUrl !== undefined) {
+    const current = await db.query.places.findFirst({ where: and(eq(places.id, placeId), eq(places.guideId, guideId)), columns: { country: true } });
+    const take = (r: Normalised): string | null => {
+      if (!r.ok) throw new Error(r.error);
+      return r.value;
+    };
+    if (patch.website !== undefined) set.website = take(normaliseWebsite(patch.website));
+    if (patch.instagram !== undefined) set.instagram = take(normaliseInstagram(patch.instagram));
+    if (patch.whatsapp !== undefined) set.whatsapp = take(normaliseWhatsapp(patch.whatsapp, current?.country));
+    if (patch.reserveUrl !== undefined) set.reserveUrl = take(normaliseReserve(patch.reserveUrl));
+  }
   if (Object.keys(set).length) {
     await db.update(places).set(set).where(and(eq(places.id, placeId), eq(places.guideId, guideId)));
     await touch(guideId);

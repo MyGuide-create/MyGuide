@@ -17,6 +17,7 @@ const FIELDS = [
   "businessStatus",
   "nationalPhoneNumber",
   "internationalPhoneNumber",
+  "websiteUri",
 ];
 const FIELD_MASK = FIELDS.join(",");
 
@@ -33,6 +34,7 @@ interface GooglePlace {
   businessStatus?: string;
   nationalPhoneNumber?: string;
   internationalPhoneNumber?: string;
+  websiteUri?: string;
 }
 
 function key(): string {
@@ -57,6 +59,7 @@ function toResult(p: GooglePlace): PlaceResult {
     photoUrl: photoUrls[0] ?? null,
     photoUrls,
     phone: p.internationalPhoneNumber ?? p.nationalPhoneNumber ?? null,
+    website: p.websiteUri ?? null,
     hours: p.regularOpeningHours?.weekdayDescriptions ?? null,
     businessStatus:
       status === "OPERATIONAL" || status === "CLOSED_TEMPORARILY" || status === "CLOSED_PERMANENTLY" ? status : null,

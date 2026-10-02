@@ -2,7 +2,20 @@
  * Lightweight usage tracking for the pilot. Shared by the client (to send) and the /api/events route (to validate).
  * Later, "tap_book" can be added when booking-partner links go in.
  */
-export const EVENT_TYPES = ["guide_view", "place_view", "share", "fork", "tap_directions", "tap_call"] as const;
+export const EVENT_TYPES = [
+  "guide_view",
+  "place_view",
+  "share",
+  "fork",
+  "tap_directions",
+  "tap_call",
+  "tap_website",
+  "tap_instagram",
+  "tap_whatsapp",
+  "tap_reserve",
+] as const;
+/** Outbound taps that count towards the tap-through rate. */
+export const TAP_TYPES = ["tap_directions", "tap_call", "tap_website", "tap_instagram", "tap_whatsapp", "tap_reserve"] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 
 /** Fire-and-forget: never blocks navigation, never throws. */

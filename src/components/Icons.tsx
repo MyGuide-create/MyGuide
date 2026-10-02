@@ -148,3 +148,15 @@ export const ChevronRight = ({ size, ...p }: P) => (
 export const LocateIcon = ({ size, ...p }: P) => (
   <svg {...base(size, p)}><circle cx="12" cy="12" r="3.5" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3" /><circle cx="12" cy="12" r="7.5" /></svg>
 );
+export const InstagramIcon = ({ size, ...p }: P) => (
+  <svg {...base(size, p)}><rect x="3.5" y="3.5" width="17" height="17" rx="5" /><circle cx="12" cy="12" r="4" /><circle cx="17.2" cy="6.8" r="0.6" fill="currentColor" /></svg>
+);
+export const WhatsAppIcon = ({ size, ...p }: P) => (
+  <svg {...base(size, p)}><path d="M4 20l1.3-4A8 8 0 1 1 8 18.7z" /><path d="M9 9.5c0 3 2.5 5.5 5.5 5.5l1-1.5-2-1-1 1a4 4 0 0 1-2-2l1-1-1-2z" /></svg>
+);
+export const CalendarIcon = ({ size, ...p }: P) => (
+  <svg {...base(size, p)}><rect x="3.5" y="5" width="17" height="15" rx="2.5" /><path d="M3.5 10h17M8 3v4M16 3v4" /></svg>
+);
+export const PhoneIcon = ({ size, ...p }: P) => (
+  <svg {...base(size, p)}><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2C10.5 21 3 13.5 3 6a2 2 0 0 1 2-2z" /></svg>
+);

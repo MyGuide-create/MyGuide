@@ -3,7 +3,7 @@ import type { Place, PlaceTip } from "@/lib/db/schema";
 import type { PublicUser } from "@/lib/auth";
 import type { PlaceCommentView } from "@/lib/guides";
 import { AudioClip } from "./AudioClip";
-import { AlertIcon, ChatIcon, PinIcon, SparkleIcon } from "./Icons";
+import { AlertIcon, CalendarIcon, ChatIcon, PinIcon, SparkleIcon } from "./Icons";
 import { HoursSummary } from "./HoursSummary";
 import { SaveButton } from "./SaveButton";
 import { neighbourhood } from "@/lib/places/neighbourhood";
@@ -96,6 +96,17 @@ export function PlaceRow({
               {...trackAttrs("tap_directions", place.guideId, place.id)}
             >
               <PinIcon size={12} /> Open in Maps
+            </a>
+          )}
+          {place.reserveUrl && (
+            <a
+              className="text-[11px] font-medium text-terracotta inline-flex items-center gap-1 hover:underline"
+              href={place.reserveUrl}
+              target="_blank"
+              rel="noreferrer"
+              {...trackAttrs("tap_reserve", place.guideId, place.id)}
+            >
+              <CalendarIcon size={12} /> Reserve
             </a>
           )}
           <Link href={detailHref} className="text-[11px] text-ink-muted inline-flex items-center gap-1 hover:text-terracotta">

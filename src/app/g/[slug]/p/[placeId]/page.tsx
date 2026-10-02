@@ -6,7 +6,7 @@ import { GuideMap } from "@/components/GuideMap";
 import { PlaceTile } from "@/components/PlaceTile";
 import { TipsEditor } from "@/components/TipsEditor";
 import { TrackView } from "@/components/Tracking";
-import { AlertIcon, ChevronLeft, ChevronRight, PinIcon, SparkleIcon } from "@/components/Icons";
+import { AlertIcon, CalendarIcon, ChevronLeft, ChevronRight, GlobeIcon, InstagramIcon, PinIcon, SparkleIcon, WhatsAppIcon } from "@/components/Icons";
 import { HoursSummary } from "@/components/HoursSummary";
 import { SaveButton } from "@/components/SaveButton";
 import { orderPlaces } from "@/lib/places/order";
@@ -17,8 +17,11 @@ import { canViewGuide, getGuideBySlug, getGuideDetail } from "@/lib/guides";
 import { getPlacesProvider } from "@/lib/places";
 import { displayPhone, telHref } from "@/lib/phone";
 import { trackAttrs } from "@/lib/track";
+import { instagramHref, websiteLabel, whatsappHref } from "@/lib/placeLinks";
 
 export const dynamic = "force-dynamic";
+
+const pill = "inline-flex items-center gap-1.5 rounded-full border border-line bg-cream px-3 py-1.5 text-[12.5px] font-medium hover:border-terracotta-soft hover:text-terracotta";
 
 type Props = {
   params: Promise<{ slug: string; placeId: string }>;
@@ -106,6 +109,18 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
           {place.address && <p className="mt-1 text-[13px] text-ink-muted">{place.address}</p>}
         </div>
 
+        {place.reserveUrl && (
+          <a
+            href={place.reserveUrl}
+            target="_blank"
+            rel="noreferrer"
+            {...trackAttrs("tap_reserve", place.guideId, place.id)}
+            className="-mb-2 flex items-center justify-center gap-2 rounded-2xl bg-terracotta px-4 py-3 text-[14.5px] font-medium text-cream hover:opacity-90"
+          >
+            <CalendarIcon size={17} /> Reserve
+          </a>
+        )}
+
         <div className="flex flex-col gap-2.5 rounded-2xl border border-line bg-paper p-4">
           <a href={mapsHref} target="_blank" rel="noreferrer" {...trackAttrs("tap_directions", place.guideId, place.id)} className="flex items-center gap-2.5 text-[13.5px] font-medium hover:text-terracotta">
             <PinIcon size={17} className="text-terracotta shrink-0" /> Open in Google Maps
@@ -123,6 +138,25 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
                 <a href={telHref(place.phone, place.country)} {...trackAttrs("tap_call", place.guideId, place.id)} className="shrink-0 flex items-center gap-1.5 text-[13.5px] hover:text-terracotta">
                   <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="text-terracotta shrink-0"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2C10.5 21 3 13.5 3 6a2 2 0 0 1 2-2z" /></svg>
                   {displayPhone(place.phone, place.country)}
+                </a>
+              )}
+            </div>
+          )}
+          {(place.website || place.instagram || place.whatsapp) && (
+            <div className="flex flex-wrap gap-2 pt-1">
+              {place.website && (
+                <a href={place.website} target="_blank" rel="noreferrer" {...trackAttrs("tap_website", place.guideId, place.id)} className={pill}>
+                  <GlobeIcon size={15} className="text-terracotta shrink-0" /> <span className="truncate max-w-[150px]">{websiteLabel(place.website)}</span>
+                </a>
+              )}
+              {place.instagram && (
+                <a href={instagramHref(place.instagram)} target="_blank" rel="noreferrer" {...trackAttrs("tap_instagram", place.guideId, place.id)} className={pill}>
+                  <InstagramIcon size={15} className="text-terracotta shrink-0" /> Instagram
+                </a>
+              )}
+              {place.whatsapp && (
+                <a href={whatsappHref(place.whatsapp)} target="_blank" rel="noreferrer" {...trackAttrs("tap_whatsapp", place.guideId, place.id)} className={pill}>
+                  <WhatsAppIcon size={15} className="text-terracotta shrink-0" /> WhatsApp
                 </a>
               )}
             </div>

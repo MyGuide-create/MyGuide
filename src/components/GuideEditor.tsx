@@ -15,6 +15,7 @@ import { NoteEditor } from "./NoteEditor";
 import { PhotoPicker } from "./PhotoPicker";
 import { PlaceSearch } from "./PlaceSearch";
 import { TipsEditor } from "./TipsEditor";
+import { PlaceLinksEditor } from "./PlaceLinksEditor";
 import { PlaceTile } from "./PlaceTile";
 import { Sheet } from "./ShareSheet";
 import { Button, Input, Label, Spinner, Tag, Textarea, cx } from "./ui";
@@ -329,6 +330,7 @@ function EditablePlace({
             <Textarea rows={2} defaultValue={place.special ?? ""} placeholder="What sets this place apart…" onBlur={(e) => e.target.value.trim() !== (place.special ?? "") && onPatch({ special: e.target.value })} />
           </div>
           <TipsEditor guideId={guideId} placeId={place.id} initial={tips} />
+          <PlaceLinksEditor place={place} onPatch={onPatch} />
         </div>
       </div>
       <Link href={`/g/${guideSlug}/p/${place.id}`} className="mt-2 inline-block text-[11px] text-ink-faint hover:text-terracotta">View place page →</Link>
