@@ -151,7 +151,8 @@ export function VoiceCreate({ initialMode }: { initialMode: "voice" | "type" }) 
         </div>
         <div className="grid grid-cols-1 gap-2">
           {[
-            { t: "Google Maps", d: "Open a place → Share → Copy link. Paste one link per line. (A whole saved list can't be read — paste its place names instead.)" },
+            { t: "Google Maps — one place", d: "Open the place → Share → Copy link. Paste one link per line." },
+            { t: "Google Maps — a whole saved list", d: "On a computer, open the list in Google Maps, select everything in the list panel (drag from the first place to the last), copy and paste it here. We keep the place names and skip ratings, prices and closed places." },
             { t: "WhatsApp", d: "Long-press the message → Copy. Dates, names, emojis and “try these” are cleaned up for you." },
             { t: "Notes or anywhere", d: "One place per line works best. Add the area if it helps: “Ichiran in Shinjuku”." },
           ].map((x) => (

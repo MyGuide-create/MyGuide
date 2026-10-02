@@ -64,19 +64,93 @@ function takeoutTitles(text: string): string | null {
   return out.join("\n");
 }
 
-export async function cleanImportedList(text: string): Promise<string> {
+/** A Google Maps link to a whole saved list (not a single place). */
+export function isMapsListUrl(url: string): boolean {
+  return /\/maps\/(?:placelists|@[^/]*\/data=[^?]*!11m1)/.test(url) || /\/maps\/placelists\//.test(url);
+}
+
+/** Lines Google Maps adds when you copy a list page: ratings, prices, categories, buttons. */
+const MAPS_NOISE = [
+  /^\d(?:[.,]\d)?\s*\(\d[\d,.]*\)$/, // 4.4(811)
+  /^(?:[£$€¥₹]|AED|USD|EUR|GBP|IDR|Rp)\s?\d/i, // £20–30
+  /^[£$€¥]{1,4}$/, // ££
+  /^·\s*/, // · Japanese
+  /^(?:search google maps|save|share|layers|directions|nearby|send to phone|sign in|menu|more|map data.*|terms|privacy|send product feedback|united arab emirates|\d+\s?(?:km|mi|m|ft))$/i,
+  /·\s*\d+\s+places?\s*·/i, // "Shahryar · 25 places · Shared list"
+  /^(?:shared list|private list|public list|your lists?|saved)$/i,
+  /^(?:open|closed|opens|closes)\b.*$/i,
+];
+
+const RATING = /^\d(?:[.,]\d)?\s*\(\d[\d,.]*\)$/;
+const PRICE = /^(?:[£$€¥₹]|AED|USD|EUR|GBP|IDR|Rp)\s?\d|^[£$€¥]{1,4}$/i;
+
+/**
+ * Text copied from a Google Maps list page comes as blocks: name, rating, price, "· category".
+ * Keep only the names. Returns null when the text doesn't look like that.
+ */
+function mapsListCopy(lines: string[]): string[] | null {
+  const ratings = lines.filter((l) => RATING.test(l)).length;
+  if (ratings < 2) return null;
+  const out: string[] = [];
+  let afterRating = false;
+  for (let k = 0; k < lines.length; k++) {
+    const l = lines[k];
+    const next = lines[k + 1] ?? "";
+    if (/·\s*\d+\s+places?\s*·/i.test(next)) continue; // list title just above "Name · 25 places · Shared list"
+    if (RATING.test(l)) { afterRating = true; continue; }
+    if (/^permanently closed$/i.test(l)) { out.pop(); afterRating = false; continue; }
+    if (afterRating) {
+      // price, "· category", plain category or status lines that follow a rating
+      if (PRICE.test(l) || /^·/.test(l) || /^temporarily closed$/i.test(l) || !RATING.test(next)) {
+        if (!RATING.test(next)) continue;
+      }
+    }
+    if (MAPS_NOISE.some((re) => re.test(l))) continue;
+    if (RATING.test(next)) {
+      afterRating = false;
+      out.push(l.replace(/,/g, " ").replace(/\s+/g, " ").trim()); // one place per line — commas are part of the name
+    }
+  }
+  return out;
+}
+
+function dropMapsNoise(lines: string[]): string[] {
+  const fromList = mapsListCopy(lines);
+  if (fromList) return fromList;
+  const out: string[] = [];
+  for (const l of lines) {
+    if (/^(?:permanently closed)$/i.test(l)) {
+      out.pop(); // skip places Google says have closed for good
+      continue;
+    }
+    if (/^temporarily closed$/i.test(l)) continue;
+    if (MAPS_NOISE.some((re) => re.test(l))) continue;
+    out.push(l);
+  }
+  return out;
+}
+
+export interface CleanedImport {
+  text: string;
+  /** Google Maps links to whole saved lists, which can't be read directly. */
+  listLinks: number;
+}
+
+export async function cleanImportedList(text: string): Promise<CleanedImport> {
   text = takeoutTitles(text) ?? text;
   const urls = [...new Set(text.match(URL_RE) ?? [])];
   const names = new Map<string, string>();
+  let listLinks = 0;
   await Promise.all(
     urls.slice(0, 40).map(async (raw) => {
       const url = raw.replace(/[.,;]+$/, "");
       const full = isShortMapsLink(url) ? await expand(url) : url;
-      const name = nameFromMapsUrl(full);
+      if (isMapsListUrl(full)) listLinks++;
+      const name = isMapsListUrl(full) ? null : nameFromMapsUrl(full);
       names.set(raw, name ?? "");
     }),
   );
-  return text
+  const lines = text
     .split(/\r?\n/)
     .map((line) => {
       let l = line.replace(WHATSAPP_PREFIX, "");
@@ -85,7 +159,10 @@ export async function cleanImportedList(text: string): Promise<string> {
     })
     .join("\n")
     .split("\n")
-    .map((l) => l.replace(EMOJI, " ").replace(BULLET, "").replace(/\s+/g, " ").trim())
-    .filter((l) => l.length > 1 && !/^(<media omitted>|this message was deleted)$/i.test(l))
-    .join("\n");
+    .map((l) => l.replace(EMOJI, " ").replace(/\s+/g, " ").trim())
+    .filter((l) => l.length > 1 && !/^(<media omitted>|this message was deleted)$/i.test(l));
+  const kept = dropMapsNoise(lines)
+    .map((l) => l.replace(BULLET, "").trim())
+    .filter((l) => l.length > 1);
+  return { text: kept.join("\n"), listLinks };
 }

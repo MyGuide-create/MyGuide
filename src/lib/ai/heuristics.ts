@@ -30,8 +30,11 @@ export function heuristicParsePlaces(transcript: string, cityHint?: string): Par
   text = text.replace(LEAD_IN, "");
   const detectedCity = findCity(cityHint) ?? detectCityInText(text);
 
+  // A pasted list (one place per line) keeps names like "Granger & Co. Chelsea" or "Spa and Kid's Club" whole;
+  // spoken lists are split on commas, "and", "then"…
+  const isLineList = (text.match(/\n/g) ?? []).length >= 2;
   const rawParts = text
-    .split(/\s*(?:,|;|\n|\.\s|\band\b|\bthen\b|\balso\b)\s*/i)
+    .split(isLineList ? /\s*(?:\n|;)\s*/ : /\s*(?:,|;|\n|\.\s|\band\b|\bthen\b|\balso\b)\s*/i)
     .map((p) => p.replace(FILLER, " ").replace(/\s+/g, " ").trim())
     .map((p) => p.replace(/^(?:the )?/i, "").replace(/[.!?]+$/, "").trim())
     .map((p) => p.replace(/^(?:you (?:have to|should|must) )?(?:try|check out|go to|visit|don't miss|must try)\s+/i, "").trim())
