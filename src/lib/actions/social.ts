@@ -5,7 +5,10 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "../auth";
 import { getDb } from "../db";
-import { follows, notifications, users } from "../db/schema";
+import { follows, users } from "../db/schema";
+import { addNotifications } from "../notifications";
+import { normaliseInstagram, normaliseWebsite } from "../placeLinks";
+import { hiddenUserIds } from "../blocks";
 import { newId } from "../utils";
 
 export type FollowStatus = "none" | "pending" | "accepted";
@@ -15,6 +18,7 @@ export async function toggleFollow(targetUserId: string, next?: string): Promise
   const user = await getCurrentUser();
   if (!user) redirect(`/signup?next=${encodeURIComponent(next ?? "/")}&why=follow`);
   if (user.id === targetUserId) return { status: "none" };
+  if ((await hiddenUserIds(user.id)).has(targetUserId)) return { status: "none" };
   const db = await getDb();
   const existing = await db.query.follows.findFirst({ where: and(eq(follows.followerId, user.id), eq(follows.followingId, targetUserId)) });
   if (existing) {
@@ -27,13 +31,13 @@ export async function toggleFollow(targetUserId: string, next?: string): Promise
   const target = await db.query.users.findFirst({ where: eq(users.id, targetUserId) });
   const needsApproval = target?.profileVisibility === "private";
   await db.insert(follows).values({ followerId: user.id, followingId: targetUserId, status: needsApproval ? "pending" : "accepted", createdAt: new Date() });
-  await db.insert(notifications).values({
+  await addNotifications([{
     id: newId(),
     userId: targetUserId,
     type: needsApproval ? "follow_request" : "new_follower",
     actorId: user.id,
     createdAt: new Date(),
-  });
+  }]);
   revalidatePath("/");
   if (next) revalidatePath(next);
   return { status: needsApproval ? "pending" : "accepted" };
@@ -48,7 +52,7 @@ export async function respondToFollowRequest(requesterId: string, accept: boolea
   if (!req) return;
   if (accept) {
     await db.update(follows).set({ status: "accepted" }).where(and(eq(follows.followerId, requesterId), eq(follows.followingId, user.id)));
-    await db.insert(notifications).values({ id: newId(), userId: requesterId, type: "follow_accepted", actorId: user.id, createdAt: new Date() });
+    await addNotifications([{ id: newId(), userId: requesterId, type: "follow_accepted", actorId: user.id, createdAt: new Date() }]);
   } else {
     await db.delete(follows).where(and(eq(follows.followerId, requesterId), eq(follows.followingId, user.id)));
   }
@@ -78,8 +82,15 @@ export async function updateProfile(_prev: ProfileState, formData: FormData): Pr
   const bio = String(formData.get("bio") ?? "").trim().slice(0, 240);
   const avatarMediaId = String(formData.get("avatarMediaId") ?? "").trim() || null;
   if (!displayName) return { error: "Please add a display name." };
+  const ig = normaliseInstagram(String(formData.get("instagram") ?? ""));
+  if (!ig.ok) return { error: ig.error };
+  const site = normaliseWebsite(String(formData.get("website") ?? ""));
+  if (!site.ok) return { error: site.error };
   const db = await getDb();
-  await db.update(users).set({ displayName, bio, avatarMediaId: avatarMediaId ?? user.avatarMediaId }).where(eq(users.id, user.id));
+  await db
+    .update(users)
+    .set({ displayName, bio, avatarMediaId: avatarMediaId ?? user.avatarMediaId, instagram: ig.value, website: site.value })
+    .where(eq(users.id, user.id));
   revalidatePath("/me");
   revalidatePath(`/u/${user.username}`);
   return { ok: true };

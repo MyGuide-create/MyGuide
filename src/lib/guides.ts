@@ -1,8 +1,9 @@
 import { and, desc, eq, inArray, isNotNull, like, or, sql, type SQL } from "drizzle-orm";
 import { getDb } from "./db";
-import { follows, guideShares, guides, placeComments, placePhotos, placeTips, places, savedPlaces, users, type Guide, type Place, type PlaceComment, type PlacePhoto, type PlaceTip, type User } from "./db/schema";
+import { follows, guideCollaborators, guideShares, guides, placeComments, placePhotos, placeReactions, placeTips, places, savedPlaces, users, type Guide, type Place, type PlaceComment, type PlacePhoto, type PlaceTip, type User } from "./db/schema";
 import { toPublicUser, type PublicUser } from "./auth";
 import type { SearchIntent } from "./ai";
+import { hiddenUserIds } from "./blocks";
 
 export interface PlaceCommentView {
   comment: PlaceComment;
@@ -26,9 +27,19 @@ export interface GuideDetail extends GuideCard {
   /** Creator-authored expert tips for each place, in order, keyed by placeId. */
   placeTips: Record<string, PlaceTip[]>;
   viewerCanEdit: boolean;
+  /** Only the owner can publish, delete, share and manage co-editors. */
+  viewerIsOwner: boolean;
+  /** People invited to edit this guide with the owner. */
+  collaborators: PublicUser[];
   viewerCanFork: boolean;
   /** Places in this guide the viewer has saved. */
   savedPlaceIds: string[];
+  /** Per place: how many readers have been / loved it, and how many favourited it. */
+  placeSocial: Record<string, { been: number; loved: number; favourites: number }>;
+  /** Per place: the viewer's own reactions. */
+  viewerReactions: Record<string, { been: boolean; loved: boolean }>;
+  /** Per place: people the viewer follows who favourited or loved it (up to 3). */
+  friendsWhoLike: Record<string, PublicUser[]>;
   /** "none" | "pending" | "accepted" */
   viewerFollowStatus: "none" | "pending" | "accepted";
   sharedWith: PublicUser[];
@@ -39,6 +50,10 @@ const publicPublished = () => and(eq(guides.visibility, "public"), isNotNull(gui
 
 /** Drop cards owned by a private account, unless the viewer is the owner or an approved follower. */
 async function filterVisibleCards(cards: GuideCard[], viewerId?: string | null): Promise<GuideCard[]> {
+  if (viewerId && cards.length) {
+    const hidden = await hiddenUserIds(viewerId);
+    if (hidden.size) cards = cards.filter((c) => !hidden.has(c.owner.id));
+  }
   const lockedOwnerIds = [...new Set(cards.filter((c) => c.owner.profileVisibility === "private" && c.owner.id !== viewerId).map((c) => c.owner.id))];
   if (!lockedOwnerIds.length) return cards;
   let approved = new Set<string>();
@@ -138,8 +153,27 @@ export async function listSharedWithUser(userId: string): Promise<GuideCard[]> {
 }
 
 /** Can this viewer see this guide? Owner, public+published (and not locked behind a private account), explicitly shared, or valid share link. */
+export async function isCollaborator(guideId: string, userId: string | null | undefined): Promise<boolean> {
+  if (!userId) return false;
+  const db = await getDb();
+  const row = await db.query.guideCollaborators.findFirst({ where: and(eq(guideCollaborators.guideId, guideId), eq(guideCollaborators.userId, userId)) });
+  return !!row;
+}
+
+export async function listCollaborators(guideId: string): Promise<PublicUser[]> {
+  const db = await getDb();
+  const rows = await db
+    .select({ u: users })
+    .from(guideCollaborators)
+    .innerJoin(users, eq(users.id, guideCollaborators.userId))
+    .where(eq(guideCollaborators.guideId, guideId))
+    .orderBy(guideCollaborators.createdAt);
+  return rows.map((r) => toPublicUser(r.u));
+}
+
 export async function canViewGuide(guide: Guide, viewerId: string | null | undefined, shareKey?: string | null): Promise<boolean> {
   if (viewerId && guide.ownerId === viewerId) return true;
+  if (viewerId && (await isCollaborator(guide.id, viewerId))) return true;
   if (shareKey && shareKey === guide.shareToken) return true;
   if (viewerId) {
     const db = await getDb();
@@ -198,9 +232,10 @@ export async function getGuideDetail(guide: Guide, viewer: User | null): Promise
   const commentAuthors = commentAuthorIds.length ? await db.select().from(users).where(inArray(users.id, commentAuthorIds)) : [];
   const commentAuthorMap = new Map(commentAuthors.map((u) => [u.id, toPublicUser(u)]));
   const placeCommentsByPlace: Record<string, PlaceCommentView[]> = {};
+  const hiddenAuthors = await hiddenUserIds(viewer?.id);
   for (const c of commentRows) {
     const author = commentAuthorMap.get(c.authorId);
-    if (!author) continue;
+    if (!author || hiddenAuthors.has(author.id)) continue;
     (placeCommentsByPlace[c.placeId] ??= []).push({ comment: c, author });
   }
 
@@ -208,7 +243,11 @@ export async function getGuideDetail(guide: Guide, viewer: User | null): Promise
     ? await db.select({ id: savedPlaces.placeId }).from(savedPlaces).where(and(eq(savedPlaces.userId, viewer.id), inArray(savedPlaces.placeId, placeIds)))
     : [];
 
+  const social = await placeSocialFor(placeIds, viewer?.id ?? null);
+
   const viewerIsOwner = !!viewer && viewer.id === guide.ownerId;
+  const collaborators = await listCollaborators(guide.id);
+  const viewerIsCollaborator = !!viewer && collaborators.some((c) => c.id === viewer.id);
   let viewerFollowStatus: "none" | "pending" | "accepted" = "none";
   if (viewer && !viewerIsOwner) {
     const f = await db.query.follows.findFirst({ where: and(eq(follows.followerId, viewer.id), eq(follows.followingId, guide.ownerId)) });
@@ -230,9 +269,14 @@ export async function getGuideDetail(guide: Guide, viewer: User | null): Promise
     placeComments: placeCommentsByPlace,
     placePhotos: placePhotosByPlace,
     placeTips: placeTipsByPlace,
-    viewerCanEdit: viewerIsOwner,
-    viewerCanFork: !!viewer && !viewerIsOwner && guide.allowFork,
+    viewerCanEdit: viewerIsOwner || viewerIsCollaborator,
+    viewerIsOwner,
+    collaborators,
+    viewerCanFork: !!viewer && !viewerIsOwner && !viewerIsCollaborator && guide.allowFork,
     savedPlaceIds: savedRows.map((r) => r.id),
+    placeSocial: social.counts,
+    viewerReactions: social.mine,
+    friendsWhoLike: social.friends,
     viewerFollowStatus,
     sharedWith,
   };
@@ -343,8 +387,9 @@ export async function suggestedCreators(viewerId?: string | null, limit = 6): Pr
     .groupBy(users.id)
     .orderBy(desc(sql`count(${guides.id})`))
     .limit(limit + 1);
+  const hidden = await hiddenUserIds(viewerId);
   return rows
-    .filter((r) => r.u.id !== viewerId)
+    .filter((r) => r.u.id !== viewerId && !hidden.has(r.u.id))
     .slice(0, limit)
     .map((r) => ({ ...toPublicUser(r.u), guideCount: Number(r.n) }));
 }
@@ -484,8 +529,109 @@ export async function searchPlaces(intent: SearchIntent, viewerId?: string | nul
     .where(and(...conds))
     .orderBy(desc(guides.publishedAt), places.position)
     .limit(limit * 2);
+  const hidden = await hiddenUserIds(viewerId);
   return rows
+    .filter((r) => !hidden.has(r.owner.id))
     .filter((r) => r.owner.profileVisibility !== "private" || r.owner.id === viewerId)
     .slice(0, limit)
     .map((r) => ({ place: r.place, guide: { slug: r.guide.slug, title: r.guide.title }, owner: toPublicUser(r.owner) }));
+}
+
+export interface TripPlan {
+  favourites: SavedPlaceView[];
+  fromFollowing: GuideCard[];
+  more: GuideCard[];
+  topPlaces: Array<{ place: Place; guide: { slug: string; title: string }; favourites: number; loved: number }>;
+}
+
+/** Everything MyGuide knows about a city for someone planning a trip there. */
+export async function planTrip(userId: string, city: string): Promise<TripPlan> {
+  const db = await getDb();
+  const cityLower = city.toLowerCase();
+  const inCity = (p: Place) => p.city.toLowerCase() === cityLower || p.address.toLowerCase().includes(cityLower);
+
+  const saved = (await listSavedPlaces(userId)).filter((s) => inCity(s.place));
+
+  const cityGuides = await db
+    .select()
+    .from(guides)
+    .where(and(publicPublished(), or(like(guides.city, city), like(guides.title, `%${city}%`))!))
+    .orderBy(desc(guides.publishedAt))
+    .limit(40);
+  const cards = await filterVisibleCards(await hydrateCards(cityGuides.filter((g) => g.ownerId !== userId)), userId);
+  const followed = new Set(
+    (await db.select({ id: follows.followingId }).from(follows).where(and(eq(follows.followerId, userId), eq(follows.status, "accepted")))).map((r) => r.id),
+  );
+  const fromFollowing = cards.filter((c) => followed.has(c.owner.id));
+  const more = cards.filter((c) => !followed.has(c.owner.id));
+
+  // Most-loved places in this city across public guides: favourites + "loved it" reactions.
+  const visibleGuideIds = new Set(cards.map((c) => c.guide.id));
+  const ownGuides = cityGuides.filter((g) => g.ownerId === userId).map((g) => g.id);
+  const candidateIds = [...visibleGuideIds, ...ownGuides];
+  let topPlaces: TripPlan["topPlaces"] = [];
+  if (candidateIds.length) {
+    const ps = await db.select().from(places).where(inArray(places.guideId, candidateIds));
+    const ids = ps.map((p) => p.id);
+    if (ids.length) {
+      const [favs, loves] = await Promise.all([
+        db.select({ id: savedPlaces.placeId, n: sql<number>`count(*)` }).from(savedPlaces).where(inArray(savedPlaces.placeId, ids)).groupBy(savedPlaces.placeId),
+        db
+          .select({ id: placeReactions.placeId, n: sql<number>`count(*)` })
+          .from(placeReactions)
+          .where(and(inArray(placeReactions.placeId, ids), eq(placeReactions.kind, "loved")))
+          .groupBy(placeReactions.placeId),
+      ]);
+      const fav = new Map(favs.map((f) => [f.id, Number(f.n)]));
+      const love = new Map(loves.map((f) => [f.id, Number(f.n)]));
+      const gmap = new Map(cityGuides.map((g) => [g.id, g]));
+      topPlaces = ps
+        .map((p) => ({ place: p, guide: { slug: gmap.get(p.guideId)!.slug, title: gmap.get(p.guideId)!.title }, favourites: fav.get(p.id) ?? 0, loved: love.get(p.id) ?? 0 }))
+        .filter((x) => x.favourites + x.loved > 0)
+        .sort((a, b) => b.favourites + b.loved - (a.favourites + a.loved))
+        .slice(0, 8);
+    }
+  }
+  return { favourites: saved, fromFollowing, more, topPlaces };
+}
+
+
+/** Reaction and favourite counts for places, plus what the viewer and the people they follow did. */
+export async function placeSocialFor(placeIds: string[], viewerId: string | null) {
+  const counts: Record<string, { been: number; loved: number; favourites: number }> = {};
+  const mine: Record<string, { been: boolean; loved: boolean }> = {};
+  const friends: Record<string, PublicUser[]> = {};
+  if (!placeIds.length) return { counts, mine, friends };
+  const db = await getDb();
+  const [reacts, favs] = await Promise.all([
+    db.select().from(placeReactions).where(inArray(placeReactions.placeId, placeIds)),
+    db.select({ placeId: savedPlaces.placeId, userId: savedPlaces.userId }).from(savedPlaces).where(inArray(savedPlaces.placeId, placeIds)),
+  ]);
+  for (const id of placeIds) counts[id] = { been: 0, loved: 0, favourites: 0 };
+  for (const r of reacts) {
+    if (r.kind === "been") counts[r.placeId].been++;
+    if (r.kind === "loved") counts[r.placeId].loved++;
+    if (viewerId && r.userId === viewerId) {
+      mine[r.placeId] ??= { been: false, loved: false };
+      if (r.kind === "been") mine[r.placeId].been = true;
+      if (r.kind === "loved") mine[r.placeId].loved = true;
+    }
+  }
+  for (const f of favs) counts[f.placeId].favourites++;
+  if (viewerId) {
+    const followed = new Set(
+      (await db.select({ id: follows.followingId }).from(follows).where(and(eq(follows.followerId, viewerId), eq(follows.status, "accepted")))).map((r) => r.id),
+    );
+    if (followed.size) {
+      const byPlace = new Map<string, Set<string>>();
+      for (const f of favs) if (followed.has(f.userId)) (byPlace.get(f.placeId) ?? byPlace.set(f.placeId, new Set()).get(f.placeId)!).add(f.userId);
+      for (const r of reacts) if (r.kind === "loved" && followed.has(r.userId)) (byPlace.get(r.placeId) ?? byPlace.set(r.placeId, new Set()).get(r.placeId)!).add(r.userId);
+      const ids = [...new Set([...byPlace.values()].flatMap((s) => [...s]))];
+      if (ids.length) {
+        const us = new Map((await db.select().from(users).where(inArray(users.id, ids))).map((u) => [u.id, toPublicUser(u)]));
+        for (const [pid, set] of byPlace) friends[pid] = [...set].map((id) => us.get(id)).filter((u): u is PublicUser => !!u);
+      }
+    }
+  }
+  return { counts, mine, friends };
 }

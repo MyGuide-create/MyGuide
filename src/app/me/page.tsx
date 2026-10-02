@@ -9,6 +9,16 @@ import { requireUser } from "@/lib/auth";
 import { getFollowStats, listFollowRequests, listFollowing } from "@/lib/guides";
 import { hasAnthropicKey } from "@/lib/ai";
 import { hasGoogleKey } from "@/lib/places";
+import { ChatIcon, HeartIcon, ListIcon, PinIcon } from "@/components/Icons";
+import { DeleteAccountForm } from "@/components/DeleteAccountForm";
+import { PushToggle } from "@/components/PushToggle";
+import { BlockButton } from "@/components/BlockButton";
+import { pushPublicKey } from "@/lib/push";
+import { isAdmin } from "@/lib/admin";
+import { getDb } from "@/lib/db";
+import { blocks, users } from "@/lib/db/schema";
+import { eq } from "drizzle-orm";
+import { toPublicUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "You" };
@@ -16,6 +26,10 @@ export const metadata = { title: "You" };
 export default async function MePage() {
   const user = await requireUser("/me");
   const [stats, following, requests] = await Promise.all([getFollowStats(user.id), listFollowing(user.id), listFollowRequests(user.id)]);
+  const db = await getDb();
+  const blockedRows = await db.select({ u: users }).from(blocks).innerJoin(users, eq(users.id, blocks.blockedId)).where(eq(blocks.blockerId, user.id));
+  const blocked = blockedRows.map((b) => toPublicUser(b.u));
+  const admin = isAdmin(user);
   return (
     <AppShell>
       <TopBar title="You" right={<Link href={`/u/${user.username}`} className="text-[13px] font-medium text-terracotta px-2">View profile</Link>} />
@@ -24,6 +38,16 @@ export default async function MePage() {
           <div className="text-[12.5px] text-ink-muted">@{user.username} · {user.email}</div>
           <div className="mt-1 text-[12.5px] text-ink-muted"><Link href={`/u/${user.username}/followers`} className="hover:underline">{stats.followers} {stats.followers === 1 ? "follower" : "followers"}</Link> · <Link href={`/u/${user.username}/following`} className="hover:underline">{stats.following} following</Link></div>
         </div>
+        <nav className="grid grid-cols-2 gap-2 text-[13px] font-medium">
+          <Link href="/saved" className="inline-flex items-center gap-2 rounded-2xl border border-line bg-paper px-3.5 py-3 hover:border-terracotta-soft"><HeartIcon size={16} className="text-terracotta" /> Favourites</Link>
+          <Link href="/trips" className="inline-flex items-center gap-2 rounded-2xl border border-line bg-paper px-3.5 py-3 hover:border-terracotta-soft"><PinIcon size={16} className="text-terracotta" /> Trips</Link>
+          <Link href="/stats" className="inline-flex items-center gap-2 rounded-2xl border border-line bg-paper px-3.5 py-3 hover:border-terracotta-soft"><ListIcon size={16} className="text-terracotta" /> Guide stats</Link>
+          <Link href="/feedback?from=/me" className="inline-flex items-center gap-2 rounded-2xl border border-line bg-paper px-3.5 py-3 hover:border-terracotta-soft"><ChatIcon size={16} className="text-terracotta" /> Send feedback</Link>
+          {admin && <Link href="/admin" className="col-span-2 rounded-2xl border border-terracotta-soft bg-terracotta-tint/50 px-3.5 py-3">Pilot dashboard (admin)</Link>}
+        </nav>
+
+        <PushToggle publicKey={pushPublicKey()} />
+
         <ProfileForm user={user} />
 
         <div>
@@ -81,9 +105,32 @@ export default async function MePage() {
         </section>
         )}
 
+        {blocked.length > 0 && (
+          <section>
+            <h2 className="font-display text-[22px] mb-3">Blocked</h2>
+            <ul className="flex flex-col gap-2">
+              {blocked.map((u) => (
+                <li key={u.id} className="flex items-center gap-3 rounded-2xl bg-paper border border-line/70 px-3 py-2.5">
+                  <Avatar user={u} size={32} />
+                  <span className="flex-1 text-[13.5px] font-medium">{u.displayName}</span>
+                  <BlockButton userId={u.id} name={u.displayName} initial next="/me" />
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
         <form action={logOut}>
           <Button type="submit" variant="ghost" className="border border-line w-full">Log out</Button>
         </form>
+
+        <div className="flex flex-col gap-3 pt-2 border-t border-line/70">
+          <div className="flex gap-4 text-[12.5px] text-ink-muted">
+            <Link href="/terms" className="hover:text-terracotta">Terms</Link>
+            <Link href="/privacy" className="hover:text-terracotta">Privacy</Link>
+          </div>
+          <DeleteAccountForm username={user.username} />
+        </div>
       </div>
     </AppShell>
   );

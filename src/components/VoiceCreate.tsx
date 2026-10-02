@@ -105,7 +105,7 @@ export function VoiceCreate({ initialMode }: { initialMode: "voice" | "type" }) 
         <Button size="lg" onClick={createTyped} disabled={creating}>{creating ? <Spinner /> : "Continue to add places"}</Button>
         <div className="flex flex-col items-center gap-2">
           <button type="button" onClick={() => { setStage("talk"); setError(null); }} className="text-[13px] text-ink-muted inline-flex items-center justify-center gap-1.5"><MicIcon size={14} /> Or say your places instead</button>
-          <button type="button" onClick={() => { setStage("paste"); setError(null); }} className="text-[13px] text-ink-muted inline-flex items-center justify-center gap-1.5"><PinIcon size={14} /> Or import a list (e.g. Google Maps)</button>
+          <button type="button" onClick={() => { setStage("paste"); setError(null); }} className="text-[13px] text-ink-muted inline-flex items-center justify-center gap-1.5"><PinIcon size={14} /> Or paste a list (Google Maps links, WhatsApp, Notes)</button>
         </div>
       </div>
     );
@@ -118,10 +118,10 @@ export function VoiceCreate({ initialMode }: { initialMode: "voice" | "type" }) 
         <div>
           <h1 className="font-display text-[34px] leading-[1.05]">Import a list.</h1>
           <p className="mt-2 text-[13.5px] text-ink-muted leading-relaxed">
-            Paste in the places from a Google Maps saved list (or anywhere else) — one per line, or however they come out when you copy them. We&apos;ll match each one to a real place.
+            Paste anything with places in it — a list of names, Google Maps links, a WhatsApp message from a friend, your Notes. We&apos;ll find each place and build the guide.
           </p>
           <p className="mt-2 text-[12px] text-ink-faint leading-relaxed">
-            Google doesn&apos;t offer a one-tap import for personal Maps lists, so this is copy-paste for now: open the list in Google Maps, select the place names and paste them below. A list exported from Google Takeout works too.
+            From Google Maps: open a place, tap Share → Copy link, and paste the links here (one per line). Chat timestamps, emojis and bullet points are cleaned up for you.
           </p>
         </div>
         <Textarea
@@ -129,7 +129,7 @@ export function VoiceCreate({ initialMode }: { initialMode: "voice" | "type" }) 
           onChange={(e) => setPastedList(e.target.value)}
           rows={10}
           autoFocus
-          placeholder={"Tsuta ramen\nYanaka Coffee Ten\nIchiran, Shinjuku\n…"}
+          placeholder={"Tsuta ramen\nhttps://maps.app.goo.gl/…\n• Yanaka Coffee Ten 🙌\n[12/03, 10:15] Omar: try Ichiran in Shinjuku\n…"}
         />
         {error && <p className="text-[12.5px] text-danger">{error}</p>}
         <Button size="lg" onClick={() => structure(pastedList, "paste")} disabled={!pastedList.trim()}>Build my guide</Button>

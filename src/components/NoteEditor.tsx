@@ -27,6 +27,8 @@ export function NoteEditor({
   const [clip, setClip] = useState<string | null>(clipMediaId);
   const [saving, setSaving] = useState(false);
   const [polishing, setPolishing] = useState(false);
+  /** The note as it was before "Tidy up", so it can be put back. */
+  const [beforeTidy, setBeforeTidy] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const speech = useSpeech({ continuous: true });
   const recorder = useRecorder();
@@ -91,7 +93,11 @@ export function NoteEditor({
     try {
       const res = await fetch("/api/ai/polish-note", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ note: text, placeName }) });
       const data = (await res.json()) as { note: string };
-      if (data.note) { setText(data.note); await save(data.note); }
+      if (data.note && data.note !== text) {
+        setBeforeTidy(text);
+        setText(data.note);
+        await save(data.note);
+      }
     } finally {
       setPolishing(false);
     }
@@ -108,7 +114,7 @@ export function NoteEditor({
     <div>
       <Textarea
         value={text}
-        onChange={(e) => setText(e.target.value)}
+        onChange={(e) => { setText(e.target.value); setBeforeTidy(null); }}
         onBlur={() => { if (dirty && !active) void save(); }}
         rows={3}
         placeholder={`Why ${placeName}? What should a friend order, when should they go…`}
@@ -127,6 +133,20 @@ export function NoteEditor({
         <Button size="sm" variant="ghost" onClick={polish} disabled={polishing || !text.trim() || active} className="border border-line">
           {polishing ? <Spinner /> : <SparkleIcon size={14} />} Tidy up
         </Button>
+        {beforeTidy !== null && !active && (
+          <button
+            type="button"
+            onClick={async () => {
+              const prev = beforeTidy;
+              setBeforeTidy(null);
+              setText(prev);
+              await save(prev);
+            }}
+            className="text-[12px] font-medium text-terracotta underline underline-offset-2"
+          >
+            Undo tidy
+          </button>
+        )}
         {dirty && !active && (
           <Button size="sm" variant="secondary" onClick={() => save()} disabled={saving}>{saving ? <Spinner /> : "Save note"}</Button>
         )}

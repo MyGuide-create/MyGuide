@@ -17,6 +17,8 @@ import { canViewGuide, getGuideBySlug, getGuideDetail } from "@/lib/guides";
 import { getPlacesProvider } from "@/lib/places";
 import { displayPhone, telHref } from "@/lib/phone";
 import { trackAttrs } from "@/lib/track";
+import { ReactionButtons } from "@/components/ReactionButtons";
+import { namesSentence } from "@/lib/utils";
 import { instagramHref, websiteLabel, whatsappHref } from "@/lib/placeLinks";
 
 export const dynamic = "force-dynamic";
@@ -107,6 +109,26 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
           </div>
           {pos >= 0 && <p className="mt-1 text-[11.5px] text-ink-faint">Place {pos + 1} of {ordered.length} in {detail.guide.title}</p>}
           {place.address && <p className="mt-1 text-[13px] text-ink-muted">{place.address}</p>}
+          {(detail.friendsWhoLike[place.id]?.length ?? 0) > 0 && (
+            <p className="mt-2 text-[12.5px] text-sage font-medium">
+              ♥ {namesSentence(detail.friendsWhoLike[place.id].map((u) => u.displayName.split(" ")[0]))} {detail.friendsWhoLike[place.id].length === 1 ? "likes" : "like"} this — people you follow
+            </p>
+          )}
+          {!detail.viewerCanEdit && (
+            <div className="mt-3">
+              <ReactionButtons
+                placeId={place.id}
+                initial={detail.viewerReactions[place.id] ?? { been: false, loved: false }}
+                counts={detail.placeSocial[place.id] ?? { been: 0, loved: 0 }}
+                signedIn={!!user}
+              />
+            </div>
+          )}
+          {detail.viewerCanEdit && ((detail.placeSocial[place.id]?.been ?? 0) + (detail.placeSocial[place.id]?.loved ?? 0) + (detail.placeSocial[place.id]?.favourites ?? 0)) > 0 && (
+            <p className="mt-2 text-[12px] text-ink-muted">
+              Readers: {detail.placeSocial[place.id].favourites} favourited · {detail.placeSocial[place.id].been} been · {detail.placeSocial[place.id].loved} loved it
+            </p>
+          )}
         </div>
 
         {place.reserveUrl && (

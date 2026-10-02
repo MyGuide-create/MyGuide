@@ -5,6 +5,7 @@ import { getDb } from "@/lib/db";
 import { placePhotos, places } from "@/lib/db/schema";
 import { getGuideById } from "@/lib/guides";
 import { hasGoogleKey } from "@/lib/places";
+import { isCollaborator } from "@/lib/guides";
 import { getPlacePhotos } from "@/lib/places/google";
 
 export type PlaceCoverOption =
@@ -17,7 +18,7 @@ export async function GET(req: Request) {
   if (!user) return NextResponse.json({ error: "Please log in." }, { status: 401 });
   const guideId = new URL(req.url).searchParams.get("guide") ?? "";
   const guide = await getGuideById(guideId);
-  if (!guide || guide.ownerId !== user.id) return NextResponse.json({ error: "Not your guide." }, { status: 403 });
+  if (!guide || (guide.ownerId !== user.id && !(await isCollaborator(guide.id, user.id)))) return NextResponse.json({ error: "Not your guide." }, { status: 403 });
 
   const db = await getDb();
   const rows = await db.select().from(places).where(eq(places.guideId, guide.id)).orderBy(asc(places.position));

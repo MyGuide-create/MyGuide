@@ -70,6 +70,11 @@ export function AuthForm({ mode, next, why }: { mode: "login" | "signup"; next?:
         </div>
       )}
       {state.error && <p className="text-[13px] text-danger bg-danger-tint rounded-xl px-3 py-2">{state.error}</p>}
+      {mode === "signup" && (
+        <p className="text-[11.5px] text-ink-faint leading-relaxed">
+          By creating an account you agree to the <Link href="/terms" className="underline">Terms</Link> and <Link href="/privacy" className="underline">Privacy notice</Link>.
+        </p>
+      )}
       <Button type="submit" size="lg" disabled={pending} className="mt-1">
         {pending ? <Spinner /> : mode === "login" ? "Log in" : "Create account"}
       </Button>

@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { MarkerClusterer } from "@googlemaps/markerclusterer";
 import { APIProvider, ControlPosition, Map, Marker, useMap } from "@vis.gl/react-google-maps";
 import { LocateIcon, XIcon } from "./Icons";
 import { PlaceTile } from "./PlaceTile";
@@ -29,6 +30,11 @@ export interface MapPlace {
 const PIN_SVG = (fill: string, n: number) =>
   `data:image/svg+xml;utf8,${encodeURIComponent(
     `<svg xmlns="http://www.w3.org/2000/svg" width="34" height="42" viewBox="0 0 24 30"><path d="M12 29s9-9.5 9-16A9 9 0 1 0 3 13c0 6.5 9 16 9 16z" fill="${fill}" stroke="white" stroke-width="1.5"/><text x="12" y="16.5" text-anchor="middle" font-family="Work Sans, sans-serif" font-size="9" font-weight="600" fill="white">${n}</text></svg>`
+  )}`;
+
+const CLUSTER_SVG = (n: number) =>
+  `data:image/svg+xml;utf8,${encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40"><circle cx="20" cy="20" r="18" fill="oklch(62% 0.13 45)" stroke="white" stroke-width="3"/><text x="20" y="25" text-anchor="middle" font-family="Work Sans, sans-serif" font-size="14" font-weight="600" fill="white">${n}</text></svg>`
   )}`;
 
 const ME_SVG = `data:image/svg+xml;utf8,${encodeURIComponent(
@@ -112,18 +118,14 @@ function GuideMapInner({ places, onSelect, showCard, locate }: { places: MapPlac
       >
         <FitToPlaces places={withCoords} />
         <PanTo target={me} />
-        {withCoords.map((p) => (
-          <Marker
-            key={p.id}
-            position={{ lat: p.lat, lng: p.lng }}
-            icon={PIN_SVG(pinFill(p.category), p.pin)}
-            zIndex={p.id === activeId ? 1000 : undefined}
-            onClick={() => {
-              if (showCard) setActiveId(p.id);
-              onSelect?.(p.id);
-            }}
-          />
-        ))}
+        <ClusteredPins
+          places={withCoords}
+          activeId={activeId}
+          onPick={(id) => {
+            if (showCard) setActiveId(id);
+            onSelect?.(id);
+          }}
+        />
         {me && <Marker position={me} icon={ME_SVG} clickable={false} zIndex={2000} />}
       </Map>
 
@@ -179,6 +181,61 @@ function GuideMapInner({ places, onSelect, showCard, locate }: { places: MapPlac
       )}
     </>
   );
+}
+
+/**
+ * Numbered pins, grouped into a terracotta count bubble where they overlap.
+ * Tapping a bubble zooms in; tapping a pin opens its card.
+ */
+function ClusteredPins({ places, activeId, onPick }: { places: Located[]; activeId: string | null; onPick: (id: string) => void }) {
+  const map = useMap();
+  const pick = useRef(onPick);
+  const markersRef = useRef<google.maps.Marker[]>([]);
+  useEffect(() => {
+    pick.current = onPick;
+  }, [onPick]);
+  const key = JSON.stringify(places.map((p) => [p.id, p.lat, p.lng, p.pin, p.category]));
+
+  useEffect(() => {
+    if (!map) return;
+    const markers = places.map((p) => {
+      const m = new google.maps.Marker({
+        position: { lat: p.lat, lng: p.lng },
+        icon: { url: PIN_SVG(pinFill(p.category), p.pin), scaledSize: new google.maps.Size(34, 42), anchor: new google.maps.Point(17, 41) },
+        title: p.name,
+      });
+      m.set("placeId", p.id);
+      m.addListener("click", () => pick.current(p.id));
+      return m;
+    });
+    const clusterer = new MarkerClusterer({
+      map,
+      markers,
+      algorithmOptions: { maxZoom: 15 },
+      renderer: {
+        render: ({ count, position }) =>
+          new google.maps.Marker({
+            position,
+            icon: { url: CLUSTER_SVG(count), scaledSize: new google.maps.Size(40, 40), anchor: new google.maps.Point(20, 20) },
+            zIndex: 900 + count,
+          }),
+      },
+    });
+    markersRef.current = markers;
+    return () => {
+      clusterer.clearMarkers();
+      clusterer.setMap(null);
+      markers.forEach((m) => m.setMap(null));
+      markersRef.current = [];
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, key]);
+
+  useEffect(() => {
+    for (const m of markersRef.current) m.setZIndex(m.get("placeId") === activeId ? 1000 : undefined);
+  }, [activeId]);
+
+  return null;
 }
 
 function PanTo({ target }: { target: { lat: number; lng: number } | null }) {

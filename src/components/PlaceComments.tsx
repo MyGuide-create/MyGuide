@@ -8,6 +8,7 @@ import { addPlaceComment, deletePlaceComment, editPlaceComment } from "@/lib/act
 import type { PlaceComment } from "@/lib/db/schema";
 import { timeAgo } from "@/lib/utils";
 import { ChatIcon, EditIcon, TrashIcon } from "./Icons";
+import { ReportButton } from "./ReportButton";
 import { Avatar, Spinner, cx } from "./ui";
 
 interface Row {
@@ -106,6 +107,7 @@ export function PlaceComments({ placeId, initial, currentUser }: { placeId: stri
                   <div className="flex items-baseline gap-1.5">
                     <span className="text-[11.5px] font-semibold">{row.author.displayName}</span>
                     <span className="text-[10.5px] text-ink-faint">{timeAgo(row.comment.createdAt)}{row.comment.editedAt ? " · edited" : ""}</span>
+                    {currentUser && !isMine && !isPending && <ReportButton targetType="comment" targetId={row.comment.id} className="ml-auto text-[10.5px]" />}
                   </div>
                   {editing ? (
                     <div className="mt-1 flex items-center gap-1.5">

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useState, useTransition } from "react";
 import type { GuideDetail } from "@/lib/guides";
 import type { Place, PlaceTip } from "@/lib/db/schema";
-import { addPlace, deleteGuide, publishGuide, removePlace, reorderPlaces, replacePlace, updateGuideMeta, updatePlace } from "@/lib/actions/guides";
+import { addPlace, deleteGuide, markGuideVerified, publishGuide, removePlace, reorderPlaces, replacePlace, updateGuideMeta, updatePlace } from "@/lib/actions/guides";
 import { CATEGORIES } from "@/lib/places/categories";
 import type { PlaceSuggestion } from "@/lib/places/types";
 import { CoverPicker } from "./CoverPicker";
@@ -18,9 +18,10 @@ import { TipsEditor } from "./TipsEditor";
 import { PlaceLinksEditor } from "./PlaceLinksEditor";
 import { PlaceTile } from "./PlaceTile";
 import { Sheet } from "./ShareSheet";
+import { CollaboratorsEditor } from "./CollaboratorsEditor";
 import { Button, Input, Label, Spinner, Tag, Textarea, cx } from "./ui";
 
-export function GuideEditor({ detail, justForked, justCreated }: { detail: GuideDetail; justForked?: boolean; justCreated?: boolean }) {
+export function GuideEditor({ detail, justForked, justCreated, viewerId }: { detail: GuideDetail; justForked?: boolean; justCreated?: boolean; viewerId: string }) {
   const router = useRouter();
   const [guide, setGuide] = useState(detail.guide);
   const [places, setPlaces] = useState<Place[]>(detail.places);
@@ -158,6 +159,25 @@ export function GuideEditor({ detail, justForked, justCreated }: { detail: Guide
           </span>
           <input type="checkbox" checked={guide.allowFork} onChange={(e) => saveMeta({ allowFork: e.target.checked })} className="w-5 h-5 accent-terracotta" />
         </label>
+        {!isDraft && (
+          <div className="flex items-center justify-between rounded-2xl border border-line bg-paper px-4 py-3">
+            <span>
+              <span className="block text-[14px] font-medium">Still accurate?</span>
+              <span className="block text-[11.5px] text-ink-muted">
+                {guide.verifiedAt ? `Readers see “Checked ${new Date(guide.verifiedAt).toLocaleDateString("en-GB", { month: "short", year: "numeric" })}”.` : "Tell readers you've checked these places recently."}
+              </span>
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={pending}
+              onClick={() => start(async () => { const at = await markGuideVerified(guide.id); setGuide((g) => ({ ...g, verifiedAt: at })); })}
+            >
+              Checked today
+            </Button>
+          </div>
+        )}
+        <CollaboratorsEditor guideId={guide.id} initial={detail.collaborators} isOwner={detail.viewerIsOwner} viewerId={viewerId} ownerName={owner.displayName} />
       </div>
 
       {/* Places */}
@@ -198,10 +218,16 @@ export function GuideEditor({ detail, justForked, justCreated }: { detail: Guide
         <div className="pointer-events-auto w-full max-w-[480px] safe-bottom bg-paper/95 backdrop-blur border-t border-line px-4 py-3 flex items-center gap-2">
           <Link href={`/g/${guide.slug}`} className="text-[13px] font-medium text-ink-muted px-3 py-2">{isDraft ? "Preview" : "Done"}</Link>
           <div className="flex-1" />
-          <Button variant="ghost" size="sm" onClick={destroy} aria-label="Delete guide" className="text-ink-faint"><TrashIcon size={16} /></Button>
-          <Button onClick={() => setPublishOpen(true)} disabled={places.length === 0}>
-            {isDraft ? "Publish" : guide.visibility === "public" ? "Published · Public" : "Published · Private"}
-          </Button>
+          {detail.viewerIsOwner ? (
+            <>
+              <Button variant="ghost" size="sm" onClick={destroy} aria-label="Delete guide" className="text-ink-faint"><TrashIcon size={16} /></Button>
+              <Button onClick={() => setPublishOpen(true)} disabled={places.length === 0}>
+                {isDraft ? "Publish" : guide.visibility === "public" ? "Published · Public" : "Published · Private"}
+              </Button>
+            </>
+          ) : (
+            <span className="text-[12px] text-ink-muted">Changes save as you go</span>
+          )}
         </div>
       </div>
 

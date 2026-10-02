@@ -10,6 +10,8 @@ import { getDb } from "@/lib/db";
 import { guides, notifications, places, users } from "@/lib/db/schema";
 import { listSharedWithUser } from "@/lib/guides";
 import { timeAgo } from "@/lib/utils";
+import { PushToggle } from "@/components/PushToggle";
+import { pushPublicKey } from "@/lib/push";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Activity" };
@@ -44,6 +46,7 @@ export default async function NotificationsPage() {
     <AppShell>
       <TopBar title="Activity" avatarUser={toPublicUser(user)} />
       <main className="px-4 pt-3 pb-6 flex flex-col gap-3">
+        <PushToggle publicKey={pushPublicKey()} compact />
         {rows.length === 0 && (
           <EmptyState title="Nothing here yet" body="New guides and places from people you follow, guides shared with you, and new followers all land here." action={<LinkButton href="/" size="sm" variant="outline">Browse the feed</LinkButton>} />
         )}
@@ -97,6 +100,11 @@ export default async function NotificationsPage() {
                   )}
                   {n.type === "guide_shared" && !guide && <span className="text-ink-muted">A shared guide that has since been deleted.</span>}
                   {followerUpdate && !guide && <span className="text-ink-muted">A guide that&apos;s no longer available.</span>}
+                  {n.type === "collab_invite" && rawGuide && (
+                    <>
+                      {who} invited you to edit <span className="font-display text-[16px]">“{rawGuide.title}”</span> with them.
+                    </>
+                  )}
                 </p>
                 <div className="mt-1.5 flex items-center gap-3 text-[11.5px] text-ink-muted">
                   <span className="inline-flex items-center gap-1">
@@ -108,7 +116,8 @@ export default async function NotificationsPage() {
                     {n.type === "places_added" && <PinIcon size={12} />}
                     {timeAgo(n.createdAt)}
                   </span>
-                  {guide && n.type !== "place_comment" && n.type !== "places_added" && <Link href={`/g/${guide.slug}`} className="font-medium text-terracotta">Open guide →</Link>}
+                  {n.type === "collab_invite" && rawGuide && <Link href={`/g/${rawGuide.slug}/edit`} className="font-medium text-terracotta">Start editing →</Link>}
+                  {guide && n.type !== "place_comment" && n.type !== "places_added" && n.type !== "collab_invite" && <Link href={`/g/${guide.slug}`} className="font-medium text-terracotta">Open guide →</Link>}
                   {guide && n.type === "places_added" && (
                     <Link href={n.count === 1 && addedPlace ? `/g/${guide.slug}/p/${addedPlace.id}` : `/g/${guide.slug}`} className="font-medium text-terracotta">{n.count === 1 && addedPlace ? "See the place →" : "See what's new →"}</Link>
                   )}

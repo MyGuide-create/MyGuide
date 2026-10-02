@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { parsePlaceList } from "@/lib/ai";
 import { getCurrentUser } from "@/lib/auth";
 import { resolvePlaceByName, type PlaceResult } from "@/lib/places";
+import { cleanImportedList } from "@/lib/places/importText";
 
 export interface ParsedPlacesResponse {
   title: string;
@@ -19,7 +20,9 @@ export async function POST(req: Request) {
   const transcript = (body.transcript ?? "").trim();
   if (!transcript) return NextResponse.json({ error: "Nothing to parse." }, { status: 400 });
 
-  const parsed = await parsePlaceList(transcript.slice(0, 4000), body.cityHint);
+  // Pasted lists can contain WhatsApp chat prefixes, bullets, emojis and Google Maps links — tidy those first.
+  const cleaned = /https?:\/\/|\n/.test(transcript) ? await cleanImportedList(transcript) : transcript;
+  const parsed = await parsePlaceList(cleaned.slice(0, 4000), body.cityHint);
   const cityHint = parsed.city || body.cityHint;
   const places = await Promise.all(
     parsed.places.slice(0, 40).map(async (p) => ({

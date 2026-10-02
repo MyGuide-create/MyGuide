@@ -57,3 +57,27 @@ export function formatDuration(sec: number | null | undefined): string {
 export function appUrl(): string {
   return (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
 }
+
+/** "12–18 Oct 2026", "12 Oct – 3 Nov 2026", or "" when no dates. */
+export function formatTripDates(start: string | null, end: string | null): string {
+  if (!start && !end) return "";
+  const d = (s: string) => new Date(`${s}T12:00:00Z`);
+  const fmt = (x: Date, opts: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("en-GB", { ...opts, timeZone: "UTC" }).format(x);
+  if (start && !end) return `From ${fmt(d(start), { day: "numeric", month: "short", year: "numeric" })}`;
+  if (!start && end) return `Until ${fmt(d(end), { day: "numeric", month: "short", year: "numeric" })}`;
+  const a = d(start!);
+  const b = d(end!);
+  if (a.getUTCFullYear() === b.getUTCFullYear() && a.getUTCMonth() === b.getUTCMonth()) {
+    return `${a.getUTCDate()}–${fmt(b, { day: "numeric", month: "short", year: "numeric" })}`;
+  }
+  return `${fmt(a, { day: "numeric", month: "short" })} – ${fmt(b, { day: "numeric", month: "short", year: "numeric" })}`;
+}
+
+/** "Omar", "Omar and Lina", "Omar, Lina and 2 others". */
+export function namesSentence(names: string[], max = 2): string {
+  if (!names.length) return "";
+  if (names.length === 1) return names[0];
+  if (names.length <= max) return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+  const rest = names.length - max;
+  return `${names.slice(0, max).join(", ")} and ${rest} other${rest === 1 ? "" : "s"}`;
+}

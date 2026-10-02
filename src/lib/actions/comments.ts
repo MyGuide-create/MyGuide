@@ -5,8 +5,10 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "../auth";
 import { getDb } from "../db";
-import { notifications, placeComments, places } from "../db/schema";
+import { placeComments, places } from "../db/schema";
 import { canViewGuide, getGuideById } from "../guides";
+import { addNotifications } from "../notifications";
+import { hiddenUserIds } from "../blocks";
 import { newId } from "../utils";
 
 /** Leave a comment on a place inside a guide you can see (owner, approved follower, or explicit share). */
@@ -22,11 +24,12 @@ export async function addPlaceComment(placeId: string, body: string): Promise<vo
   const guide = await getGuideById(place.guideId);
   if (!guide) throw new Error("That guide no longer exists.");
   if (!(await canViewGuide(guide, user.id))) throw new Error("You don't have access to this guide.");
+  if ((await hiddenUserIds(user.id)).has(guide.ownerId)) throw new Error("You can't comment on this guide.");
 
   await db.insert(placeComments).values({ id: newId(), placeId, authorId: user.id, body: text, createdAt: new Date() });
 
   if (guide.ownerId !== user.id) {
-    await db.insert(notifications).values({
+    await addNotifications([{
       id: newId(),
       userId: guide.ownerId,
       type: "place_comment",
@@ -34,7 +37,7 @@ export async function addPlaceComment(placeId: string, body: string): Promise<vo
       guideId: guide.id,
       placeId,
       createdAt: new Date(),
-    });
+    }]);
   }
   revalidatePath(`/g/${guide.slug}`);
 }

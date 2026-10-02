@@ -4,7 +4,7 @@ import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getCurrentUser } from "../auth";
 import { getDb } from "../db";
-import { savedPlaces } from "../db/schema";
+import { placeReactions, savedPlaces } from "../db/schema";
 
 /** Save or unsave a place for the signed-in reader. Returns the new state. */
 export async function toggleSavedPlace(placeId: string): Promise<{ saved: boolean; signedIn: boolean }> {
@@ -20,4 +20,17 @@ export async function toggleSavedPlace(placeId: string): Promise<{ saved: boolea
   }
   revalidatePath("/saved");
   return { saved: !existing, signedIn: true };
+}
+
+/** Toggle "Been here" or "Loved it" on a place. */
+export async function toggleReaction(placeId: string, kind: "been" | "loved"): Promise<{ on: boolean; signedIn: boolean }> {
+  const user = await getCurrentUser();
+  if (!user) return { on: false, signedIn: false };
+  if (kind !== "been" && kind !== "loved") return { on: false, signedIn: true };
+  const db = await getDb();
+  const where = and(eq(placeReactions.userId, user.id), eq(placeReactions.placeId, placeId), eq(placeReactions.kind, kind));
+  const existing = await db.query.placeReactions.findFirst({ where });
+  if (existing) await db.delete(placeReactions).where(where);
+  else await db.insert(placeReactions).values({ userId: user.id, placeId, kind, createdAt: new Date() }).onConflictDoNothing();
+  return { on: !existing, signedIn: true };
 }

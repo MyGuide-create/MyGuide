@@ -13,9 +13,10 @@ import { track } from "@/lib/track";
 import { FollowButton } from "./FollowButton";
 import { GuideCover } from "./GuideCover";
 import { GuideMap } from "./GuideMap";
-import { EditIcon, ForkIcon, ListIcon, LockIcon, MapIcon, ShareIcon } from "./Icons";
+import { CheckIcon, EditIcon, ForkIcon, ListIcon, LockIcon, MapIcon, ShareIcon } from "./Icons";
 import { PlaceRow } from "./PlaceRow";
 import { ShareSheet } from "./ShareSheet";
+import { ReportButton } from "./ReportButton";
 import { Avatar, Button, Chip, LinkButton, Spinner, Tag, cx } from "./ui";
 
 export function GuideView({ detail, viewerId, viewer, shareUrl, shareKey }: { detail: GuideDetail; viewerId: string | null; viewer: PublicUser | null; shareUrl: string; shareKey?: string | null }) {
@@ -81,12 +82,28 @@ export function GuideView({ detail, viewerId, viewer, shareUrl, shareKey }: { de
           <span>{places.length} place{places.length === 1 ? "" : "s"}</span>
           <span>·</span>
           <span>{isDraft ? "Not published yet" : `Updated ${timeAgo(guide.updatedAt)}`}</span>
+          {!isDraft && guide.verifiedAt && (
+            <span className="inline-flex items-center gap-1 text-sage font-medium">
+              · <CheckIcon size={12} /> Checked {new Date(guide.verifiedAt).toLocaleDateString("en-GB", { month: "short", year: "numeric" })}
+            </span>
+          )}
         </div>
 
         <div className="mt-4 flex items-center gap-2.5">
           <Link href={`/u/${owner.username}`}><Avatar user={owner} size={36} /></Link>
-          <div className="flex-1 min-w-0 text-[13.5px] font-medium truncate">
+          <div className="flex-1 min-w-0 text-[13.5px] font-medium leading-snug">
             Guide by <Link href={`/u/${owner.username}`} className="hover:underline">{owner.displayName}</Link>
+            {detail.collaborators.length > 0 && (
+              <>
+                {" "}with{" "}
+                {detail.collaborators.map((c, i) => (
+                  <span key={c.id}>
+                    {i > 0 && (i === detail.collaborators.length - 1 ? " & " : ", ")}
+                    <Link href={`/u/${c.username}`} className="hover:underline">{c.displayName}</Link>
+                  </span>
+                ))}
+              </>
+            )}
           </div>
           {detail.viewerCanEdit ? (
             <LinkButton href={`/g/${guide.slug}/edit`} size="sm" variant="outline"><EditIcon size={14} /> Edit</LinkButton>
@@ -175,10 +192,16 @@ export function GuideView({ detail, viewerId, viewer, shareUrl, shareKey }: { de
                 </h2>
               )}
               {g.places.map((p) => (
-                <PlaceRow key={p.id} place={p} index={numberOf.get(p.id)} ownerId={guide.ownerId} guideSlug={guide.slug} noteAuthor={p.noteAuthorId ? noteAuthors[p.noteAuthorId] : null} flagged={flags[p.id]} comments={detail.placeComments[p.id] ?? []} currentUser={viewer} tips={detail.placeTips[p.id]} saved={saved.has(p.id)} shareKey={shareKey} expanded />
+                <PlaceRow key={p.id} place={p} index={numberOf.get(p.id)} ownerId={guide.ownerId} guideSlug={guide.slug} noteAuthor={p.noteAuthorId ? noteAuthors[p.noteAuthorId] : null} flagged={flags[p.id]} comments={detail.placeComments[p.id] ?? []} currentUser={viewer} tips={detail.placeTips[p.id]} saved={saved.has(p.id)} shareKey={shareKey} social={detail.placeSocial[p.id]} friends={detail.friendsWhoLike[p.id]} expanded />
               ))}
             </section>
           ))}
+        </div>
+      )}
+
+      {viewerId && !detail.viewerCanEdit && (
+        <div className="px-5 pb-6 flex justify-center">
+          <ReportButton targetType="guide" targetId={guide.id} label="Report this guide" />
         </div>
       )}
 
@@ -189,7 +212,7 @@ export function GuideView({ detail, viewerId, viewer, shareUrl, shareKey }: { de
           ownerName={owner.displayName}
           shareUrl={shareUrl}
           isPrivate={guide.visibility === "private"}
-          isOwner={detail.viewerCanEdit}
+          isOwner={detail.viewerIsOwner}
           sharedWith={detail.sharedWith}
           onClose={() => setSharing(false)}
         />

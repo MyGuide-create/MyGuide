@@ -32,6 +32,11 @@ export const users = sqliteTable("users", {
   accountType: text("account_type").notNull().default("personal"),
   /** "public" | "private" — private accounts require an approved follow request before their guides are visible. */
   profileVisibility: text("profile_visibility").notNull().default("public"),
+  /** Creator links shown on the profile. */
+  instagram: text("instagram"),
+  website: text("website"),
+  /** Set once the new-user welcome (people to follow) has been seen. */
+  onboardedAt: integer("onboarded_at", { mode: "timestamp_ms" }),
   createdAt: integer("created_at", { mode: "timestamp_ms" })
     .notNull()
     .default(sql`(unixepoch() * 1000)`),
@@ -65,6 +70,8 @@ export const guides = sqliteTable(
     /** Secret used in share links for private guides. */
     shareToken: text("share_token").notNull(),
     publishedAt: integer("published_at", { mode: "timestamp_ms" }),
+    /** Creator confirmed the guide is still accurate ("Checked Oct 2026"). */
+    verifiedAt: integer("verified_at", { mode: "timestamp_ms" }),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
     updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
   },
@@ -287,3 +294,106 @@ export type PlaceComment = typeof placeComments.$inferSelect;
 export type Notification = typeof notifications.$inferSelect;
 export type Media = typeof media.$inferSelect;
 export type UsageEvent = typeof events.$inferSelect;
+
+/** People the owner has invited to edit a guide with them. */
+export const guideCollaborators = sqliteTable(
+  "guide_collaborators",
+  {
+    guideId: text("guide_id")
+      .notNull()
+      .references(() => guides.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.guideId, t.userId] }), index("guide_collaborators_user_idx").on(t.userId)],
+);
+
+/** Reader reactions on a place: "been" (I've been here) and "loved" (loved it). */
+export const placeReactions = sqliteTable(
+  "place_reactions",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    placeId: text("place_id")
+      .notNull()
+      .references(() => places.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.placeId, t.kind] }), index("place_reactions_place_idx").on(t.placeId)],
+);
+
+/** One user blocking another: hides each other's content and stops follows/comments between them. */
+export const blocks = sqliteTable(
+  "blocks",
+  {
+    blockerId: text("blocker_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    blockedId: text("blocked_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.blockerId, t.blockedId] }), index("blocks_blocked_idx").on(t.blockedId)],
+);
+
+/** Content reports for moderation. targetType: "guide" | "user" | "comment". */
+export const reports = sqliteTable("reports", {
+  id: text("id").primaryKey(),
+  reporterId: text("reporter_id").references(() => users.id, { onDelete: "set null" }),
+  targetType: text("target_type").notNull(),
+  targetId: text("target_id").notNull(),
+  reason: text("reason").notNull(),
+  details: text("details"),
+  resolvedAt: integer("resolved_at", { mode: "timestamp_ms" }),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+});
+
+/** In-app feedback from pilot users. */
+export const feedback = sqliteTable("feedback", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").references(() => users.id, { onDelete: "set null" }),
+  message: text("message").notNull(),
+  page: text("page"),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+});
+
+/** Web Push subscriptions (one per browser/device). */
+export const pushSubscriptions = sqliteTable(
+  "push_subscriptions",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    endpoint: text("endpoint").notNull().unique(),
+    p256dh: text("p256dh").notNull(),
+    auth: text("auth").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [index("push_subscriptions_user_idx").on(t.userId)],
+);
+
+/** "I'm going to …" — a planned trip that gathers guides and favourites for a city. */
+export const trips = sqliteTable(
+  "trips",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    city: text("city").notNull(),
+    country: text("country").notNull().default(""),
+    startDate: text("start_date"),
+    endDate: text("end_date"),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [index("trips_user_idx").on(t.userId)],
+);
+
+export type Trip = typeof trips.$inferSelect;
+export type Report = typeof reports.$inferSelect;

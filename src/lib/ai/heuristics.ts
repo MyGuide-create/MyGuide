@@ -25,7 +25,8 @@ const LEAD_IN = /^(?:(?:i (?:want|would like|wanna|'d like) (?:to )?(?:add|inclu
 
 /** Split a spoken/typed list into individual place names. */
 export function heuristicParsePlaces(transcript: string, cityHint?: string): ParsedPlaceList {
-  let text = transcript.replace(/\s+/g, " ").trim();
+  // Keep line breaks: pasted lists are usually one place per line.
+  let text = transcript.replace(/[^\S\n]+/g, " ").replace(/\s*\n\s*/g, "\n").trim();
   text = text.replace(LEAD_IN, "");
   const detectedCity = findCity(cityHint) ?? detectCityInText(text);
 
@@ -33,7 +34,8 @@ export function heuristicParsePlaces(transcript: string, cityHint?: string): Par
     .split(/\s*(?:,|;|\n|\.\s|\band\b|\bthen\b|\balso\b)\s*/i)
     .map((p) => p.replace(FILLER, " ").replace(/\s+/g, " ").trim())
     .map((p) => p.replace(/^(?:the )?/i, "").replace(/[.!?]+$/, "").trim())
-    .filter((p) => p.length > 1 && !/^(?:in|at|near|to)\s/i.test(p));
+    .map((p) => p.replace(/^(?:you (?:have to|should|must) )?(?:try|check out|go to|visit|don't miss|must try)\s+/i, "").trim())
+    .filter((p) => p.length > 1 && !/^(?:in|at|near|to)\s/i.test(p) && !/^(?:these|this|them|those|it|here)$/i.test(p));
 
   const seen = new Set<string>();
   const places: ParsedPlaceList["places"] = [];

@@ -5,7 +5,7 @@ import { updateProfile, type ProfileState } from "@/lib/actions/social";
 import { PhotoPicker } from "./PhotoPicker";
 import { Avatar, Button, Input, Label, Spinner, Textarea } from "./ui";
 
-export function ProfileForm({ user }: { user: { username: string; displayName: string; bio: string | null; avatarMediaId: string | null } }) {
+export function ProfileForm({ user }: { user: { username: string; displayName: string; bio: string | null; avatarMediaId: string | null; instagram?: string | null; website?: string | null } }) {
   const [state, action, pending] = useActionState<ProfileState, FormData>(updateProfile, {});
   const [avatar, setAvatar] = useState(user.avatarMediaId);
   return (
@@ -22,6 +22,14 @@ export function ProfileForm({ user }: { user: { username: string; displayName: s
       <div>
         <Label>Bio</Label>
         <Textarea name="bio" rows={3} defaultValue={user.bio ?? ""} placeholder="Where you're from, where you keep going back to." maxLength={240} />
+      </div>
+      <div>
+        <Label>Instagram</Label>
+        <Input name="instagram" defaultValue={user.instagram ? `@${user.instagram}` : ""} placeholder="@yourhandle" autoCapitalize="none" autoCorrect="off" />
+      </div>
+      <div>
+        <Label>Website</Label>
+        <Input name="website" defaultValue={user.website ?? ""} placeholder="yoursite.com" inputMode="url" autoCapitalize="none" autoCorrect="off" />
       </div>
       {state.error && <p className="text-[13px] text-danger">{state.error}</p>}
       {state.ok && <p className="text-[13px] text-sage">Saved.</p>}

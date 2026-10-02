@@ -5,21 +5,33 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "../auth";
 import { getDb } from "../db";
-import { guideShares, guides, media, notifications, placeTips, places, users, type Guide, type Place, type PlaceTip } from "../db/schema";
-import { canViewGuide, getGuideById } from "../guides";
+import { guideCollaborators, guideShares, guides, media, notifications, placeTips, places, users, type Guide, type Place, type PlaceTip } from "../db/schema";
+import { canViewGuide, getGuideById, isCollaborator } from "../guides";
 import { notifyGuidePublished, notifyPlacesAdded } from "../notify";
 import { getPlacesProvider, isCategory, resolvePlaceByName, type PlaceResult } from "../places";
 import { findCity } from "../places/cities";
 import { getPlacePhotos } from "../places/google";
 import { claimUnsplashPhoto } from "../covers/unsplash";
 import { newId, newToken, slugify } from "../utils";
+import { addNotifications } from "../notifications";
 import { normaliseInstagram, normaliseReserve, normaliseWebsite, normaliseWhatsapp, type Normalised } from "@/lib/placeLinks";
 
+/** Owner or invited co-editor. Use for editing places, notes, tips and guide details. */
 async function requireOwner(guideId: string): Promise<{ guide: Guide; userId: string }> {
   const user = await getCurrentUser();
   if (!user) throw new Error("Please log in.");
   const guide = await getGuideById(guideId);
-  if (!guide || guide.ownerId !== user.id) throw new Error("You can only edit your own guides.");
+  if (!guide) throw new Error("That guide no longer exists.");
+  if (guide.ownerId !== user.id && !(await isCollaborator(guide.id, user.id))) throw new Error("You can only edit your own guides.");
+  return { guide, userId: user.id };
+}
+
+/** The guide's owner only: publishing, deleting, sharing and managing co-editors. */
+async function requireTrueOwner(guideId: string): Promise<{ guide: Guide; userId: string }> {
+  const user = await getCurrentUser();
+  if (!user) throw new Error("Please log in.");
+  const guide = await getGuideById(guideId);
+  if (!guide || guide.ownerId !== user.id) throw new Error("Only the guide's creator can do that.");
   return { guide, userId: user.id };
 }
 
@@ -200,11 +212,11 @@ export async function clearCover(guideId: string): Promise<void> {
 }
 
 export async function publishGuide(guideId: string, visibility: "public" | "private"): Promise<void> {
-  const { guide } = await requireOwner(guideId);
+  const { guide } = await requireTrueOwner(guideId);
   const db = await getDb();
   await db
     .update(guides)
-    .set({ visibility, publishedAt: guide.publishedAt ?? new Date(), updatedAt: new Date() })
+    .set({ visibility, publishedAt: guide.publishedAt ?? new Date(), verifiedAt: guide.verifiedAt ?? new Date(), updatedAt: new Date() })
     .where(eq(guides.id, guideId));
   // Tell followers the first time a guide goes public (re-publishing doesn't ping again).
   if (visibility === "public") {
@@ -215,7 +227,7 @@ export async function publishGuide(guideId: string, visibility: "public" | "priv
 }
 
 export async function deleteGuide(guideId: string): Promise<void> {
-  const { guide } = await requireOwner(guideId);
+  const { guide } = await requireTrueOwner(guideId);
   const db = await getDb();
   await db.delete(guides).where(eq(guides.id, guideId));
   revalidatePath("/");
@@ -450,7 +462,7 @@ export async function forkGuide(guideId: string, shareKey?: string | null): Prom
 
 /** Share a guide with a specific person: creates the share and a notification. */
 export async function shareGuideWithUser(guideId: string, username: string): Promise<{ ok: true; user: { username: string; displayName: string } } | { ok: false; error: string }> {
-  const { guide, userId } = await requireOwner(guideId);
+  const { guide, userId } = await requireTrueOwner(guideId);
   const db = await getDb();
   const target = await db.query.users.findFirst({ where: eq(users.username, username.toLowerCase().replace(/^@/, "")) });
   if (!target) return { ok: false, error: "No one with that username yet." };
@@ -460,14 +472,14 @@ export async function shareGuideWithUser(guideId: string, username: string): Pro
   if (!existing) {
     await db.insert(guideShares).values({ id: newId(), guideId, sharedById: userId, sharedWithId: target.id, createdAt: now });
   }
-  await db.insert(notifications).values({ id: newId(), userId: target.id, type: "guide_shared", actorId: userId, guideId, createdAt: now });
+  await addNotifications([{ id: newId(), userId: target.id, type: "guide_shared", actorId: userId, guideId, createdAt: now }]);
   revalidateGuide(guide.slug);
   revalidatePath("/notifications");
   return { ok: true, user: { username: target.username, displayName: target.displayName } };
 }
 
 export async function unshareGuideWithUser(guideId: string, targetUserId: string): Promise<void> {
-  const { guide } = await requireOwner(guideId);
+  const { guide } = await requireTrueOwner(guideId);
   const db = await getDb();
   await db.delete(guideShares).where(and(eq(guideShares.guideId, guideId), eq(guideShares.sharedWithId, targetUserId)));
   revalidateGuide(guide.slug);
@@ -488,3 +500,40 @@ export async function deleteMedia(mediaId: string): Promise<void> {
   await db.delete(media).where(and(eq(media.id, mediaId), eq(media.ownerId, user.id)));
 }
 
+
+
+/** Owner invites someone (by username) to edit the guide with them. */
+export async function addCollaborator(guideId: string, username: string): Promise<{ ok: true; user: { id: string; username: string; displayName: string; avatarMediaId: string | null } } | { ok: false; error: string }> {
+  const { guide, userId } = await requireTrueOwner(guideId);
+  const db = await getDb();
+  const target = await db.query.users.findFirst({ where: eq(users.username, username.replace(/^@/, "").toLowerCase()) });
+  if (!target) return { ok: false, error: "No one with that username." };
+  if (target.id === userId) return { ok: false, error: "You already own this guide." };
+  await db.insert(guideCollaborators).values({ guideId, userId: target.id, createdAt: new Date() }).onConflictDoNothing();
+  await addNotifications([{ id: newId(), userId: target.id, type: "collab_invite", actorId: userId, guideId, createdAt: new Date() }]);
+  revalidateGuide(guide.slug);
+  return { ok: true, user: { id: target.id, username: target.username, displayName: target.displayName, avatarMediaId: target.avatarMediaId } };
+}
+
+export async function removeCollaborator(guideId: string, collaboratorId: string): Promise<void> {
+  const user = await getCurrentUser();
+  if (!user) throw new Error("Please log in.");
+  const guide = await getGuideById(guideId);
+  if (!guide) return;
+  // The owner can remove anyone; a co-editor can remove themselves ("Leave").
+  if (guide.ownerId !== user.id && collaboratorId !== user.id) throw new Error("Only the guide's creator can do that.");
+  const db = await getDb();
+  await db.delete(guideCollaborators).where(and(eq(guideCollaborators.guideId, guideId), eq(guideCollaborators.userId, collaboratorId)));
+  revalidateGuide(guide.slug);
+}
+
+
+/** "Checked today": the creator (or a co-editor) confirms the guide is still accurate. */
+export async function markGuideVerified(guideId: string): Promise<Date> {
+  const { guide } = await requireOwner(guideId);
+  const db = await getDb();
+  const now = new Date();
+  await db.update(guides).set({ verifiedAt: now }).where(eq(guides.id, guideId));
+  revalidateGuide(guide.slug);
+  return now;
+}

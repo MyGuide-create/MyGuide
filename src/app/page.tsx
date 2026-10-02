@@ -53,6 +53,12 @@ export default async function HomePage({ searchParams }: PageProps<"/">) {
           <span className="flex-1">“Search a city, place or person…”</span>
           <span className="w-8 h-8 rounded-full bg-terracotta text-white flex items-center justify-center"><MicIcon size={16} /></span>
         </Link>
+        {user && (
+          <Link href="/trips" className="mt-2.5 flex items-center justify-between rounded-2xl bg-sage-tint/70 px-4 py-2.5 text-[13px]">
+            <span><b className="font-semibold">Going somewhere?</b> Plan a trip and we&apos;ll gather the guides.</span>
+            <span className="text-sage font-medium shrink-0 ml-2">Plan →</span>
+          </Link>
+        )}
       </header>
 
       <div className="px-5 flex gap-5 border-b border-line/70">
@@ -106,6 +112,12 @@ export default async function HomePage({ searchParams }: PageProps<"/">) {
             </div>
           </section>
         )}
+
+        {sp.deleted === "1" && <p className="rounded-2xl bg-sage-tint px-4 py-3 text-[13px]">Your account has been deleted. Thanks for trying MyGuide.</p>}
+
+        <p className="mt-4 text-center text-[12px] text-ink-faint">
+          Something broken or an idea? <Link href="/feedback?from=/" className="text-terracotta font-medium">Tell us</Link>
+        </p>
       </main>
     </AppShell>
   );

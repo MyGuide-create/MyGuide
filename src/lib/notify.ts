@@ -1,6 +1,7 @@
 import { and, eq, gt, inArray, isNull } from "drizzle-orm";
 import { getDb } from "./db";
 import { follows, notifications, type Guide } from "./db/schema";
+import { addNotifications } from "./notifications";
 import { newId } from "./utils";
 
 const BATCH_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -32,7 +33,7 @@ export async function notifyGuidePublished(guide: Guide): Promise<void> {
     const rows = ids
       .filter((id) => !done.has(id))
       .map((userId) => ({ id: newId(), userId, type: "guide_published", actorId: guide.ownerId, guideId: guide.id, createdAt: now }));
-    if (rows.length) await db.insert(notifications).values(rows);
+    if (rows.length) await addNotifications(rows);
   } catch (e) {
     console.warn("[notifyGuidePublished]", e);
   }
@@ -74,7 +75,7 @@ export async function notifyPlacesAdded(guide: Guide, placeId: string, n = 1): P
         fresh.push({ id: newId(), userId, type: "places_added", actorId: guide.ownerId, guideId: guide.id, placeId, count: n, createdAt: now });
       }
     }
-    if (fresh.length) await db.insert(notifications).values(fresh);
+    if (fresh.length) await addNotifications(fresh);
   } catch (e) {
     console.warn("[notifyPlacesAdded]", e);
   }

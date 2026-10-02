@@ -7,6 +7,9 @@ import { HeartIcon, LockIcon } from "@/components/Icons";
 import { Avatar, EmptyState, LinkButton } from "@/components/ui";
 import { getCurrentUser } from "@/lib/auth";
 import { getFollowStats, getUserByUsername, listGuidesByOwner } from "@/lib/guides";
+import { hiddenUserIds, viewerBlocked } from "@/lib/blocks";
+import { BlockButton } from "@/components/BlockButton";
+import { ReportButton } from "@/components/ReportButton";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +19,8 @@ export default async function ProfilePage({ params }: PageProps<"/u/[username]">
   if (!profile) notFound();
   const viewer = await getCurrentUser();
   const own = viewer?.id === profile.id;
+  const iBlocked = !!viewer && !own && (await viewerBlocked(viewer.id, profile.id));
+  const hiddenFromMe = !!viewer && !own && (await hiddenUserIds(viewer.id)).has(profile.id);
   const [cards, stats] = await Promise.all([listGuidesByOwner(profile.id, viewer?.id), getFollowStats(profile.id, viewer?.id)]);
   const published = cards.filter((c) => c.guide.publishedAt);
   const drafts = cards.filter((c) => !c.guide.publishedAt);
@@ -42,6 +47,16 @@ export default async function ProfilePage({ params }: PageProps<"/u/[username]">
           </div>
         </div>
         {profile.bio && <p className="mt-3 text-[13.5px] leading-relaxed italic">{profile.bio}</p>}
+        {(profile.instagram || profile.website) && (
+          <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1 text-[12.5px] font-medium">
+            {profile.instagram && (
+              <a href={`https://instagram.com/${profile.instagram}`} target="_blank" rel="noopener noreferrer" className="text-terracotta hover:underline">@{profile.instagram} on Instagram</a>
+            )}
+            {profile.website && (
+              <a href={profile.website} target="_blank" rel="noopener noreferrer" className="text-terracotta hover:underline">{profile.website.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "")}</a>
+            )}
+          </div>
+        )}
         <div className="mt-4">
           {own ? (
             <div className="flex gap-2">
@@ -49,13 +64,15 @@ export default async function ProfilePage({ params }: PageProps<"/u/[username]">
               <LinkButton href="/saved" size="sm" variant="outline"><HeartIcon size={14} /> Favourites</LinkButton>
             </div>
           ) : (
-            <FollowButton userId={profile.id} initial={stats.viewerRequested ? "pending" : stats.viewerFollows} next={`/u/${profile.username}`} size="md" />
+            !hiddenFromMe && <FollowButton userId={profile.id} initial={stats.viewerRequested ? "pending" : stats.viewerFollows} next={`/u/${profile.username}`} size="md" />
           )}
         </div>
       </div>
 
       <main className="px-4 mt-6 flex flex-col gap-4 pb-6">
-        {locked ? (
+        {hiddenFromMe ? (
+          <EmptyState title={iBlocked ? "You've blocked this person" : "Not available"} body={iBlocked ? "Unblock them to see their guides again." : "You can't see this person's guides."} />
+        ) : locked ? (
           <EmptyState
             title="This account is private"
             body={`Follow @${profile.username} to see their guides once they approve.`}
@@ -74,6 +91,12 @@ export default async function ProfilePage({ params }: PageProps<"/u/[username]">
             )}
             {published.map((c) => <GuideCard key={c.guide.id} data={c} showOwner={false} />)}
           </>
+        )}
+        {viewer && !own && (
+          <div className="mt-4 flex justify-center gap-5">
+            <BlockButton userId={profile.id} name={profile.displayName} initial={iBlocked} next={`/u/${profile.username}`} />
+            <ReportButton targetType="user" targetId={profile.id} />
+          </div>
         )}
       </main>
     </AppShell>

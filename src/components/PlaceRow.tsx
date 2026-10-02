@@ -10,6 +10,7 @@ import { neighbourhood } from "@/lib/places/neighbourhood";
 import { placeTimeZone } from "@/lib/places/hours";
 import { PlaceTile } from "./PlaceTile";
 import { trackAttrs } from "@/lib/track";
+import { namesSentence } from "@/lib/utils";
 import { cx } from "./ui";
 
 export function PlaceRow({
@@ -25,6 +26,8 @@ export function PlaceRow({
   tips,
   saved,
   shareKey,
+  social,
+  friends,
 }: {
   place: Place;
   index?: number;
@@ -38,6 +41,8 @@ export function PlaceRow({
   tips?: PlaceTip[];
   saved?: boolean;
   shareKey?: string | null;
+  social?: { been: number; loved: number; favourites: number };
+  friends?: PublicUser[];
 }) {
   const hours = place.hoursJson ? (JSON.parse(place.hoursJson) as string[]) : [];
   const carried = noteAuthor && noteAuthor.id !== ownerId;
@@ -69,6 +74,11 @@ export function PlaceRow({
             {carried && <span className="not-italic text-[11px] text-ink-faint"> — @{noteAuthor!.username}</span>}
           </p>
         )}
+        {(friends?.length ?? 0) > 0 ? (
+          <p className="mt-1 text-[11.5px] text-sage font-medium">♥ {namesSentence(friends!.map((u) => u.displayName.split(" ")[0]))} {friends!.length === 1 ? "likes" : "like"} this</p>
+        ) : social && social.loved + social.been > 0 ? (
+          <p className="mt-1 text-[11.5px] text-ink-faint">{[social.loved ? `${social.loved} loved it` : null, social.been ? `${social.been} been` : null].filter(Boolean).join(" · ")}</p>
+        ) : null}
         {tipCount > 0 && (
           <Link href={detailHref} className="mt-1.5 flex items-start gap-1.5 rounded-xl bg-terracotta-tint/70 px-2.5 py-1.5 text-[12px] leading-snug hover:bg-terracotta-tint">
             <SparkleIcon size={12} className="text-terracotta mt-[2px] shrink-0" />

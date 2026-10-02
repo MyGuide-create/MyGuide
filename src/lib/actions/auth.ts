@@ -43,7 +43,8 @@ export async function signUp(_prev: AuthState, formData: FormData): Promise<Auth
     createdAt: new Date(),
   });
   await createSession(id);
-  redirect(next);
+  // New people first see a short welcome with people to follow, then continue where they were going.
+  redirect(`/welcome${next && next !== "/" ? `?next=${encodeURIComponent(next)}` : ""}`);
 }
 
 export async function logIn(_prev: AuthState, formData: FormData): Promise<AuthState> {
