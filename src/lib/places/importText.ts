@@ -42,7 +42,30 @@ async function expand(url: string): Promise<string> {
   return current;
 }
 
+/**
+ * Google Takeout "Saved" lists are CSVs: Title,Note,URL,Tags,Comment.
+ * Keep just the place title from each row (quoted fields handled).
+ */
+function takeoutTitles(text: string): string | null {
+  const lines = text.split(/\r?\n/);
+  if (!/^\s*title\s*,\s*note\s*,\s*url/i.test(lines[0] ?? "")) return null;
+  const out: string[] = [];
+  for (const line of lines.slice(1)) {
+    if (!line.trim()) continue;
+    const m = line.match(/^\s*"((?:[^"]|"")*)"|^\s*([^,]*)/);
+    const title = (m?.[1] ?? m?.[2] ?? "").replace(/""/g, '"').trim();
+    // "Milk & Madu, Canggu" → "Milk & Madu in Canggu" so the list parser doesn't split it in two.
+    if (title) out.push(title.replace(/\s*,\s*/, " in ").replace(/,/g, " "));
+    else {
+      const url = line.match(URL_RE)?.[0];
+      if (url) out.push(url);
+    }
+  }
+  return out.join("\n");
+}
+
 export async function cleanImportedList(text: string): Promise<string> {
+  text = takeoutTitles(text) ?? text;
   const urls = [...new Set(text.match(URL_RE) ?? [])];
   const names = new Map<string, string>();
   await Promise.all(
