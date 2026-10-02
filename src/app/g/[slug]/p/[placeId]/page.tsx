@@ -18,6 +18,8 @@ import { getPlacesProvider } from "@/lib/places";
 import { displayPhone, telHref } from "@/lib/phone";
 import { trackAttrs } from "@/lib/track";
 import { ReactionButtons } from "@/components/ReactionButtons";
+import { AddToGuideButton } from "@/components/AddToGuideButton";
+import { isReusable, reuseTargets } from "@/lib/reuse";
 import { namesSentence } from "@/lib/utils";
 import { instagramHref, websiteLabel, whatsappHref } from "@/lib/placeLinks";
 
@@ -71,6 +73,8 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
   const next = pos >= 0 && pos < ordered.length - 1 ? ordered[pos + 1] : null;
   const keyQuery = key ? `?key=${key}` : "";
   const placeHref = (id: string) => `/g/${slug}/p/${id}${keyQuery}`;
+  const canReuse = !detail.viewerCanEdit && isReusable(guide);
+  const targets = canReuse && user ? await reuseTargets(user.id, place.city || guide.city) : null;
   const noteAuthor = place.noteAuthorId && place.noteAuthorId !== detail.owner.id ? detail.noteAuthors[place.noteAuthorId] : null;
 
   return (
@@ -122,6 +126,16 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
                 counts={detail.placeSocial[place.id] ?? { been: 0, loved: 0 }}
                 signedIn={!!user}
               />
+              {canReuse && (
+                <AddToGuideButton
+                  placeId={place.id}
+                  signedIn={!!user}
+                  signupHref={`/signup?why=fork&next=${encodeURIComponent(placeHref(place.id))}`}
+                  targets={targets}
+                  notesShared={guide.allowFork}
+                  className="mt-2.5"
+                />
+              )}
             </div>
           )}
           {detail.viewerCanEdit && ((detail.placeSocial[place.id]?.been ?? 0) + (detail.placeSocial[place.id]?.loved ?? 0) + (detail.placeSocial[place.id]?.favourites ?? 0)) > 0 && (

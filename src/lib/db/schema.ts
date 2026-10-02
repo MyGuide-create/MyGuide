@@ -218,7 +218,7 @@ export const notifications = sqliteTable(
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    /** "guide_shared" | "new_follower" | "follow_request" | "follow_accepted" | "place_comment" | "guide_published" | "places_added" */
+    /** "guide_shared" | "new_follower" | "follow_request" | "follow_accepted" | "place_comment" | "guide_published" | "places_added" | "guide_used" */
     type: text("type").notNull(),
     actorId: text("actor_id").references(() => users.id, { onDelete: "cascade" }),
     guideId: text("guide_id").references(() => guides.id, { onDelete: "cascade" }),
@@ -405,6 +405,8 @@ export const trips = sqliteTable(
     country: text("country").notNull().default(""),
     startDate: text("start_date"),
     endDate: text("end_date"),
+    /** The private guide this trip's places were combined into ("My Lisbon trip"). */
+    guideId: text("guide_id").references(() => guides.id, { onDelete: "set null" }),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   },
   (t) => [index("trips_user_idx").on(t.userId)],

@@ -65,6 +65,11 @@ export async function addNotifications(rows: NewNotification[]): Promise<void> {
             body = g ? `to ${g.title}` : "";
             if (g) url = n === 1 && p ? `/g/${g.slug}/p/${p.id}` : `/g/${g.slug}`;
             break;
+          case "guide_used":
+            title = `${who} used ${n} ${n === 1 ? "place" : "places"} from your guide`;
+            body = g ? `${g.title} — for their own trip guide` : "";
+            if (g) url = `/g/${g.slug}`;
+            break;
           case "collab_invite":
             title = `${who} invited you to edit a guide`;
             body = g?.title ?? "";

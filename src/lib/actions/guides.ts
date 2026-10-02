@@ -14,6 +14,7 @@ import { getPlacePhotos } from "../places/google";
 import { claimUnsplashPhoto } from "../covers/unsplash";
 import { newId, newToken, slugify } from "../utils";
 import { addNotifications } from "../notifications";
+import { notifyGuideUsed } from "../reuse";
 import { normaliseInstagram, normaliseReserve, normaliseWebsite, normaliseWhatsapp, type Normalised } from "@/lib/placeLinks";
 
 /** Owner or invited co-editor. Use for editing places, notes, tips and guide details. */
@@ -456,6 +457,7 @@ export async function forkGuide(guideId: string, shareKey?: string | null): Prom
       })),
     );
   }
+  await notifyGuideUsed(source, user.id, sourcePlaces.length);
   revalidatePath("/me");
   return slug;
 }

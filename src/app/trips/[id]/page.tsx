@@ -8,10 +8,12 @@ import { EmptyState, LinkButton } from "@/components/ui";
 import { deleteTrip } from "@/lib/actions/trips";
 import { requireUser, toPublicUser } from "@/lib/auth";
 import { getDb } from "@/lib/db";
-import { trips } from "@/lib/db/schema";
+import { guides, places, trips } from "@/lib/db/schema";
 import { planTrip } from "@/lib/guides";
 import { neighbourhood } from "@/lib/places/neighbourhood";
 import { formatTripDates } from "@/lib/utils";
+import { isReusable } from "@/lib/reuse";
+import { ForkIcon } from "@/components/Icons";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Trip" };
@@ -26,6 +28,9 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
   const dates = formatTripDates(trip.startDate, trip.endDate);
   const nothing = !plan.savedGuides.length && !plan.favourites.length && !plan.fromFollowing.length && !plan.more.length;
   const remove = deleteTrip.bind(null, trip.id);
+  const tripGuide = trip.guideId ? await db.query.guides.findFirst({ where: eq(guides.id, trip.guideId) }) : undefined;
+  const tripGuideCount = tripGuide ? (await db.select({ id: places.id }).from(places).where(eq(places.guideId, tripGuide.id))).length : 0;
+  const combinable = [...plan.savedGuides, ...plan.fromFollowing, ...plan.more].filter((c) => isReusable(c.guide) && c.guide.id !== trip.guideId).length;
 
   return (
     <AppShell>
@@ -35,6 +40,27 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
           <h1 className="font-display text-[34px] leading-none">{trip.city}</h1>
           <p className="mt-1.5 text-[13px] text-ink-muted">{[trip.country, dates].filter(Boolean).join(" · ") || "Everything for your trip, in one place"}</p>
         </div>
+
+        {tripGuide && (
+          <Link href={`/g/${tripGuide.slug}`} className="flex items-center gap-3 rounded-2xl border border-terracotta-soft bg-terracotta-tint/50 px-4 py-3.5 hover:border-terracotta">
+            <span className="flex-1 min-w-0">
+              <span className="block text-[11px] font-semibold uppercase tracking-[0.08em] text-terracotta-deep">Your trip guide</span>
+              <span className="block font-display text-[22px] leading-tight truncate">{tripGuide.title}</span>
+              <span className="block text-[12px] text-ink-muted">{tripGuideCount} {tripGuideCount === 1 ? "place" : "places"} · {tripGuide.publishedAt && tripGuide.visibility === "public" ? "published" : "private until you publish"}</span>
+            </span>
+            <span className="text-terracotta text-[13px] font-medium shrink-0">Open →</span>
+          </Link>
+        )}
+
+        {combinable > 0 && (
+          <Link href={`/trips/${trip.id}/combine`} className="flex items-center gap-3 rounded-2xl border border-line bg-paper px-4 py-3.5 hover:border-terracotta-soft">
+            <span className="w-10 h-10 rounded-full bg-cream-deep flex items-center justify-center shrink-0 text-terracotta"><ForkIcon size={18} /></span>
+            <span className="flex-1 min-w-0">
+              <span className="block text-[14.5px] font-semibold">{tripGuide ? "Add places from more guides" : "Combine guides into your own"}</span>
+              <span className="block text-[12px] text-ink-muted">Pick a few {trip.city} guides, keep the places you want, and get one guide for your trip.</span>
+            </span>
+          </Link>
+        )}
 
         {nothing && (
           <EmptyState

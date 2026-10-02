@@ -120,7 +120,7 @@ export function GuideView({ detail, viewerId, viewer, shareUrl, shareKey }: { de
               <Tag tone="sage"><ForkIcon size={11} /> based on @{forkedFrom.username}&apos;s guide</Tag>
             </Link>
           )}
-          {!guide.allowFork && <Tag>Forking off</Tag>}
+          {!guide.allowFork && <Tag>Notes not for reuse</Tag>}
         </div>
 
         {guide.description && <p className="mt-3.5 text-[13.5px] leading-[1.5] italic">{guide.description}</p>}

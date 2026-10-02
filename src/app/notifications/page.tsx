@@ -100,6 +100,11 @@ export default async function NotificationsPage() {
                   )}
                   {n.type === "guide_shared" && !guide && <span className="text-ink-muted">A shared guide that has since been deleted.</span>}
                   {followerUpdate && !guide && <span className="text-ink-muted">A guide that&apos;s no longer available.</span>}
+                  {n.type === "guide_used" && rawGuide && (
+                    <>
+                      {who} used {n.count} {n.count === 1 ? "place" : "places"} from <span className="font-display text-[16px]">“{rawGuide.title}”</span> in their own guide, with your notes credited.
+                    </>
+                  )}
                   {n.type === "collab_invite" && rawGuide && (
                     <>
                       {who} invited you to edit <span className="font-display text-[16px]">“{rawGuide.title}”</span> with them.
@@ -114,14 +119,16 @@ export default async function NotificationsPage() {
                     {n.type === "place_comment" && <ChatIcon size={12} />}
                     {n.type === "guide_published" && <PlusIcon size={12} />}
                     {n.type === "places_added" && <PinIcon size={12} />}
+                    {n.type === "guide_used" && <ForkIcon size={12} />}
                     {timeAgo(n.createdAt)}
                   </span>
                   {n.type === "collab_invite" && rawGuide && <Link href={`/g/${rawGuide.slug}/edit`} className="font-medium text-terracotta">Start editing →</Link>}
-                  {guide && n.type !== "place_comment" && n.type !== "places_added" && n.type !== "collab_invite" && <Link href={`/g/${guide.slug}`} className="font-medium text-terracotta">Open guide →</Link>}
+                  {guide && n.type !== "place_comment" && n.type !== "places_added" && n.type !== "collab_invite" && n.type !== "guide_used" && <Link href={`/g/${guide.slug}`} className="font-medium text-terracotta">Open guide →</Link>}
                   {guide && n.type === "places_added" && (
                     <Link href={n.count === 1 && addedPlace ? `/g/${guide.slug}/p/${addedPlace.id}` : `/g/${guide.slug}`} className="font-medium text-terracotta">{n.count === 1 && addedPlace ? "See the place →" : "See what's new →"}</Link>
                   )}
                   {guide && n.type === "place_comment" && <Link href={`/g/${guide.slug}${n.placeId ? `#place-${n.placeId}` : ""}`} className="font-medium text-terracotta">Open guide →</Link>}
+                  {n.type === "guide_used" && actor && <Link href={`/u/${actor.username}`} className="font-medium text-terracotta">View profile →</Link>}
                   {(n.type === "new_follower" || n.type === "follow_accepted") && actor && <Link href={`/u/${actor.username}`} className="font-medium text-terracotta">View profile →</Link>}
                 </div>
                 {n.type === "follow_request" && actor && (

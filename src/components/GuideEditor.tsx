@@ -154,8 +154,12 @@ export function GuideEditor({ detail, justForked, justCreated, viewerId }: { det
         </div>
         <label className="flex items-center justify-between rounded-2xl border border-line bg-paper px-4 py-3">
           <span>
-            <span className="block text-[14px] font-medium">Let others use this guide</span>
-            <span className="block text-[11.5px] text-ink-muted">They get their own private copy to edit. Your notes stay credited to you.</span>
+            <span className="block text-[14px] font-medium">Let others reuse my notes and photos</span>
+            <span className="block text-[11.5px] text-ink-muted">
+              {guide.allowFork
+                ? "People can copy this guide or add your places to their own trip guides, with your notes credited to you. You'll see it in Activity."
+                : "People can still add a place to their own guide, but only its name and location — your notes and photos stay here, and the guide can't be copied."}
+            </span>
           </span>
           <input type="checkbox" checked={guide.allowFork} onChange={(e) => saveMeta({ allowFork: e.target.checked })} className="w-5 h-5 accent-terracotta" />
         </label>
