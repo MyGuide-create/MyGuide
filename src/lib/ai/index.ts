@@ -156,3 +156,55 @@ export async function polishNote(note: string, placeName?: string): Promise<stri
     return heuristicPolishNote(note);
   }
 }
+
+const ScreenshotPlacesSchema = z.object({
+  listTitle: z.string(),
+  city: z.string(),
+  places: z.array(z.object({ name: z.string(), area: z.string() })),
+});
+
+export interface ScreenshotPlaces {
+  listTitle: string;
+  city: string;
+  places: Array<{ name: string; area: string }>;
+}
+
+/**
+ * Read place names off a screenshot (a Google Maps saved list, an Instagram post,
+ * a friend's notes…). Returns only places actually visible in the image.
+ * Throws "no_ai" when no API key is configured.
+ */
+export async function placesFromScreenshot(base64: string, mediaType: "image/jpeg" | "image/png" | "image/webp"): Promise<ScreenshotPlaces> {
+  if (!hasAnthropicKey()) throw new Error("no_ai");
+  const response = await getClient().messages.parse({
+    model: model(),
+    max_tokens: 2048,
+    output_config: { effort: "low", format: zodOutputFormat(ScreenshotPlacesSchema) },
+    system: [
+      "You read screenshots for MyGuide, a personal city guide app, and list the places (restaurants, cafés, bars, shops, hotels, beaches, attractions…) that appear in them.",
+      "Rules:",
+      "- Only places whose names are clearly visible in the image. Never guess, complete or add places.",
+      "- Copy each name exactly as shown (keep accents and capitalisation). Do not include ratings, prices, categories, distances or opening hours in the name.",
+      "- Skip anything marked 'Permanently closed'. Skip app UI text, buttons, ads and the list's own title.",
+      "- area: the neighbourhood or city shown for that place, or inferred from the list title (e.g. a list called 'London'); empty string if unknown.",
+      "- listTitle: the list or post title if one is visible, else empty. city: the main city these places are in, else empty.",
+      "- If the image contains no places, return an empty places array.",
+    ].join("\n"),
+    messages: [
+      {
+        role: "user",
+        content: [
+          { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } },
+          { type: "text", text: "List the places in this screenshot." },
+        ],
+      },
+    ],
+  });
+  const parsed = response.parsed_output;
+  if (!parsed) return { listTitle: "", city: "", places: [] };
+  return {
+    listTitle: parsed.listTitle.trim(),
+    city: parsed.city.trim(),
+    places: parsed.places.map((p) => ({ name: p.name.trim(), area: p.area.trim() })).filter((p) => p.name),
+  };
+}

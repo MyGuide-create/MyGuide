@@ -8,6 +8,7 @@ import { createGuide } from "@/lib/actions/guides";
 import type { ParsedPlacesResponse } from "@/app/api/ai/parse-places/route";
 import { CheckIcon, KeyboardIcon, ListIcon, MicIcon, PinIcon, StopIcon, XIcon } from "./Icons";
 import { PlaceSearch } from "./PlaceSearch";
+import { ScreenshotImport } from "./ScreenshotImport";
 import { Button, Input, Label, Spinner, Textarea, cx } from "./ui";
 
 type Stage = "talk" | "structuring" | "review" | "typed" | "paste";
@@ -114,10 +115,10 @@ export function VoiceCreate({ initialMode }: { initialMode: "voice" | "type" }) 
           >
             <span className="w-12 h-12 rounded-2xl bg-sage text-white flex items-center justify-center shrink-0"><ListIcon size={22} /></span>
             <span className="min-w-0">
-              <span className="block font-semibold text-[16px]">Paste a list</span>
-              <span className="block mt-0.5 text-[13px] text-ink-muted leading-snug">Turn a list you already have into a guide in seconds.</span>
+              <span className="block font-semibold text-[16px]">Import a list</span>
+              <span className="block mt-0.5 text-[13px] text-ink-muted leading-snug">Turn places you&apos;ve already saved into a guide in seconds.</span>
               <span className="mt-2 flex flex-wrap gap-1.5">
-                {["Google Maps links", "WhatsApp message", "Notes"].map((t) => (
+                {["Google Maps lists", "Screenshots", "WhatsApp", "Notes"].map((t) => (
                   <span key={t} className="rounded-full bg-sage-tint px-2.5 py-0.5 text-[11.5px] font-medium text-sage">{t}</span>
                 ))}
               </span>
@@ -144,15 +145,19 @@ export function VoiceCreate({ initialMode }: { initialMode: "voice" | "type" }) 
     return (
       <div className="px-6 pt-4 pb-10 flex flex-col gap-5">
         <div>
-          <h1 className="font-display text-[34px] leading-[1.05]">Import a list.</h1>
+          <h1 className="font-display text-[34px] leading-[1.05]">Import your places.</h1>
           <p className="mt-2 text-[13.5px] text-ink-muted leading-relaxed">
-            Paste anything with places in it — a list of names, Google Maps links, a WhatsApp message from a friend, your Notes. We&apos;ll find each place and build the guide.
+            Bring in places you&apos;ve already saved — screenshots of a Google Maps list, links, a WhatsApp message, your Notes. We&apos;ll find each place and build the guide.
           </p>
+        </div>
+        <ScreenshotImport onPlaces={(lines) => setPastedList((v) => [v.trim(), ...lines].filter(Boolean).join("\n"))} />
+        <div className="flex items-center gap-3 text-[12px] font-medium uppercase tracking-[0.08em] text-ink-faint">
+          <span className="h-px flex-1 bg-line" /> Or paste text or links <span className="h-px flex-1 bg-line" />
         </div>
         <div className="grid grid-cols-1 gap-2">
           {[
             { t: "Google Maps — one place", d: "Open the place → Share → Copy link. Paste one link per line." },
-            { t: "Google Maps — a whole saved list", d: "On a computer, open the list in Google Maps, select everything in the list panel (drag from the first place to the last), copy and paste it here. We keep the place names and skip ratings, prices and closed places." },
+            { t: "Google Maps — a whole saved list", d: "Easiest: use Add screenshots above. On a computer you can also select the whole list panel, copy and paste it here — we keep the names and skip ratings, prices and closed places." },
             { t: "WhatsApp", d: "Long-press the message → Copy. Dates, names, emojis and “try these” are cleaned up for you." },
             { t: "Notes or anywhere", d: "One place per line works best. Add the area if it helps: “Ichiran in Shinjuku”." },
           ].map((x) => (
@@ -180,7 +185,6 @@ export function VoiceCreate({ initialMode }: { initialMode: "voice" | "type" }) 
           value={pastedList}
           onChange={(e) => setPastedList(e.target.value)}
           rows={10}
-          autoFocus
           placeholder={"Tsuta ramen\nhttps://maps.app.goo.gl/…\n• Yanaka Coffee Ten 🙌\n[12/03, 10:15] Omar: try Ichiran in Shinjuku\n…"}
         />
         {error && <p className="text-[12.5px] text-danger">{error}</p>}
