@@ -12,18 +12,8 @@ export function TripForm({ defaultCity }: { defaultCity?: string }) {
         <Label>Where are you going?</Label>
         <Input name="city" defaultValue={defaultCity} placeholder="Lisbon, Bali, Tokyo…" required />
       </div>
-      <div className="grid grid-cols-2 gap-2">
-        <div>
-          <Label>From</Label>
-          <Input name="start" type="date" />
-        </div>
-        <div>
-          <Label>To</Label>
-          <Input name="end" type="date" />
-        </div>
-      </div>
       {state.error && <p className="text-[12.5px] text-danger">{state.error}</p>}
-      <Button type="submit" disabled={pending}>{pending ? <Spinner /> : "Plan my trip"}</Button>
+      <Button type="submit" disabled={pending}>{pending ? <Spinner /> : "Show me the guides"}</Button>
     </form>
   );
 }

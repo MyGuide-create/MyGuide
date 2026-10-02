@@ -33,7 +33,7 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
       <div className="px-4 pt-4 pb-8 flex flex-col gap-7">
         <div className="px-1">
           <h1 className="font-display text-[34px] leading-none">{trip.city}</h1>
-          <p className="mt-1.5 text-[13px] text-ink-muted">{[trip.country, dates].filter(Boolean).join(" · ") || "Your trip"}</p>
+          <p className="mt-1.5 text-[13px] text-ink-muted">{[trip.country, dates].filter(Boolean).join(" · ") || "Everything for your trip, in one place"}</p>
         </div>
 
         {nothing && (

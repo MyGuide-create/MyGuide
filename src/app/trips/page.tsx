@@ -28,13 +28,13 @@ export default async function TripsPage({ searchParams }: { searchParams: Promis
         </div>
         {mine.length > 0 && (
           <section>
-            <h2 className="px-1 text-[12px] font-medium uppercase tracking-[0.08em] text-ink-muted mb-2">Your trips</h2>
+            <h2 className="px-1 text-[12px] font-medium uppercase tracking-[0.08em] text-ink-muted mb-2">Cities you&apos;re planning</h2>
             <ul className="flex flex-col gap-2">
               {mine.map((t) => (
                 <li key={t.id}>
                   <Link href={`/trips/${t.id}`} className="flex items-center justify-between rounded-2xl border border-line/70 bg-paper px-4 py-3 hover:border-terracotta-soft">
                     <span className="font-display text-[20px]">{t.city}</span>
-                    <span className="text-[12px] text-ink-muted">{formatTripDates(t.startDate, t.endDate) || "No dates yet"}</span>
+                    {formatTripDates(t.startDate, t.endDate) && <span className="text-[12px] text-ink-muted">{formatTripDates(t.startDate, t.endDate)}</span>}
                   </Link>
                 </li>
               ))}
