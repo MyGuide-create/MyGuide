@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { useSpeech } from "@/hooks/useSpeech";
 import { createGuide } from "@/lib/actions/guides";
 import type { ParsedPlacesResponse } from "@/app/api/ai/parse-places/route";
-import { CheckIcon, KeyboardIcon, MicIcon, PinIcon, StopIcon, XIcon } from "./Icons";
+import { CheckIcon, KeyboardIcon, ListIcon, MicIcon, PinIcon, StopIcon, XIcon } from "./Icons";
 import { PlaceSearch } from "./PlaceSearch";
 import { Button, Input, Label, Spinner, Textarea, cx } from "./ui";
 
@@ -103,9 +103,37 @@ export function VoiceCreate({ initialMode }: { initialMode: "voice" | "type" }) 
         </div>
         {error && <p className="text-[12.5px] text-danger">{error}</p>}
         <Button size="lg" onClick={createTyped} disabled={creating}>{creating ? <Spinner /> : "Continue to add places"}</Button>
-        <div className="flex flex-col items-center gap-2">
-          <button type="button" onClick={() => { setStage("talk"); setError(null); }} className="text-[13px] text-ink-muted inline-flex items-center justify-center gap-1.5"><MicIcon size={14} /> Or say your places instead</button>
-          <button type="button" onClick={() => { setStage("paste"); setError(null); }} className="text-[13px] text-ink-muted inline-flex items-center justify-center gap-1.5"><PinIcon size={14} /> Or paste a list (Google Maps links, WhatsApp, Notes)</button>
+        <div className="mt-2 flex items-center gap-3 text-[12px] font-medium uppercase tracking-[0.08em] text-ink-faint">
+          <span className="h-px flex-1 bg-line" /> Or start faster <span className="h-px flex-1 bg-line" />
+        </div>
+        <div className="flex flex-col gap-3">
+          <button
+            type="button"
+            onClick={() => { setStage("paste"); setError(null); }}
+            className="text-left rounded-3xl border border-line bg-paper p-4 flex gap-4 items-start hover:border-terracotta-soft active:scale-[0.99] transition-transform"
+          >
+            <span className="w-12 h-12 rounded-2xl bg-sage text-white flex items-center justify-center shrink-0"><ListIcon size={22} /></span>
+            <span className="min-w-0">
+              <span className="block font-semibold text-[16px]">Paste a list</span>
+              <span className="block mt-0.5 text-[13px] text-ink-muted leading-snug">Turn a list you already have into a guide in seconds.</span>
+              <span className="mt-2 flex flex-wrap gap-1.5">
+                {["Google Maps links", "WhatsApp message", "Notes"].map((t) => (
+                  <span key={t} className="rounded-full bg-sage-tint px-2.5 py-0.5 text-[11.5px] font-medium text-sage">{t}</span>
+                ))}
+              </span>
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => { setStage("talk"); setError(null); }}
+            className="text-left rounded-3xl border border-line bg-paper p-4 flex gap-4 items-start hover:border-terracotta-soft active:scale-[0.99] transition-transform"
+          >
+            <span className="w-12 h-12 rounded-2xl bg-terracotta text-white flex items-center justify-center shrink-0"><MicIcon size={22} /></span>
+            <span className="min-w-0">
+              <span className="block font-semibold text-[16px]">Say your places</span>
+              <span className="block mt-0.5 text-[13px] text-ink-muted leading-snug">Just talk — &ldquo;Shelter for dinner, Ettore for gelato, Times Beach for sunset&rdquo; — and we&apos;ll build it.</span>
+            </span>
+          </button>
         </div>
       </div>
     );
@@ -120,10 +148,33 @@ export function VoiceCreate({ initialMode }: { initialMode: "voice" | "type" }) 
           <p className="mt-2 text-[13.5px] text-ink-muted leading-relaxed">
             Paste anything with places in it — a list of names, Google Maps links, a WhatsApp message from a friend, your Notes. We&apos;ll find each place and build the guide.
           </p>
-          <p className="mt-2 text-[12px] text-ink-faint leading-relaxed">
-            From Google Maps: open a place, tap Share → Copy link, and paste the links here (one per line). Chat timestamps, emojis and bullet points are cleaned up for you.
-          </p>
         </div>
+        <div className="grid grid-cols-1 gap-2">
+          {[
+            { t: "Google Maps", d: "Open a place → Share → Copy link. Paste one link per line. (A whole saved list can't be read — paste its place names instead.)" },
+            { t: "WhatsApp", d: "Long-press the message → Copy. Dates, names, emojis and “try these” are cleaned up for you." },
+            { t: "Notes or anywhere", d: "One place per line works best. Add the area if it helps: “Ichiran in Shinjuku”." },
+          ].map((x) => (
+            <div key={x.t} className="rounded-2xl border border-line/70 bg-paper px-3.5 py-2.5">
+              <div className="text-[13px] font-semibold">{x.t}</div>
+              <div className="text-[12px] text-ink-muted leading-snug">{x.d}</div>
+            </div>
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={async () => {
+            try {
+              const clip = await navigator.clipboard.readText();
+              if (clip.trim()) setPastedList((v) => (v.trim() ? `${v.trim()}\n${clip}` : clip));
+            } catch {
+              setError("Couldn't read your clipboard — long-press the box below and choose Paste.");
+            }
+          }}
+          className="rounded-2xl border-2 border-dashed border-sage/60 bg-sage-tint/50 px-4 py-3 text-[14px] font-semibold text-sage"
+        >
+          Paste what I copied
+        </button>
         <Textarea
           value={pastedList}
           onChange={(e) => setPastedList(e.target.value)}
