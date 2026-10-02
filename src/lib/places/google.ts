@@ -2,6 +2,7 @@ import { categoryFromGoogleTypes } from "./categories";
 import { findCity } from "./cities";
 import { haversineMeters } from "./geo";
 import type { PlaceResult, PlaceSuggestion, PlacesProvider } from "./types";
+import { splitGoogleWebsite } from "../placeLinks";
 
 const BASE = "https://places.googleapis.com/v1";
 const FIELDS = [
@@ -59,7 +60,7 @@ function toResult(p: GooglePlace): PlaceResult {
     photoUrl: photoUrls[0] ?? null,
     photoUrls,
     phone: p.internationalPhoneNumber ?? p.nationalPhoneNumber ?? null,
-    website: p.websiteUri ?? null,
+    ...splitGoogleWebsite(p.websiteUri),
     hours: p.regularOpeningHours?.weekdayDescriptions ?? null,
     businessStatus:
       status === "OPERATIONAL" || status === "CLOSED_TEMPORARILY" || status === "CLOSED_PERMANENTLY" ? status : null,

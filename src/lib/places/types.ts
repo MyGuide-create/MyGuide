@@ -16,6 +16,8 @@ export interface PlaceResult {
   phone: string | null;
   /** Venue website, when Google has one. */
   website: string | null;
+  /** Instagram handle, when Google lists an Instagram page as the website. */
+  instagram: string | null;
   /** Weekday descriptions, e.g. "Monday: 11:00 AM – 9:00 PM". */
   hours: string[] | null;
   businessStatus: "OPERATIONAL" | "CLOSED_TEMPORARILY" | "CLOSED_PERMANENTLY" | null;

@@ -110,6 +110,7 @@ function placeValues(guideId: string, position: number, fallbackName: string, r:
     photoUrl: r?.photoUrl ?? null,
     phone: r?.phone ?? null,
     website: r?.website ?? null,
+    instagram: r?.instagram ?? null,
     hoursJson: r?.hours ? JSON.stringify(r.hours) : null,
     googlePlaceId: r?.source === "google" ? r.providerId : r?.providerId ?? null,
     businessStatus: r?.businessStatus ?? null,
@@ -268,6 +269,8 @@ export async function replacePlace(guideId: string, placeId: string, providerId:
       photoUrl: resolved.photoUrl,
       phone: resolved.phone,
       website: resolved.website,
+      // Keep a handle the creator typed; only fill it from Google when empty.
+      instagram: sql`coalesce(${places.instagram}, ${resolved.instagram})`,
       hoursJson: resolved.hours ? JSON.stringify(resolved.hours) : null,
       googlePlaceId: resolved.providerId,
       businessStatus: resolved.businessStatus,

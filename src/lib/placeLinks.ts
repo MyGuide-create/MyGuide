@@ -21,10 +21,41 @@ function asUrl(raw: string): URL | null {
   }
 }
 
+/** Marketing/analytics query params that add nothing for a reader (utm_*, gclid, fbclid, Instagram share ids…). */
+const TRACKING_PARAM = /^(utm_.*|gclid|gbraid|wbraid|fbclid|igsh|igshid|mc_cid|mc_eid|_ga|_gl|y_source)$/i;
+
+/** Drops tracking params; leaves the rest of the URL as it was. */
+export function stripTracking(url: string): string {
+  try {
+    const u = new URL(url);
+    for (const k of [...u.searchParams.keys()]) if (TRACKING_PARAM.test(k)) u.searchParams.delete(k);
+    return u.toString().replace(/\?$/, "");
+  } catch {
+    return url;
+  }
+}
+
+const isInstagramHost = (host: string) => /(^|\.)(instagram\.com|instagr\.am)$/i.test(host);
+
+/**
+ * Google often lists a venue's Instagram page as its "website" (common in Dubai).
+ * Split that into the Instagram field, and tidy real websites.
+ */
+export function splitGoogleWebsite(raw: string | null | undefined): { website: string | null; instagram: string | null } {
+  if (!raw?.trim()) return { website: null, instagram: null };
+  const u = asUrl(raw);
+  if (!u) return { website: null, instagram: null };
+  if (isInstagramHost(u.hostname)) {
+    const ig = normaliseInstagram(u.toString());
+    return { website: null, instagram: ig.ok ? ig.value : null };
+  }
+  return { website: stripTracking(u.toString()), instagram: null };
+}
+
 export function normaliseWebsite(raw: string | null | undefined): Normalised {
   if (!raw?.trim()) return { ok: true, value: null };
   const u = asUrl(raw);
-  return u ? { ok: true, value: u.toString() } : { ok: false, error: "That doesn't look like a web address." };
+  return u ? { ok: true, value: stripTracking(u.toString()) } : { ok: false, error: "That doesn't look like a web address." };
 }
 
 export function normaliseReserve(raw: string | null | undefined): Normalised {

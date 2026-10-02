@@ -124,6 +124,7 @@ export async function saveRecordedPlace(input: RecordPlaceInput): Promise<{ guid
     photoMediaId: input.photoMediaIds[0] ?? null,
     phone: resolved?.phone ?? null,
     website: resolved?.website ?? null,
+    instagram: resolved?.instagram ?? null,
     hoursJson: resolved?.hours ? JSON.stringify(resolved.hours) : null,
     googlePlaceId: resolved?.source === "google" ? resolved.providerId : (resolved?.providerId ?? null),
     businessStatus: resolved?.businessStatus ?? null,
