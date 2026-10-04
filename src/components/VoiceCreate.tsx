@@ -29,7 +29,7 @@ type DraftPlace = ParsedPlacesResponse["places"][number] & {
 /** Google Maps list places per /api/import/match-places request, and requests in flight at once. */
 const MATCH_BATCH = 20;
 const MATCH_PARALLEL = 2;
-const SINGLE_PLACE_MSG = "This looks like a single place, not a list. Paste it in the box above instead.";
+const SINGLE_PLACE_MSG = "This looks like a single place, not a list. Paste it in the box below instead.";
 
 /**
  * Create a Guide by voice: name the places you want in one go, we structure
