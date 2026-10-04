@@ -115,7 +115,7 @@ export const places = sqliteTable(
     whatsapp: text("whatsapp"),
     /** Reservation / booking link (creator-entered; later swappable for a partner or venue-tracked link). */
     reserveUrl: text("reserve_url"),
-    /** Creator-authored: "What makes it special", shown on the place detail page. Expert tips are a separate table (many per place). */
+    /** Deprecated (migration 0013): merged into `note` ("Description - What Makes It Special"). Always null now; kept to avoid a table rebuild. */
     special: text("special"),
     note: text("note").notNull().default(""),
     noteClipMediaId: text("note_clip_media_id"),

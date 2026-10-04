@@ -129,7 +129,7 @@ export async function saveRecordedPlace(input: RecordPlaceInput): Promise<{ guid
     googlePlaceId: resolved?.source === "google" ? resolved.providerId : (resolved?.providerId ?? null),
     businessStatus: resolved?.businessStatus ?? null,
     note: liked,
-    special: liked || null,
+    special: null,
     noteAuthorId: user.id,
     createdAt: now,
   });

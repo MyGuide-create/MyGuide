@@ -209,18 +209,11 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
 
         {place.note && (
           <div>
-            <p className="text-[12px] font-medium uppercase tracking-[0.08em] text-ink-muted mb-1.5">From the guide</p>
+            <p className="text-[12px] font-medium uppercase tracking-[0.08em] text-ink-muted mb-1.5">Description - What Makes It Special</p>
             <p className="text-[14px] italic leading-relaxed">
               {place.note}
               {noteAuthor && <span className="not-italic text-[11.5px] text-ink-faint"> — @{noteAuthor.username}</span>}
             </p>
-          </div>
-        )}
-
-        {place.special && (
-          <div>
-            <p className="text-[12px] font-medium uppercase tracking-[0.08em] text-ink-muted mb-1.5">What makes it special</p>
-            <p className="text-[14px] leading-relaxed">{place.special}</p>
           </div>
         )}
 
@@ -242,8 +235,8 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
           )
         )}
 
-        {detail.viewerCanEdit && !place.special && (
-          <LinkButton href={`/g/${slug}/edit#place-edit-${place.id}`} variant="outline" size="sm" className="self-start">Add “what makes it special”</LinkButton>
+        {detail.viewerCanEdit && !place.note && (
+          <LinkButton href={`/g/${slug}/edit#place-edit-${place.id}`} variant="outline" size="sm" className="self-start">Add a description – what makes it special</LinkButton>
         )}
 
         <div>

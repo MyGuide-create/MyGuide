@@ -208,8 +208,8 @@ export function RecordFlow({ guides }: { guides: GuideOption[] }) {
 
           <div className="flex flex-col gap-5 px-5 pt-5">
             <div>
-              <label className="block text-[12px] font-medium uppercase tracking-[0.02em] text-ink-muted mb-1.5">What makes it special?</label>
-              <Textarea rows={3} value={special} onChange={(e) => setSpecial(e.target.value)} placeholder="The view, the service, that one dish…" />
+              <label className="block text-[12px] font-medium uppercase tracking-[0.02em] text-ink-muted mb-1.5">Description - What Makes It Special</label>
+              <Textarea rows={3} value={special} onChange={(e) => setSpecial(e.target.value)} placeholder="What it is, and what makes it special — the view, the service, that one dish…" />
             </div>
             <div>
               <label className="block text-[12px] font-medium uppercase tracking-[0.02em] text-ink-muted mb-1.5">Expert tips</label>

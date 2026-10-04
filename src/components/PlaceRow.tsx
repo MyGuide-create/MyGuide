@@ -50,7 +50,7 @@ export function PlaceRow({
   const commentCount = comments?.length ?? 0;
   const area = neighbourhood(place.address, place.city, place.country);
   const tipCount = tips?.length ?? 0;
-  const extras = tipCount + (place.special ? 1 : 0);
+  const extras = tipCount;
   return (
     <div id={`place-${place.id}`} className="flex gap-3 items-start scroll-mt-20">
       <Link href={detailHref}><PlaceTile place={place} className="mt-0.5" /></Link>
@@ -86,12 +86,6 @@ export function PlaceRow({
               <span className="line-clamp-2">{tips![0].body}</span>
               {extras > 1 && <span className="text-terracotta-deep font-medium"> +{extras - 1} more</span>}
             </span>
-          </Link>
-        )}
-        {tipCount === 0 && place.special && (
-          <Link href={detailHref} className="mt-1.5 flex items-start gap-1.5 rounded-xl bg-terracotta-tint/70 px-2.5 py-1.5 text-[12px] leading-snug hover:bg-terracotta-tint">
-            <SparkleIcon size={12} className="text-terracotta mt-[2px] shrink-0" />
-            <span className="line-clamp-2">{place.special}</span>
           </Link>
         )}
         <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">

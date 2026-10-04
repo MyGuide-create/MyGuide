@@ -34,7 +34,7 @@ export function copyPlace(p: Place, source: Pick<Guide, "ownerId" | "allowFork">
     note: withNotes ? p.note : "",
     noteClipMediaId: withNotes ? p.noteClipMediaId : null,
     noteAuthorId: withNotes && p.note ? (p.noteAuthorId ?? source.ownerId) : null,
-    special: withNotes ? p.special : null,
+    special: null,
     photoMediaId: withNotes ? p.photoMediaId : null,
   };
 }

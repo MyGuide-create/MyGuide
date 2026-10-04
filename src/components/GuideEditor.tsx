@@ -343,11 +343,12 @@ function EditablePlace({
         </div>
       )}
       <div className="mt-3">
+        <Label>Description - What Makes It Special</Label>
         {open ? (
           <NoteEditor placeName={place.name} note={place.note} clipMediaId={place.noteClipMediaId} onSave={(patch) => onPatch(patch)} />
         ) : (
           <button type="button" onClick={() => setOpen(true)} className="w-full text-left rounded-2xl bg-cream px-3.5 py-2.5 text-[12.5px] italic text-ink-muted leading-[1.45] hover:bg-cream-deep/60">
-            {place.note || "Add your recommendation…"}
+            {place.note || "What is it, and what makes it special…"}
             {place.noteClipMediaId && <span className="not-italic text-sage ml-2 text-[11px]">· voice note</span>}
           </button>
         )}
@@ -355,10 +356,6 @@ function EditablePlace({
       <div className="mt-3 pt-3 border-t border-line/70">
         <p className="text-[11px] font-medium uppercase tracking-[0.06em] text-ink-faint mb-2 inline-flex items-center gap-1"><SparkleIcon size={12} /> Shown on the place page</p>
         <div className="flex flex-col gap-3">
-          <div>
-            <Label>What makes it special</Label>
-            <Textarea rows={2} defaultValue={place.special ?? ""} placeholder="What sets this place apart…" onBlur={(e) => e.target.value.trim() !== (place.special ?? "") && onPatch({ special: e.target.value })} />
-          </div>
           <TipsEditor guideId={guideId} placeId={place.id} initial={tips} />
           <PlaceLinksEditor place={place} onPatch={onPatch} />
         </div>
