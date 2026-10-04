@@ -12,12 +12,15 @@ export function PlaceSearch({
   placeholder = "Add a place… e.g. Tsuta ramen",
   autoFocus,
   busy,
+  onDropPin,
 }: {
   cityHint?: string;
   onPick: (pick: { providerId?: string; name: string }) => void | Promise<void>;
   placeholder?: string;
   autoFocus?: boolean;
   busy?: boolean;
+  /** Offer "Drop a pin" for spots with no Google listing; gets whatever was typed. */
+  onDropPin?: (name: string) => void;
 }) {
   const [q, setQ] = useState("");
   const [items, setItems] = useState<PlaceSuggestion[]>([]);
@@ -87,6 +90,18 @@ export function PlaceSearch({
             <li>
               <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => pick(null)} className="w-full text-left px-4 py-2.5 hover:bg-cream-deep/50 flex items-center gap-2.5 text-[13px] text-ink-muted border-t border-line/70">
                 <PlusIcon size={15} /> Add “{q.trim()}” as named
+              </button>
+            </li>
+          )}
+          {onDropPin && q.trim().length >= 2 && (
+            <li>
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => { const name = q.trim(); setOpen(false); setQ(""); setItems([]); onDropPin(name); }}
+                className="w-full text-left px-4 py-2.5 hover:bg-cream-deep/50 flex items-center gap-2.5 text-[13px] text-terracotta-deep font-medium border-t border-line/70"
+              >
+                <PinIcon size={15} /> Not on Google? Drop a pin for “{q.trim()}”
               </button>
             </li>
           )}

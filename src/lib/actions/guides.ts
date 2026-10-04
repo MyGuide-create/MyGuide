@@ -10,7 +10,8 @@ import { canViewGuide, getGuideById, isCollaborator } from "../guides";
 import { notifyGuidePublished, notifyPlacesAdded } from "../notify";
 import { getPlacesProvider, isCategory, resolvePlaceByName, type PlaceResult } from "../places";
 import { findCity } from "../places/cities";
-import { getPlacePhotos } from "../places/google";
+import { getPlacePhotos, reverseGeocode } from "../places/google";
+import { validPin } from "../places/pins";
 import { claimUnsplashPhoto } from "../covers/unsplash";
 import { newId, newToken, slugify } from "../utils";
 import { addNotifications } from "../notifications";
@@ -247,6 +248,60 @@ export async function deleteGuide(guideId: string): Promise<void> {
   revalidatePath("/me");
   redirect(`/u/${(await getCurrentUser())!.username}`);
   void guide;
+}
+
+/**
+ * Add a place that has no Google listing by dropping a pin (a sunset spot, a campsite…).
+ * Stored with coordinates and no Google place id; city/area come from reverse geocoding when available.
+ */
+export async function addPinnedPlace(guideId: string, input: { name: string; lat: number; lng: number; category?: string }): Promise<Place> {
+  const { guide, userId } = await requireOwner(guideId);
+  const name = input.name.trim().slice(0, 120);
+  if (!name) throw new Error("Give the spot a name.");
+  if (!validPin(input.lat, input.lng)) throw new Error("That pin isn't on the map.");
+  const db = await getDb();
+  const where = await reverseGeocode(input.lat, input.lng);
+  const [{ min }] = await db.select({ min: sql<number>`coalesce(min(${places.position}), 1)` }).from(places).where(eq(places.guideId, guideId));
+  const values: typeof places.$inferInsert = {
+    ...placeValues(guideId, Number(min) - 1, name, null, userId),
+    address: where?.area ?? "",
+    city: where?.city ?? guide.city,
+    country: where?.country ?? guide.country,
+    lat: input.lat,
+    lng: input.lng,
+    category: isCategory(input.category) ? input.category : "Scenic Spots",
+  };
+  await db.insert(places).values(values);
+  if (!guide.city && where?.city) {
+    await db.update(guides).set({ city: where.city, country: where.country }).where(eq(guides.id, guideId));
+  }
+  await touch(guideId);
+  await notifyPlacesAdded(guide, values.id!, userId);
+  revalidateGuide(guide.slug);
+  return (await db.query.places.findFirst({ where: eq(places.id, values.id!) }))!;
+}
+
+/** Turn an existing place into a dropped pin (e.g. it couldn't be matched, or Google has it in the wrong spot). */
+export async function setPlacePin(guideId: string, placeId: string, input: { lat: number; lng: number }): Promise<Place> {
+  const { guide } = await requireOwner(guideId);
+  if (!validPin(input.lat, input.lng)) throw new Error("That pin isn't on the map.");
+  const db = await getDb();
+  const where = await reverseGeocode(input.lat, input.lng);
+  await db
+    .update(places)
+    .set({
+      lat: input.lat,
+      lng: input.lng,
+      googlePlaceId: null,
+      businessStatus: null,
+      hoursJson: null,
+      address: where?.area ?? "",
+      ...(where?.city ? { city: where.city, country: where.country } : {}),
+    })
+    .where(and(eq(places.id, placeId), eq(places.guideId, guideId)));
+  await touch(guideId);
+  revalidateGuide(guide.slug);
+  return (await db.query.places.findFirst({ where: eq(places.id, placeId) }))!;
 }
 
 /** Add a place by provider id (from autocomplete) or by free-text name. */

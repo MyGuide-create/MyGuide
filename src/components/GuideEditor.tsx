@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useRef, useState, useTransition } from "react";
 import type { GuideDetail } from "@/lib/guides";
 import type { Place, PlaceTip } from "@/lib/db/schema";
-import { addPlace, deleteGuide, markGuideVerified, publishGuide, removePlace, unpublishGuide, reorderPlaces, replacePlace, updateGuideMeta, updatePlace } from "@/lib/actions/guides";
+import { addPlace, deleteGuide, markGuideVerified, publishGuide, removePlace, unpublishGuide, addPinnedPlace, setPlacePin, reorderPlaces, replacePlace, updateGuideMeta, updatePlace } from "@/lib/actions/guides";
 import { CATEGORIES } from "@/lib/places/categories";
 import type { PlaceSuggestion } from "@/lib/places/types";
 import { CoverPicker } from "./CoverPicker";
@@ -14,6 +14,8 @@ import { CameraIcon, ChevronDown, ChevronUp, ForkIcon, GlobeIcon, LockIcon, PinI
 import { NoteEditor } from "./NoteEditor";
 import { PhotoPicker } from "./PhotoPicker";
 import { PlaceSearch } from "./PlaceSearch";
+import { PinDropSheet } from "./PinDropSheet";
+import { isDroppedPin } from "@/lib/places/pins";
 import { TipsEditor } from "./TipsEditor";
 import { PlaceLinksEditor } from "./PlaceLinksEditor";
 import { PlaceTile } from "./PlaceTile";
@@ -28,6 +30,9 @@ export function GuideEditor({ detail, justForked, justCreated, viewerId }: { det
   const [adding, setAdding] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
   const [coverOpen, setCoverOpen] = useState(false);
+  /** Pin-drop sheet: a new spot with no Google listing, or re-pinning an existing place. */
+  const [pinFor, setPinFor] = useState<{ mode: "add"; name: string } | { mode: "move"; place: Place } | null>(null);
+  const firstPinned = places.find((p) => p.lat != null && p.lng != null);
   const [saving, setSaving] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -224,8 +229,38 @@ export function GuideEditor({ detail, justForked, justCreated, viewerId }: { det
           {saving && <span className="text-[11.5px] text-ink-faint inline-flex items-center gap-1"><Spinner /> Saving…</span>}
         </div>
         <div className="mt-3">
-          <PlaceSearch cityHint={guide.city || undefined} onPick={onAdd} busy={adding} autoFocus={places.length === 0} />
+          <PlaceSearch cityHint={guide.city || undefined} onPick={onAdd} busy={adding} autoFocus={places.length === 0} onDropPin={(name) => setPinFor({ mode: "add", name })} />
+          <button type="button" onClick={() => setPinFor({ mode: "add", name: "" })} className="mt-2 inline-flex items-center gap-1.5 text-[12.5px] font-medium text-terracotta-deep">
+            <PinIcon size={15} /> Not on Google Maps? Drop a pin — sunset spots, campsites, trailheads
+          </button>
         </div>
+        {pinFor && (
+          <PinDropSheet
+            title={pinFor.mode === "add" ? "Drop a pin" : `Pin ${pinFor.place.name}`}
+            initialName={pinFor.mode === "add" ? pinFor.name : pinFor.place.name}
+            askName={pinFor.mode === "add"}
+            askCategory={pinFor.mode === "add"}
+            saveLabel={pinFor.mode === "add" ? "Add to guide" : "Save pin"}
+            cityHint={guide.city || undefined}
+            initialCenter={
+              pinFor.mode === "move" && pinFor.place.lat != null && pinFor.place.lng != null
+                ? { lat: pinFor.place.lat, lng: pinFor.place.lng }
+                : firstPinned ? { lat: firstPinned.lat!, lng: firstPinned.lng! } : null
+            }
+            onClose={() => setPinFor(null)}
+            onSave={async (pick) => {
+              if (pinFor.mode === "add") {
+                const p = await addPinnedPlace(guide.id, pick);
+                setPlaces((ps) => [p, ...ps]);
+                if (!guide.city && p.city) setGuide((g) => ({ ...g, city: p.city, country: p.country }));
+              } else {
+                const p = await setPlacePin(guide.id, pinFor.place.id, pick);
+                setPlaces((ps) => ps.map((x) => (x.id === p.id ? p : x)));
+              }
+              setPinFor(null);
+            }}
+          />
+        )}
         {error && <p className="mt-2 text-[12.5px] text-danger">{error}</p>}
 
         <ol className="mt-5 flex flex-col gap-4">
@@ -244,6 +279,7 @@ export function GuideEditor({ detail, justForked, justCreated, viewerId }: { det
               onRemove={() => remove(p)}
               onPatch={(patch) => patchPlace(p.id, patch)}
               onReplaced={(np) => setPlaces((ps) => ps.map((x) => (x.id === np.id ? np : x)))}
+              onPin={() => setPinFor({ mode: "move", place: p })}
             />
           ))}
         </ol>
@@ -324,6 +360,7 @@ function EditablePlace({
   onRemove,
   onPatch,
   onReplaced,
+  onPin,
 }: {
   place: Place;
   index: number;
@@ -337,6 +374,7 @@ function EditablePlace({
   onRemove: () => void;
   onPatch: (patch: Parameters<typeof updatePlace>[2]) => Promise<void>;
   onReplaced: (p: Place) => void;
+  onPin: () => void;
 }) {
   const [fixing, setFixing] = useState(false);
   const [open, setOpen] = useState(!place.note && !place.noteClipMediaId);
@@ -363,7 +401,10 @@ function EditablePlace({
             <span className="text-[11px] text-ink-faint font-medium tabular-nums mt-1">{String(index + 1).padStart(2, "0")}</span>
             <div className="min-w-0 flex-1">
               <div className="font-semibold text-[15px] leading-snug">{place.name}</div>
-              <div className="text-[11.5px] text-ink-muted truncate">{place.address || (unresolved ? "Not matched to a map pin yet" : "")}</div>
+              <div className="text-[11.5px] text-ink-muted truncate">
+                {isDroppedPin(place) && <span className="text-sage font-medium">Dropped pin{place.address ? " · " : ""}</span>}
+                {place.address || (unresolved ? "Not matched to a map pin yet" : "")}
+              </div>
             </div>
             <div className="flex flex-col -mr-1">
               <button type="button" onClick={() => onMove(-1)} disabled={index === 0} aria-label="Move up" className="w-7 h-6 flex items-center justify-center text-ink-muted disabled:opacity-25"><ChevronUp size={16} /></button>
@@ -379,8 +420,8 @@ function EditablePlace({
             >
               {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
-            <button type="button" onClick={() => setFixing((f) => !f)} className={cx("text-[11.5px] font-medium px-2 py-1 rounded-full", unresolved ? "bg-ochre-soft text-ink" : "text-ink-muted hover:text-ink")}>
-              {unresolved ? "Find on map" : "Wrong place?"}
+            <button type="button" onClick={() => (isDroppedPin(place) ? onPin() : setFixing((f) => !f))} className={cx("text-[11.5px] font-medium px-2 py-1 rounded-full", unresolved ? "bg-ochre-soft text-ink" : "text-ink-muted hover:text-ink")}>
+              {unresolved ? "Find on map" : isDroppedPin(place) ? "Move pin" : "Wrong place?"}
             </button>
             {noteAuthor && <Tag tone="sage">note by @{noteAuthor.username}</Tag>}
             <button type="button" onClick={onRemove} aria-label="Remove place" title="Remove place" className="ml-auto -mr-1 w-9 h-9 rounded-full flex items-center justify-center text-ink-muted hover:text-danger hover:bg-danger-tint"><TrashIcon size={19} /></button>
@@ -390,6 +431,9 @@ function EditablePlace({
       {fixing && (
         <div className="mt-3">
           <PlaceSearch cityHint={cityHint || undefined} onPick={onFix} placeholder={`Search for ${place.name}…`} autoFocus />
+          <button type="button" onClick={() => { setFixing(false); onPin(); }} className="mt-2 inline-flex items-center gap-1.5 text-[12.5px] font-medium text-terracotta-deep">
+            <PinIcon size={15} /> Not on Google? Drop a pin on the map instead
+          </button>
         </div>
       )}
       <div className="mt-3">

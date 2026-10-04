@@ -5,6 +5,7 @@ import { useEffect, useState, useTransition } from "react";
 import { saveRecordedPlace } from "@/lib/actions/record";
 import { PhotoPicker } from "./PhotoPicker";
 import { PlaceSearch } from "./PlaceSearch";
+import { PinDropSheet } from "./PinDropSheet";
 import { CameraIcon, CheckIcon, ChevronLeft, PinIcon, XIcon } from "./Icons";
 import { Button, Spinner, Textarea, cx } from "./ui";
 
@@ -38,7 +39,10 @@ export function RecordFlow({ guides }: { guides: GuideOption[] }) {
   const [nearby, setNearby] = useState<NearbyResult[]>([]);
   const [pickedIdx, setPickedIdx] = useState(0);
   const [manual, setManual] = useState(false);
-  const [selected, setSelected] = useState<{ providerId?: string; name: string } | null>(null);
+  const [selected, setSelected] = useState<{ providerId?: string; name: string; pin?: { lat: number; lng: number; category?: string } } | null>(null);
+  /** Where the person is (used once to suggest places, and to start a dropped pin). */
+  const [here, setHere] = useState<{ lat: number; lng: number } | null>(null);
+  const [pinning, setPinning] = useState(false);
 
   const [special, setSpecial] = useState("");
   const [tips, setTips] = useState<string[]>([]);
@@ -59,6 +63,7 @@ export function RecordFlow({ guides }: { guides: GuideOption[] }) {
     }
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
+        setHere({ lat: pos.coords.latitude, lng: pos.coords.longitude });
         try {
           const res = await fetch("/api/places/nearby", {
             method: "POST",
@@ -105,6 +110,7 @@ export function RecordFlow({ guides }: { guides: GuideOption[] }) {
       try {
         const { guideSlug, editing } = await saveRecordedPlace({
           providerId: selected.providerId,
+          pin: selected.pin,
           name: selected.name,
           special,
           tips,
@@ -185,10 +191,29 @@ export function RecordFlow({ guides }: { guides: GuideOption[] }) {
               </>
             )}
             {locate !== "locating" && (
+              <button type="button" onClick={() => setPinning(true)} className="inline-flex items-center gap-1.5 text-[12.5px] font-medium text-terracotta-deep">
+                <PinIcon size={15} /> Not listed? Pin this exact spot
+              </button>
+            )}
+            {locate !== "locating" && (
               <p className="text-[10.5px] text-ink-faint text-center">Your location is used once, to confirm — it isn&apos;t stored.</p>
             )}
           </div>
         </div>
+      )}
+
+      {pinning && (
+        <PinDropSheet
+          title="Pin this spot"
+          initialCenter={here}
+          saveLabel="Use this spot"
+          onClose={() => setPinning(false)}
+          onSave={async ({ name, lat, lng, category }) => {
+            setSelected({ name, pin: { lat, lng, category } });
+            setPinning(false);
+            setStep("capture");
+          }}
+        />
       )}
 
       {step === "capture" && selected && (

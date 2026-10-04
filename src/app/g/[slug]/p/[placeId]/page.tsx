@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { formatCoords, isDroppedPin, mapsUrl } from "@/lib/places/pins";
 import { notFound } from "next/navigation";
 import { AppShell, TopBar } from "@/components/AppShell";
 import { PlaceComments } from "@/components/PlaceComments";
@@ -66,7 +67,7 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
 
   const tips = detail.placeTips[place.id] ?? [];
   const hours = place.hoursJson ? (JSON.parse(place.hoursJson) as string[]) : [];
-  const mapsHref = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.name + " " + place.address)}${place.googlePlaceId && !place.googlePlaceId.startsWith("mock:") ? `&query_place_id=${place.googlePlaceId}` : ""}`;
+  const mapsHref = mapsUrl(place);
   const ordered = orderPlaces(detail.places);
   const pos = ordered.findIndex((p) => p.id === place.id);
   const prev = pos > 0 ? ordered[pos - 1] : null;
@@ -112,7 +113,15 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
             {!detail.viewerCanEdit && <SaveButton placeId={place.id} initial={detail.savedPlaceIds.includes(place.id)} signedIn={!!user} variant="pill" className="mt-1 shrink-0" />}
           </div>
           {pos >= 0 && <p className="mt-1 text-[11.5px] text-ink-faint">Place {pos + 1} of {ordered.length} in {detail.guide.title}</p>}
-          {place.address && <p className="mt-1 text-[13px] text-ink-muted">{place.address}</p>}
+          {isDroppedPin(place) ? (
+            <p className="mt-1 text-[13px] text-ink-muted">
+              <span className="text-sage font-medium">Dropped pin</span>
+              {place.address ? ` · ${place.address}` : ""}
+              <span className="block text-[11.5px] text-ink-faint tabular-nums">{formatCoords(place.lat!, place.lng!)}</span>
+            </p>
+          ) : (
+            place.address && <p className="mt-1 text-[13px] text-ink-muted">{place.address}</p>
+          )}
           {(detail.friendsWhoLike[place.id]?.length ?? 0) > 0 && (
             <p className="mt-2 text-[12.5px] text-sage font-medium">
               ♥ {namesSentence(detail.friendsWhoLike[place.id].map((u) => u.displayName.split(" ")[0]))} {detail.friendsWhoLike[place.id].length === 1 ? "likes" : "like"} this — people you follow

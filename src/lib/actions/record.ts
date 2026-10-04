@@ -7,7 +7,9 @@ import { getCurrentUser } from "../auth";
 import { getDb } from "../db";
 import { guides, placePhotos, placeTips, places, type Guide } from "../db/schema";
 import { getGuideById } from "../guides";
-import { getPlacesProvider, resolvePlaceByName, type PlaceResult } from "../places";
+import { getPlacesProvider, isCategory, resolvePlaceByName, type PlaceResult } from "../places";
+import { reverseGeocode } from "../places/google";
+import { validPin } from "../places/pins";
 import { findCity } from "../places/cities";
 import { notifyPlacesAdded } from "../notify";
 import { newId, newToken, slugify } from "../utils";
@@ -48,6 +50,8 @@ async function findOrCreateStash(userId: string): Promise<Guide> {
 
 export interface RecordPlaceInput {
   providerId?: string;
+  /** A dropped pin for a spot with no Google listing (skips the Google lookup). */
+  pin?: { lat: number; lng: number; category?: string };
   name: string;
   cityHint?: string;
   special: string;
@@ -68,7 +72,28 @@ export async function saveRecordedPlace(input: RecordPlaceInput): Promise<{ guid
   const db = await getDb();
 
   let resolved: PlaceResult | null = null;
-  try {
+  if (input.pin) {
+    if (!validPin(input.pin.lat, input.pin.lng)) throw new Error("That pin isn't on the map.");
+    const where = await reverseGeocode(input.pin.lat, input.pin.lng);
+    resolved = {
+      providerId: "",
+      name: input.name.trim().slice(0, 120) || "Pinned spot",
+      address: where?.area ?? "",
+      city: where?.city ?? "",
+      country: where?.country ?? "",
+      lat: input.pin.lat,
+      lng: input.pin.lng,
+      category: isCategory(input.pin.category) ? input.pin.category : "Scenic Spots",
+      photoUrl: null,
+      photoUrls: [],
+      phone: null,
+      website: null,
+      instagram: null,
+      hours: null,
+      businessStatus: null,
+      source: "pin",
+    };
+  } else try {
     if (input.providerId) resolved = await getPlacesProvider().details(input.providerId);
     if (!resolved) resolved = await resolvePlaceByName(input.name, input.cityHint);
   } catch (e) {
@@ -126,7 +151,7 @@ export async function saveRecordedPlace(input: RecordPlaceInput): Promise<{ guid
     website: resolved?.website ?? null,
     instagram: resolved?.instagram ?? null,
     hoursJson: resolved?.hours ? JSON.stringify(resolved.hours) : null,
-    googlePlaceId: resolved?.source === "google" ? resolved.providerId : (resolved?.providerId ?? null),
+    googlePlaceId: resolved?.providerId || null,
     businessStatus: resolved?.businessStatus ?? null,
     note: liked,
     special: null,

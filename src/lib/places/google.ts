@@ -182,3 +182,30 @@ export async function getPlacePhotos(googlePlaceId: string, limit = 4): Promise<
     authorUrl: ph.authorAttributions?.[0]?.uri ?? null,
   }));
 }
+
+/**
+ * Rough "where is this" for a dropped pin (city, country and a short area line).
+ * Uses the Geocoding API; returns null if it isn't enabled for the key or finds nothing.
+ */
+export async function reverseGeocode(lat: number, lng: number): Promise<{ area: string; city: string; country: string } | null> {
+  if (!key()) return null;
+  try {
+    const res = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${key()}`, { cache: "no-store" });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { status: string; results?: { address_components: { long_name: string; types: string[] }[] }[] };
+    if (data.status !== "OK" || !data.results?.length) {
+      if (data.status !== "ZERO_RESULTS") console.warn("[places/google] geocode", data.status);
+      return null;
+    }
+    const comps = data.results.flatMap((r) => r.address_components);
+    const find = (...types: string[]) => comps.find((c) => types.some((t) => c.types.includes(t)))?.long_name ?? "";
+    const near = find("neighborhood", "sublocality", "sublocality_level_1");
+    const city = find("locality", "postal_town") || find("administrative_area_level_2") || find("administrative_area_level_1");
+    const country = find("country");
+    const area = [near && near !== city ? near : "", city, country].filter(Boolean).join(", ");
+    return { area, city, country };
+  } catch (e) {
+    console.warn("[places/google] geocode failed", e);
+    return null;
+  }
+}

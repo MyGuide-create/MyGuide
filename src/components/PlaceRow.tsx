@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { mapsUrl } from "@/lib/places/pins";
 import type { Place, PlaceTip } from "@/lib/db/schema";
 import type { PublicUser } from "@/lib/auth";
 import type { PlaceCommentView } from "@/lib/guides";
@@ -94,7 +95,7 @@ export function PlaceRow({
           {expanded && place.lat && place.lng && (
             <a
               className="text-[11px] text-ink-muted inline-flex items-center gap-1 hover:text-terracotta"
-              href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.name + " " + place.address)}${place.googlePlaceId && !place.googlePlaceId.startsWith("mock:") ? `&query_place_id=${place.googlePlaceId}` : ""}`}
+              href={mapsUrl(place)}
               target="_blank"
               rel="noreferrer"
               {...trackAttrs("tap_directions", place.guideId, place.id)}

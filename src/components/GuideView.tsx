@@ -1,5 +1,7 @@
 "use client";
 
+import { mapsUrl } from "@/lib/places/pins";
+
 import Link from "next/link";
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
@@ -167,7 +169,7 @@ export function GuideView({ detail, viewerId, viewer, shareUrl, shareKey }: { de
               photoMediaId: p.photoMediaId,
               subtitle: neighbourhood(p.address, p.city, p.country),
               href: `/g/${guide.slug}/p/${p.id}${keyQuery}`,
-              mapsHref: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.name + " " + p.address)}${p.googlePlaceId && !p.googlePlaceId.startsWith("mock:") ? `&query_place_id=${p.googlePlaceId}` : ""}`,
+              mapsHref: mapsUrl(p),
             }))}
             height="min(62dvh, 560px)"
           />

@@ -21,7 +21,8 @@ export interface PlaceResult {
   /** Weekday descriptions, e.g. "Monday: 11:00 AM – 9:00 PM". */
   hours: string[] | null;
   businessStatus: "OPERATIONAL" | "CLOSED_TEMPORARILY" | "CLOSED_PERMANENTLY" | null;
-  source: "google" | "mock";
+  /** "pin" = a dropped pin with no listing (no provider id). */
+  source: "google" | "mock" | "pin";
 }
 
 export interface NearbyPlaceResult extends PlaceResult {
