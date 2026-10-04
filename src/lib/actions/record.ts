@@ -145,7 +145,7 @@ export async function saveRecordedPlace(input: RecordPlaceInput): Promise<{ guid
     await db.update(guides).set({ updatedAt: now }).where(eq(guides.id, guide.id));
   }
 
-  await notifyPlacesAdded(guide, placeId);
+  await notifyPlacesAdded(guide, placeId, user.id);
   revalidatePath(`/g/${guide.slug}`);
   revalidatePath(`/g/${guide.slug}/edit`);
   revalidatePath("/me");

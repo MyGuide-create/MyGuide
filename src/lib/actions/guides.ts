@@ -269,7 +269,7 @@ export async function addPlace(guideId: string, input: { providerId?: string; na
     await db.update(guides).set({ city: resolved.city, country: resolved.country }).where(eq(guides.id, guideId));
   }
   await touch(guideId);
-  await notifyPlacesAdded(guide, values.id!);
+  await notifyPlacesAdded(guide, values.id!, userId);
   revalidateGuide(guide.slug);
   const row = await db.query.places.findFirst({ where: eq(places.id, values.id!) });
   return row!;

@@ -1,6 +1,6 @@
 import { and, eq, gt, inArray, isNull } from "drizzle-orm";
 import { getDb } from "./db";
-import { follows, notifications, type Guide } from "./db/schema";
+import { follows, guideCollaborators, notifications, type Guide } from "./db/schema";
 import { addNotifications } from "./notifications";
 import { newId } from "./utils";
 
@@ -17,11 +17,19 @@ async function followerIds(ownerId: string): Promise<string[]> {
   return rows.map((r) => r.id);
 }
 
+/** Owner + co-editors: they're working on the guide, so they don't get follower updates about it. */
+async function teamIds(guide: Pick<Guide, "id" | "ownerId">): Promise<Set<string>> {
+  const db = await getDb();
+  const rows = await db.select({ id: guideCollaborators.userId }).from(guideCollaborators).where(eq(guideCollaborators.guideId, guide.id));
+  return new Set([guide.ownerId, ...rows.map((r) => r.id)]);
+}
+
 /** "Hisham published a new guide" — once per follower per guide. */
 export async function notifyGuidePublished(guide: Guide): Promise<void> {
   if (!isLive(guide)) return;
   try {
-    const ids = await followerIds(guide.ownerId);
+    const team = await teamIds(guide);
+    const ids = (await followerIds(guide.ownerId)).filter((id) => !team.has(id));
     if (!ids.length) return;
     const db = await getDb();
     const already = await db
@@ -44,15 +52,18 @@ export async function notifyGuidePublished(guide: Guide): Promise<void> {
  * further additions within a day bump the same notification instead of adding new ones.
  * Skipped for followers who still have an unread "new guide" notification for it.
  */
-export async function notifyPlacesAdded(guide: Guide, placeId: string, n = 1): Promise<void> {
+export async function notifyPlacesAdded(guide: Guide, placeId: string, actorId: string, n = 1): Promise<void> {
   if (!isLive(guide)) return;
   try {
-    const ids = await followerIds(guide.ownerId);
+    // Credit whoever actually added it (a co-editor, not always the owner), and never tell
+    // the guide's own team — including the person who just added it.
+    const team = await teamIds(guide);
+    const ids = (await followerIds(guide.ownerId)).filter((id) => !team.has(id) && id !== actorId);
     if (!ids.length) return;
     const db = await getDb();
     const since = new Date(Date.now() - BATCH_WINDOW_MS);
     const open = await db
-      .select({ id: notifications.id, userId: notifications.userId, type: notifications.type, count: notifications.count })
+      .select({ id: notifications.id, userId: notifications.userId, type: notifications.type, count: notifications.count, actorId: notifications.actorId })
       .from(notifications)
       .where(
         and(
@@ -68,11 +79,11 @@ export async function notifyPlacesAdded(guide: Guide, placeId: string, n = 1): P
     for (const userId of ids) {
       const mine = open.filter((o) => o.userId === userId);
       if (mine.some((o) => o.type === "guide_published")) continue;
-      const batch = mine.find((o) => o.type === "places_added");
+      const batch = mine.find((o) => o.type === "places_added" && o.actorId === actorId);
       if (batch) {
         await db.update(notifications).set({ count: batch.count + n, placeId, createdAt: now }).where(eq(notifications.id, batch.id));
       } else {
-        fresh.push({ id: newId(), userId, type: "places_added", actorId: guide.ownerId, guideId: guide.id, placeId, count: n, createdAt: now });
+        fresh.push({ id: newId(), userId, type: "places_added", actorId, guideId: guide.id, placeId, count: n, createdAt: now });
       }
     }
     if (fresh.length) await addNotifications(fresh);
