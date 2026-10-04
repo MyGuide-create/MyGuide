@@ -123,8 +123,8 @@ export function Textarea({ className, ...props }: TextareaHTMLAttributes<HTMLTex
   );
 }
 
-export function Label({ children, className }: { children: ReactNode; className?: string }) {
-  return <label className={cx("block text-[12px] font-medium uppercase tracking-[0.08em] text-ink-muted mb-1.5", className)}>{children}</label>;
+export function Label({ children, className, htmlFor }: { children: ReactNode; className?: string; htmlFor?: string }) {
+  return <label htmlFor={htmlFor} className={cx("block text-[12px] font-medium uppercase tracking-[0.08em] text-ink-muted mb-1.5", className)}>{children}</label>;
 }
 
 const AVATAR_TONES = ["bg-terracotta", "bg-sage", "bg-ochre", "bg-terracotta-soft", "bg-sage-soft"];

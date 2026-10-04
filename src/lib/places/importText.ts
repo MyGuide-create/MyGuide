@@ -69,6 +69,34 @@ function takeoutTitles(text: string): string | null {
 export const MAPS_LIST_FALLBACK =
   "We couldn't read that Google Maps list automatically. Try one of these instead: take screenshots of the list and use Add screenshots above; or on a computer, open the list in Google Maps, select it (click the first place, then shift-click the last, or Cmd/Ctrl+A), copy and paste it here; or download your lists from Google Takeout (Saved) and paste the CSV.";
 
+const LIST_LINK_RE =
+  /https?:\/\/(?:maps\.app\.goo\.gl\/[A-Za-z0-9_-]+|goo\.gl\/maps\/[A-Za-z0-9_-]+|(?:www\.)?google\.[a-z.]+\/maps\/placelists\/list\/[A-Za-z0-9_-]+)[^\s<>"')]*/i;
+const MAPS_LINK_RE = /https?:\/\/(?:maps\.app\.goo\.gl|goo\.gl\/maps|(?:www\.|maps\.)?google\.[a-z.]+\/maps|maps\.google\.[a-z.]+)/i;
+
+/**
+ * The first Google Maps list link in pasted text, plus the text just before it. The iPhone app
+ * shares "London · Shahryar" + newline + link. Short links may still turn out to be a single
+ * place — the list reader reports that as not_a_list.
+ */
+export function findMapsListLink(text: string): { url: string; caption: string } | null {
+  const m = LIST_LINK_RE.exec(text);
+  if (!m) return null;
+  const before = text.slice(0, m.index).split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  return { url: m[0].replace(/[.,;]+$/, ""), caption: before.at(-1) ?? "" };
+}
+
+/** Any Google Maps link at all (a single place or a list). */
+export function hasMapsLink(text: string): boolean {
+  return MAPS_LINK_RE.test(text);
+}
+
+/** "London · Shahryar" → "London": a fallback guide title from a list's share caption. */
+export function listTitleFromCaption(caption: string): string {
+  const c = caption.replace(WHATSAPP_PREFIX, "").replace(URL_RE, "").replace(EMOJI, " ").replace(/\s+/g, " ").trim();
+  if (!c || /google maps|check out|shared? (?:a |this )?list/i.test(c)) return "";
+  return c.split(/\s+[·•|]\s+/)[0].replace(/[\s:–—-]+$/, "").trim().slice(0, 80);
+}
+
 /** A Google Maps link to a whole saved list (not a single place). */
 export function isMapsListUrl(url: string): boolean {
   return /\/maps\/(?:placelists|@[^/]*\/data=[^?]*!11m1)/.test(url) || /\/maps\/placelists\//.test(url);
@@ -141,6 +169,8 @@ export interface CleanedImport {
   listLinks: number;
   /** The list links as pasted (short links kept short; the list reader resolves them itself). */
   listUrls: string[];
+  /** Share captions next to list links ("London · Shahryar"), taken out of `text` so they aren't read as places. */
+  listCaptions: string[];
 }
 
 export async function cleanImportedList(text: string): Promise<CleanedImport> {
@@ -157,8 +187,25 @@ export async function cleanImportedList(text: string): Promise<CleanedImport> {
       names.set(raw, name ?? "");
     }),
   );
-  const lines = text
-    .split(/\r?\n/)
+  // A list link's share caption is on the same line or the line above ("London · Shahryar").
+  const listCaptions: string[] = [];
+  const rawLines = text.split(/\r?\n/);
+  if (listUrls.length) {
+    const isList = (u: string) => listUrls.includes(u.replace(/[.,;]+$/, ""));
+    rawLines.forEach((line, i) => {
+      if (!(line.match(URL_RE) ?? []).some(isList)) return;
+      const sameLine = line.replace(URL_RE, "").replace(WHATSAPP_PREFIX, "").trim();
+      let j = i - 1;
+      while (j >= 0 && !rawLines[j].trim()) j--;
+      if (sameLine) listCaptions.push(sameLine);
+      else if (j >= 0 && /\s·\s/.test(rawLines[j]) && !rawLines[j].match(URL_RE)) {
+        listCaptions.push(rawLines[j].replace(WHATSAPP_PREFIX, "").trim());
+        rawLines[j] = "";
+      }
+      rawLines[i] = "";
+    });
+  }
+  const lines = rawLines
     .map((line) => {
       let l = line.replace(WHATSAPP_PREFIX, "");
       l = l.replace(URL_RE, (u) => (names.get(u) ? `\n${names.get(u)}\n` : ""));
@@ -171,5 +218,5 @@ export async function cleanImportedList(text: string): Promise<CleanedImport> {
   const kept = dropMapsNoise(lines)
     .map((l) => l.replace(BULLET, "").trim())
     .filter((l) => l.length > 1);
-  return { text: kept.join("\n"), listLinks: listUrls.length, listUrls };
+  return { text: kept.join("\n"), listLinks: listUrls.length, listUrls, listCaptions };
 }

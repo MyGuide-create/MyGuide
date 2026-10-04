@@ -8,7 +8,7 @@ import { createGuide } from "@/lib/actions/guides";
 import type { ParsedPlacesResponse } from "@/app/api/ai/parse-places/route";
 import type { PlaceResult } from "@/lib/places";
 import type { MapsListResult } from "@/lib/places/googleMapsList";
-import { MAPS_LIST_FALLBACK } from "@/lib/places/importText";
+import { findMapsListLink, hasMapsLink, listTitleFromCaption, MAPS_LIST_FALLBACK } from "@/lib/places/importText";
 import { formatCoords } from "@/lib/places/pins";
 import { mapLimit } from "@/lib/utils";
 import { CheckIcon, KeyboardIcon, ListIcon, MicIcon, PinIcon, StopIcon, XIcon } from "./Icons";
@@ -29,6 +29,7 @@ type DraftPlace = ParsedPlacesResponse["places"][number] & {
 /** Google Maps list places per /api/import/match-places request, and requests in flight at once. */
 const MATCH_BATCH = 20;
 const MATCH_PARALLEL = 2;
+const SINGLE_PLACE_MSG = "This looks like a single place, not a list. Paste it in the box above instead.";
 
 /**
  * Create a Guide by voice: name the places you want in one go, we structure
@@ -50,6 +51,8 @@ export function VoiceCreate({ initialMode }: { initialMode: "voice" | "type" }) 
   const [showTyped, setShowTyped] = useState(false);
   const [importMsg, setImportMsg] = useState("");
   const [fromList, setFromList] = useState(false);
+  const [listLink, setListLink] = useState("");
+  const [linkError, setLinkError] = useState<string | null>(null);
   const transcriptRef = useRef<HTMLDivElement | null>(null);
 
   const transcript = [speech.text, speech.interim].filter(Boolean).join(" ");
@@ -62,8 +65,10 @@ export function VoiceCreate({ initialMode }: { initialMode: "voice" | "type" }) 
     try {
       const res = await fetch("/api/ai/parse-places", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ transcript: text }) });
       if (!res.ok) {
-        const err = (await res.json().catch(() => ({}))) as { error?: string; code?: string; listUrls?: string[] };
-        if (err.code === "maps_list" && err.listUrls?.length) return await importMapsLists(err.listUrls, from);
+        const err = (await res.json().catch(() => ({}))) as { error?: string; code?: string; listUrls?: string[]; listTitle?: string; rest?: string };
+        if (err.code === "maps_list" && err.listUrls?.length) {
+          return await importMapsLists(err.listUrls, { from, fallbackTitle: err.listTitle, extraText: err.rest });
+        }
         throw new Error(err.error ?? "Couldn't structure that.");
       }
       const data = (await res.json()) as ParsedPlacesResponse;
@@ -79,21 +84,46 @@ export function VoiceCreate({ initialMode }: { initialMode: "voice" | "type" }) 
     }
   };
 
-  /** Read whole Google Maps saved lists, match each place on Google (or keep it as a pin), then review. */
-  const importMapsLists = async (urls: string[], from: Stage) => {
+  /**
+   * Read whole Google Maps saved lists, match each place on Google (or keep it as a pin), then review.
+   * `extraText` is anything else pasted alongside the link, structured the normal way and added after.
+   */
+  const importMapsLists = async (
+    urls: string[],
+    opts: { from: Stage; fallbackTitle?: string; extraText?: string; fromLinkField?: boolean },
+  ) => {
+    const fail = (msg: string) => {
+      if (opts.fromLinkField) setLinkError(msg);
+      else setError(msg);
+      setStage(opts.from);
+    };
     setStage("importing");
+    setError(null);
+    setLinkError(null);
     setImportMsg("Reading your Google Maps list…");
     try {
+      // Other pasted places are looked up while the list is read.
+      const extra = opts.extraText?.trim()
+        ? fetch("/api/ai/parse-places", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ transcript: opts.extraText }) })
+            .then(async (r) => (r.ok ? ((await r.json()) as ParsedPlacesResponse).places : []))
+            .catch(() => [])
+        : Promise.resolve([]);
       let listTitle = "";
       const listPlaces: MapsListResult["places"] = [];
+      const codes: string[] = [];
       for (const url of urls.slice(0, 5)) {
         const res = await fetch("/api/import/maps-list", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url }) });
-        if (!res.ok) continue;
+        if (!res.ok) {
+          codes.push(((await res.json().catch(() => ({}))) as { error?: string }).error ?? "fetch_failed");
+          continue;
+        }
         const list = (await res.json()) as MapsListResult;
         listTitle ||= list.title ?? "";
         listPlaces.push(...list.places);
       }
-      if (!listPlaces.length) throw new Error(MAPS_LIST_FALLBACK);
+      if (!listPlaces.length) {
+        return fail(opts.fromLinkField && codes.length && codes.every((c) => c === "not_a_list") ? SINGLE_PLACE_MSG : MAPS_LIST_FALLBACK);
+      }
 
       const batches: MapsListResult["places"][] = [];
       for (let i = 0; i < listPlaces.length; i += MATCH_BATCH) batches.push(listPlaces.slice(i, i + MATCH_BATCH));
@@ -118,24 +148,26 @@ export function VoiceCreate({ initialMode }: { initialMode: "voice" | "type" }) 
 
       const flat = matched.flat();
       const places = listPlaces.map((p, i) => ({ list: p, match: flat[i] ?? null }));
-      const firstCity = places.find((p) => p.match?.city)?.match;
-      setDraft(
-        places.map(({ list, match }, i) => ({
+      const extraPlaces = await extra;
+      const firstCity = places.find((p) => p.match?.city)?.match ?? extraPlaces.find((p) => p.resolved?.city)?.resolved;
+      setDraft([
+        ...places.map(({ list, match }, i) => ({
           key: `${i}-${list.name}`,
           name: list.name,
           resolved: match,
           pin: match ? null : { lat: list.lat, lng: list.lng, address: list.address },
           note: list.note,
         })),
-      );
-      setResult({ title: listTitle, city: firstCity?.city ?? "", country: firstCity?.country ?? "", places: [], ai: true });
-      setTitle(listTitle);
+        ...extraPlaces.map((p, i) => ({ ...p, key: `x${i}-${p.name}` })),
+      ]);
+      const guideTitle = listTitle || opts.fallbackTitle || "";
+      setResult({ title: guideTitle, city: firstCity?.city ?? "", country: firstCity?.country ?? "", places: [], ai: true });
+      setTitle(guideTitle);
       setCity(firstCity?.city ?? "");
       setFromList(true);
       setStage("review");
-    } catch (e) {
-      setError(e instanceof Error && e.message ? e.message : MAPS_LIST_FALLBACK);
-      setStage(from);
+    } catch {
+      fail(MAPS_LIST_FALLBACK);
     }
   };
 
@@ -240,13 +272,55 @@ export function VoiceCreate({ initialMode }: { initialMode: "voice" | "type" }) 
           </p>
         </div>
         <ScreenshotImport onPlaces={(lines) => setPastedList((v) => [v.trim(), ...lines].filter(Boolean).join("\n"))} />
+        {(() => {
+          const found = findMapsListLink(listLink);
+          const singlePlace = !found && hasMapsLink(listLink);
+          const message = linkError ?? (singlePlace ? SINGLE_PLACE_MSG : null);
+          return (
+            <div className="rounded-3xl border border-line bg-paper p-4 flex flex-col gap-2.5">
+              <div>
+                <div className="text-[14px] font-semibold">Google Maps — a whole saved list</div>
+                <p className="mt-0.5 text-[12px] text-ink-muted leading-snug">
+                  Paste the list&apos;s link and we&apos;ll bring in every place, with your notes. Or use Add screenshots above, or the paste box below for copied list text or a Takeout CSV.
+                </p>
+              </div>
+              <div>
+                <Label htmlFor="maps-list-link">Google Maps list link</Label>
+                <Input
+                  id="maps-list-link"
+                  type="url"
+                  inputMode="url"
+                  autoComplete="off"
+                  autoCapitalize="off"
+                  spellCheck={false}
+                  value={listLink}
+                  onChange={(e) => { setListLink(e.target.value); setLinkError(null); }}
+                  placeholder="https://maps.app.goo.gl/…"
+                  aria-describedby="maps-list-link-help"
+                  aria-invalid={!!message}
+                />
+                <p id="maps-list-link-help" className="mt-1.5 text-[11.5px] text-ink-muted leading-snug">
+                  In Google Maps: Saved → open your list → Share → Copy link, then paste it here.
+                </p>
+              </div>
+              {message && <p role="alert" className="text-[12.5px] text-danger leading-snug">{message}</p>}
+              <Button
+                variant="secondary"
+                disabled={!found}
+                onClick={() => found && importMapsLists([found.url], { from: "paste", fallbackTitle: listTitleFromCaption(found.caption), fromLinkField: true })}
+              >
+                Import list
+              </Button>
+            </div>
+          );
+        })()}
         <div className="flex items-center gap-3 text-[12px] font-medium uppercase tracking-[0.08em] text-ink-faint">
           <span className="h-px flex-1 bg-line" /> Or paste text or links <span className="h-px flex-1 bg-line" />
         </div>
         <div className="grid grid-cols-1 gap-2">
           {[
             { t: "Google Maps — one place", d: "Open the place → Share → Copy link. Paste one link per line." },
-            { t: "Google Maps — a whole saved list", d: "Easiest: use Add screenshots above. On a computer you can also select the whole list panel, copy and paste it here — we keep the names and skip ratings, prices and closed places." },
+            { t: "Google Maps — copied list text", d: "On a computer you can also select the whole list panel, copy and paste it here — we keep the names and skip ratings, prices and closed places. A Google Takeout “Saved” CSV works too." },
             { t: "WhatsApp", d: "Long-press the message → Copy. Dates, names, emojis and “try these” are cleaned up for you." },
             { t: "Notes or anywhere", d: "One place per line works best. Add the area if it helps: “Ichiran in Shinjuku”." },
           ].map((x) => (
@@ -386,7 +460,7 @@ export function VoiceCreate({ initialMode }: { initialMode: "voice" | "type" }) 
         {error && <p className="text-[12.5px] text-danger">{error}</p>}
         <div className="fixed bottom-0 inset-x-0 z-30 flex justify-center pointer-events-none">
           <div className="pointer-events-auto w-full max-w-[480px] safe-bottom bg-paper/95 backdrop-blur border-t border-line px-4 py-3 flex items-center gap-2">
-            <button type="button" onClick={() => { setStage(fromList ? "paste" : "talk"); setFromList(false); speech.reset(); }} className="text-[13px] font-medium text-ink-muted px-3 py-2">Start over</button>
+            <button type="button" onClick={() => { setStage(fromList ? "paste" : "talk"); setFromList(false); setError(null); speech.reset(); }} className="text-[13px] font-medium text-ink-muted px-3 py-2">Start over</button>
             <div className="flex-1" />
             <Button onClick={finish} disabled={creating || kept.length === 0}>{creating ? <Spinner /> : `Create guide · ${kept.length} place${kept.length === 1 ? "" : "s"}`}</Button>
           </div>
