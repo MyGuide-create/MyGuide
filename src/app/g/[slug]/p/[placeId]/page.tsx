@@ -210,7 +210,7 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
         {place.note && (
           <div>
             <p className="text-[12px] font-medium uppercase tracking-[0.08em] text-ink-muted mb-1.5">Description - What Makes It Special</p>
-            <p className="text-[14px] italic leading-relaxed">
+            <p className="text-[14px] italic leading-relaxed whitespace-pre-line">
               {place.note}
               {noteAuthor && <span className="not-italic text-[11.5px] text-ink-faint"> — @{noteAuthor.username}</span>}
             </p>

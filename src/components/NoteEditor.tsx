@@ -154,7 +154,7 @@ export function NoteEditor({
         {clip && !uploading && (
           <span className="inline-flex items-center gap-2">
             <AudioClip mediaId={clip} />
-            <button type="button" onClick={removeClip} aria-label="Remove voice clip" className="text-ink-faint hover:text-danger"><TrashIcon size={13} /></button>
+            <button type="button" onClick={removeClip} aria-label="Remove voice clip" className="text-ink-muted hover:text-danger w-8 h-8 flex items-center justify-center"><TrashIcon size={17} /></button>
           </span>
         )}
       </div>

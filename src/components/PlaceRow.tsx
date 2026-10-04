@@ -69,7 +69,7 @@ export function PlaceRow({
           {(area || place.address) && <span className="truncate" title={place.address}>· {area || place.address}</span>}
         </div>
         {place.note && (
-          <p className={cx("mt-1.5 text-[12.5px] italic leading-[1.45] text-ink-muted", !expanded && "line-clamp-3")}>
+          <p className={cx("mt-1.5 whitespace-pre-line text-[12.5px] italic leading-[1.45] text-ink-muted", !expanded && "line-clamp-3")}>
             {place.note}
             {carried && <span className="not-italic text-[11px] text-ink-faint"> — @{noteAuthor!.username}</span>}
           </p>

@@ -19,7 +19,7 @@ import { PlaceLinksEditor } from "./PlaceLinksEditor";
 import { PlaceTile } from "./PlaceTile";
 import { Sheet } from "./ShareSheet";
 import { CollaboratorsEditor } from "./CollaboratorsEditor";
-import { Button, Input, Label, Spinner, Tag, Textarea, cx } from "./ui";
+import { Button, Input, Label, LinkButton, Spinner, Tag, Textarea, cx } from "./ui";
 
 export function GuideEditor({ detail, justForked, justCreated, viewerId }: { detail: GuideDetail; justForked?: boolean; justCreated?: boolean; viewerId: string }) {
   const router = useRouter();
@@ -253,17 +253,17 @@ export function GuideEditor({ detail, justForked, justCreated, viewerId }: { det
       {/* Publish bar */}
       <div className="fixed bottom-0 inset-x-0 z-30 flex justify-center pointer-events-none">
         <div className="pointer-events-auto w-full max-w-[480px] safe-bottom bg-paper/95 backdrop-blur border-t border-line px-4 py-3 flex items-center gap-2">
-          <Link href={`/g/${guide.slug}`} className="text-[13px] font-medium text-ink-muted px-3 py-2">{isDraft ? "Preview" : "Done"}</Link>
+          <LinkButton href={`/g/${guide.slug}`} variant="ghost" className="border border-line px-3.5!">{isDraft ? "Preview" : "Done"}</LinkButton>
           <div className="flex-1" />
           {detail.viewerIsOwner ? (
             <>
-              <Button variant="ghost" size="sm" onClick={destroy} aria-label="Delete guide" className="text-ink-faint"><TrashIcon size={16} /></Button>
+              <button type="button" onClick={destroy} aria-label="Delete guide" title="Delete guide" className="w-10 h-10 shrink-0 rounded-full border border-line text-danger flex items-center justify-center hover:bg-danger-tint"><TrashIcon size={20} /></button>
               {isDraft && (
-                <Button variant="outline" onClick={saveDraft} disabled={leaving}>
+                <Button variant="outline" onClick={saveDraft} disabled={leaving} className="px-3.5!">
                   {leaving ? <Spinner /> : null} Save draft
                 </Button>
               )}
-              <Button onClick={() => setPublishOpen(true)} disabled={places.length === 0}>
+              <Button onClick={() => setPublishOpen(true)} disabled={places.length === 0} className="px-3.5!">
                 {isDraft ? "Publish" : guide.visibility === "public" ? "Published · Public" : "Published · Private"}
               </Button>
             </>
@@ -383,7 +383,7 @@ function EditablePlace({
               {unresolved ? "Find on map" : "Wrong place?"}
             </button>
             {noteAuthor && <Tag tone="sage">note by @{noteAuthor.username}</Tag>}
-            <button type="button" onClick={onRemove} aria-label="Remove place" className="ml-auto text-ink-faint hover:text-danger p-1"><TrashIcon size={15} /></button>
+            <button type="button" onClick={onRemove} aria-label="Remove place" title="Remove place" className="ml-auto -mr-1 w-9 h-9 rounded-full flex items-center justify-center text-ink-muted hover:text-danger hover:bg-danger-tint"><TrashIcon size={19} /></button>
           </div>
         </div>
       </div>
@@ -397,7 +397,7 @@ function EditablePlace({
         {open ? (
           <NoteEditor placeName={place.name} note={place.note} clipMediaId={place.noteClipMediaId} onSave={(patch) => onPatch(patch)} />
         ) : (
-          <button type="button" onClick={() => setOpen(true)} className="w-full text-left rounded-2xl bg-cream px-3.5 py-2.5 text-[12.5px] italic text-ink-muted leading-[1.45] hover:bg-cream-deep/60">
+          <button type="button" onClick={() => setOpen(true)} className="w-full text-left whitespace-pre-line rounded-2xl bg-cream px-3.5 py-2.5 text-[12.5px] italic text-ink-muted leading-[1.45] hover:bg-cream-deep/60">
             {place.note || "What is it, and what makes it special…"}
             {place.noteClipMediaId && <span className="not-italic text-sage ml-2 text-[11px]">· voice note</span>}
           </button>

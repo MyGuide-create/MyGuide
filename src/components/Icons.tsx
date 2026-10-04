@@ -74,7 +74,7 @@ export const ChevronDown = ({ size, ...p }: P) => (
   <svg {...base(size, { strokeWidth: 2, ...p })}><path d="m6 9 6 6 6-6" /></svg>
 );
 export const TrashIcon = ({ size, ...p }: P) => (
-  <svg {...base(size, p)}><path d="M4 7h16" /><path d="M9 7V4h6v3" /><path d="M6 7l1 13h10l1-13" /></svg>
+  <svg {...base(size, p)}><path d="M4 7h16" /><path d="M9 7V4h6v3" /><path d="M6 7l1 13h10l1-13" /><path d="M10 11v6" /><path d="M14 11v6" /></svg>
 );
 export const LinkIcon = ({ size, ...p }: P) => (
   <svg {...base(size, p)}><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1" /><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" /></svg>

@@ -102,14 +102,14 @@ export function TipsEditor({
                     autoFocus
                     className="flex-1 min-w-0 rounded-full border border-line bg-paper px-2.5 py-1 text-[12.5px] outline-none focus:border-terracotta-soft"
                   />
-                  <button type="button" aria-label="Save tip" onClick={() => saveEdit(t.id)} className="text-terracotta shrink-0 p-0.5"><CheckIcon size={14} /></button>
-                  <button type="button" aria-label="Cancel edit" onClick={() => setEditingId(null)} className="text-ink-faint shrink-0 p-0.5"><XIcon size={14} /></button>
+                  <button type="button" aria-label="Save tip" onClick={() => saveEdit(t.id)} className="text-terracotta shrink-0 w-8 h-8 -my-1 flex items-center justify-center"><CheckIcon size={17} /></button>
+                  <button type="button" aria-label="Cancel edit" onClick={() => setEditingId(null)} className="text-ink-muted shrink-0 w-8 h-8 -my-1 flex items-center justify-center"><XIcon size={17} /></button>
                 </>
               ) : (
                 <>
                   <span className="flex-1 text-[12.5px] leading-snug">{t.body}</span>
-                  <button type="button" aria-label="Edit tip" onClick={() => startEdit(t)} className="text-ink-faint hover:text-terracotta shrink-0 p-0.5"><EditIcon size={12} /></button>
-                  <button type="button" aria-label="Remove tip" onClick={() => remove(t.id)} className="text-ink-faint hover:text-danger shrink-0 p-0.5"><TrashIcon size={12} /></button>
+                  <button type="button" aria-label="Edit tip" onClick={() => startEdit(t)} className="text-ink-muted hover:text-terracotta shrink-0 w-8 h-8 -my-1 flex items-center justify-center"><EditIcon size={16} /></button>
+                  <button type="button" aria-label="Remove tip" onClick={() => remove(t.id)} className="text-ink-muted hover:text-danger shrink-0 w-8 h-8 -my-1 flex items-center justify-center"><TrashIcon size={17} /></button>
                 </>
               )}
             </li>

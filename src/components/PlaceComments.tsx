@@ -130,11 +130,11 @@ export function PlaceComments({ placeId, initial, currentUser }: { placeId: stri
                 </div>
                 {isMine && !isPending && !editing && (
                   <div className="flex flex-col gap-1 mt-1">
-                    <button type="button" aria-label="Edit comment" onClick={() => startEdit(row)} className="text-ink-faint hover:text-terracotta p-1">
-                      <EditIcon size={12} />
+                    <button type="button" aria-label="Edit comment" onClick={() => startEdit(row)} className="text-ink-muted hover:text-terracotta w-8 h-8 flex items-center justify-center">
+                      <EditIcon size={16} />
                     </button>
-                    <button type="button" aria-label="Delete comment" onClick={() => remove(row.comment.id)} className="text-ink-faint hover:text-danger p-1">
-                      <TrashIcon size={12} />
+                    <button type="button" aria-label="Delete comment" onClick={() => remove(row.comment.id)} className="text-ink-muted hover:text-danger w-8 h-8 flex items-center justify-center">
+                      <TrashIcon size={17} />
                     </button>
                   </div>
                 )}
