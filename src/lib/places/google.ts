@@ -175,6 +175,20 @@ export const googleProvider: PlacesProvider = {
 };
 
 /** Resolve a Google photo resource name to a CDN URL (no API key in the URL). */
+/**
+ * Google's best matches for a name right around a known point (e.g. a place from a saved
+ * Google Maps list). A tight bias keeps "Starbucks" from matching the wrong branch.
+ */
+export async function searchTextNear(query: string, near: { lat: number; lng: number }, radiusMeters = 200, pageSize = 3): Promise<PlaceResult[]> {
+  if (!key()) return [];
+  const data = await gfetch<{ places?: GooglePlace[] }>("/places:searchText", {
+    method: "POST",
+    fieldMask: FIELDS.map((f) => `places.${f}`).join(","),
+    body: JSON.stringify({ textQuery: query, pageSize, locationBias: { circle: { center: { latitude: near.lat, longitude: near.lng }, radius: radiusMeters } } }),
+  });
+  return (data?.places ?? []).map(toResult);
+}
+
 export async function resolvePhotoUri(photoName: string, maxWidthPx = 900): Promise<string | null> {
   const res = await fetch(
     `${BASE}/${photoName}/media?maxWidthPx=${maxWidthPx}&skipHttpRedirect=true&key=${encodeURIComponent(key())}`,

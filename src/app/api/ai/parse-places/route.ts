@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { parsePlaceList } from "@/lib/ai";
 import { getCurrentUser } from "@/lib/auth";
 import { resolvePlaceByName, type PlaceResult } from "@/lib/places";
-import { cleanImportedList } from "@/lib/places/importText";
+import { cleanImportedList, MAPS_LIST_FALLBACK } from "@/lib/places/importText";
 
 export interface ParsedPlacesResponse {
   title: string;
@@ -21,17 +21,12 @@ export async function POST(req: Request) {
   if (!transcript) return NextResponse.json({ error: "Nothing to parse." }, { status: 400 });
 
   // Pasted lists can contain WhatsApp chat prefixes, bullets, emojis and Google Maps links — tidy those first.
-  const imported = /https?:\/\/|\n/.test(transcript) ? await cleanImportedList(transcript) : { text: transcript, listLinks: 0 };
+  const imported = /https?:\/\/|\n/.test(transcript) ? await cleanImportedList(transcript) : { text: transcript, listLinks: 0, listUrls: [] };
   const cleaned = imported.text;
   if (imported.listLinks > 0 && !cleaned.trim()) {
-    return NextResponse.json(
-      {
-        error:
-          "That's a link to a whole Google Maps list — Google doesn't let apps read inside those. On a computer: open the list in Google Maps, select the list (click the first place, then shift-click the last, or Cmd/Ctrl+A), copy and paste it here. Or paste each place's own Share link.",
-        code: "maps_list",
-      },
-      { status: 422 },
-    );
+    // Only list links were pasted: the client reads them with /api/import/maps-list and shows
+    // `error` (the copy/Takeout/screenshots fallback) if that fails.
+    return NextResponse.json({ error: MAPS_LIST_FALLBACK, code: "maps_list", listUrls: imported.listUrls }, { status: 422 });
   }
   const parsed = await parsePlaceList(cleaned.slice(0, 4000), body.cityHint);
   const cityHint = parsed.city || body.cityHint;

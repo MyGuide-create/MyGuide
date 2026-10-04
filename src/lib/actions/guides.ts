@@ -14,7 +14,7 @@ import { getPlacePhotos, reverseGeocode } from "../places/google";
 import { validPin } from "../places/pins";
 import type { BranchCandidate } from "../places/branches";
 import { claimUnsplashPhoto } from "../covers/unsplash";
-import { newId, newToken, slugify } from "../utils";
+import { mapLimit, newId, newToken, slugify } from "../utils";
 import { addNotifications } from "../notifications";
 import { copyBranches, notifyGuideUsed } from "../reuse";
 import { normaliseInstagram, normaliseReserve, normaliseWebsite, normaliseWhatsapp, type Normalised } from "@/lib/placeLinks";
@@ -65,7 +65,14 @@ export interface DraftPlaceInput {
   name: string;
   providerId?: string | null;
   cityHint?: string;
+  /** A dropped pin (no Google listing), e.g. a Google Maps list place we couldn't match. */
+  pin?: { lat: number; lng: number; address?: string } | null;
+  /** "Description - What Makes It Special", e.g. the note from a Google Maps list. */
+  note?: string;
 }
+
+/** Google lookups in flight at once while creating a guide (big imported lists have 100+ places). */
+const CREATE_CONCURRENCY = 6;
 
 /** Create a guide (optionally with already-resolved places) and go to the editor. */
 export async function createGuide(input: { title: string; city?: string; country?: string; places?: DraftPlaceInput[] }): Promise<string> {
@@ -90,19 +97,35 @@ export async function createGuide(input: { title: string; city?: string; country
   });
 
   const provider = getPlacesProvider();
-  let position = 0;
-  let derivedCity: { city: string; country: string } | null = null;
-  for (const p of input.places ?? []) {
+  const rows = await mapLimit(input.places ?? [], CREATE_CONCURRENCY, async (p, position) => {
+    const name = p.name.trim().slice(0, 120) || "Unnamed place";
+    const note = (p.note ?? "").trim().slice(0, 5000);
+    if (p.pin && validPin(p.pin.lat, p.pin.lng)) {
+      const where = await reverseGeocode(p.pin.lat, p.pin.lng).catch(() => null);
+      return {
+        ...placeValues(id, position, name, null, user.id),
+        address: p.pin.address?.trim().slice(0, 300) || where?.area || "",
+        city: where?.city ?? known?.city ?? "",
+        country: where?.country ?? known?.country ?? "",
+        lat: p.pin.lat,
+        lng: p.pin.lng,
+        category: "Scenic Spots",
+        note,
+      };
+    }
     let resolved: PlaceResult | null = null;
     try {
       if (p.providerId) resolved = await provider.details(p.providerId);
-      if (!resolved) resolved = await resolvePlaceByName(p.name, p.cityHint ?? input.city);
+      if (!resolved) resolved = await resolvePlaceByName(name, p.cityHint ?? input.city);
     } catch (e) {
       console.warn("[createGuide] resolve failed", e);
     }
-    await db.insert(places).values(placeValues(id, position++, p.name, resolved, user.id));
-    if (!derivedCity && resolved?.city) derivedCity = { city: resolved.city, country: resolved.country };
-  }
+    return { ...placeValues(id, position, name, resolved, user.id), note };
+  });
+  // Insert in chunks to keep each statement a reasonable size.
+  for (let i = 0; i < rows.length; i += 50) await db.insert(places).values(rows.slice(i, i + 50));
+  // If the guide city was unknown, borrow it from the first place (in list order) that has one.
+  const derivedCity = rows.find((r) => r.city);
   if (!known && derivedCity) {
     await db.update(guides).set({ city: derivedCity.city, country: derivedCity.country }).where(eq(guides.id, id));
   }

@@ -3,6 +3,8 @@ import { VoiceCreate } from "@/components/VoiceCreate";
 import { requireUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
+// createGuide runs as this page's server action; an imported Google Maps list can have 100+ places.
+export const maxDuration = 60;
 export const metadata = { title: "Create a guide" };
 
 export default async function CreatePage({ searchParams }: PageProps<"/create">) {

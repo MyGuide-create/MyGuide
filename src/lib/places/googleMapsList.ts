@@ -49,19 +49,32 @@ async function resolveListId(url: string): Promise<string> {
   if (direct) return direct[1];
   if (!SHORT_RE.test(url)) throw new MapsListError("not_a_list");
 
-  let res: Response;
-  try {
-    res = await fetch(url, { headers: HEADERS, redirect: "follow", signal: AbortSignal.timeout(10_000) });
-  } catch (e) {
-    throw new MapsListError("fetch_failed", String(e));
-  }
-  for (const candidate of [res.url, safeDecode(res.url)]) {
-    const m = candidate.match(LIST_RE);
+  // A browser User-Agent gets a JavaScript redirect page; a plain request gets a normal 302,
+  // so follow the redirects by hand and look for the list id at each hop.
+  let current = url;
+  for (let hop = 0; hop < 5; hop++) {
+    let res: Response;
+    try {
+      res = await fetch(current, {
+        headers: { "User-Agent": "curl/8.7.1", Accept: "*/*" },
+        redirect: "manual",
+        signal: AbortSignal.timeout(8_000),
+      });
+    } catch (e) {
+      throw new MapsListError("fetch_failed", String(e));
+    }
+    const location = res.headers.get("location");
+    if (!location && res.status >= 400) throw new MapsListError("fetch_failed", `HTTP ${res.status}`);
+    if (!location) {
+      const body = (await res.text()).replace(/\\\//g, "/").replace(/\\u002F/gi, "/");
+      const m = body.match(LIST_RE) ?? safeDecode(body).match(LIST_RE);
+      if (m) return m[1];
+      break;
+    }
+    current = new URL(location, current).toString();
+    const m = current.match(LIST_RE) ?? safeDecode(current).match(LIST_RE);
     if (m) return m[1];
   }
-  const html = (await res.text()).replace(/\\\//g, "/");
-  const m = html.match(LIST_RE) ?? safeDecode(html).match(LIST_RE);
-  if (m) return m[1];
   throw new MapsListError("not_a_list"); // a single place or something else — let the normal importer handle it
 }
 

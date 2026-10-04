@@ -6,13 +6,29 @@ import { useEffect, useRef, useState } from "react";
 import { useSpeech } from "@/hooks/useSpeech";
 import { createGuide } from "@/lib/actions/guides";
 import type { ParsedPlacesResponse } from "@/app/api/ai/parse-places/route";
+import type { PlaceResult } from "@/lib/places";
+import type { MapsListResult } from "@/lib/places/googleMapsList";
+import { MAPS_LIST_FALLBACK } from "@/lib/places/importText";
+import { formatCoords } from "@/lib/places/pins";
+import { mapLimit } from "@/lib/utils";
 import { CheckIcon, KeyboardIcon, ListIcon, MicIcon, PinIcon, StopIcon, XIcon } from "./Icons";
 import { PlaceSearch } from "./PlaceSearch";
 import { ScreenshotImport } from "./ScreenshotImport";
 import { Button, Input, Label, Spinner, Textarea, cx } from "./ui";
 
-type Stage = "talk" | "structuring" | "review" | "typed" | "paste";
-type DraftPlace = ParsedPlacesResponse["places"][number] & { key: string; removed?: boolean };
+type Stage = "talk" | "structuring" | "importing" | "review" | "typed" | "paste";
+type DraftPlace = ParsedPlacesResponse["places"][number] & {
+  key: string;
+  removed?: boolean;
+  /** Dropped pin from a Google Maps list place we couldn't match to a listing. */
+  pin?: { lat: number; lng: number; address?: string } | null;
+  /** The list owner's note → "Description - What Makes It Special". */
+  note?: string;
+};
+
+/** Google Maps list places per /api/import/match-places request, and requests in flight at once. */
+const MATCH_BATCH = 20;
+const MATCH_PARALLEL = 2;
 
 /**
  * Create a Guide by voice: name the places you want in one go, we structure
@@ -32,6 +48,8 @@ export function VoiceCreate({ initialMode }: { initialMode: "voice" | "type" }) 
   const [creating, setCreating] = useState(false);
   const [fixingKey, setFixingKey] = useState<string | null>(null);
   const [showTyped, setShowTyped] = useState(false);
+  const [importMsg, setImportMsg] = useState("");
+  const [fromList, setFromList] = useState(false);
   const transcriptRef = useRef<HTMLDivElement | null>(null);
 
   const transcript = [speech.text, speech.interim].filter(Boolean).join(" ");
@@ -43,8 +61,13 @@ export function VoiceCreate({ initialMode }: { initialMode: "voice" | "type" }) 
     setError(null);
     try {
       const res = await fetch("/api/ai/parse-places", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ transcript: text }) });
-      if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error ?? "Couldn't structure that.");
+      if (!res.ok) {
+        const err = (await res.json().catch(() => ({}))) as { error?: string; code?: string; listUrls?: string[] };
+        if (err.code === "maps_list" && err.listUrls?.length) return await importMapsLists(err.listUrls, from);
+        throw new Error(err.error ?? "Couldn't structure that.");
+      }
       const data = (await res.json()) as ParsedPlacesResponse;
+      setFromList(false);
       setResult(data);
       setDraft(data.places.map((p, i) => ({ ...p, key: `${i}-${p.name}` })));
       setTitle(data.title);
@@ -52,6 +75,66 @@ export function VoiceCreate({ initialMode }: { initialMode: "voice" | "type" }) 
       setStage("review");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't structure that.");
+      setStage(from);
+    }
+  };
+
+  /** Read whole Google Maps saved lists, match each place on Google (or keep it as a pin), then review. */
+  const importMapsLists = async (urls: string[], from: Stage) => {
+    setStage("importing");
+    setImportMsg("Reading your Google Maps list…");
+    try {
+      let listTitle = "";
+      const listPlaces: MapsListResult["places"] = [];
+      for (const url of urls.slice(0, 5)) {
+        const res = await fetch("/api/import/maps-list", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url }) });
+        if (!res.ok) continue;
+        const list = (await res.json()) as MapsListResult;
+        listTitle ||= list.title ?? "";
+        listPlaces.push(...list.places);
+      }
+      if (!listPlaces.length) throw new Error(MAPS_LIST_FALLBACK);
+
+      const batches: MapsListResult["places"][] = [];
+      for (let i = 0; i < listPlaces.length; i += MATCH_BATCH) batches.push(listPlaces.slice(i, i + MATCH_BATCH));
+      let done = 0;
+      setImportMsg(`Matching ${listPlaces.length} places on Google…`);
+      const matched = await mapLimit(batches, MATCH_PARALLEL, async (batch) => {
+        let matches: (PlaceResult | null)[] = [];
+        try {
+          const res = await fetch("/api/import/match-places", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ places: batch.map(({ name, lat, lng }) => ({ name, lat, lng })) }),
+          });
+          if (res.ok) matches = ((await res.json()) as { matches: (PlaceResult | null)[] }).matches;
+        } catch {
+          /* a failed batch just becomes dropped pins */
+        }
+        done += batch.length;
+        setImportMsg(`Matching places on Google… ${done} of ${listPlaces.length}`);
+        return batch.map((_, i) => matches[i] ?? null);
+      });
+
+      const flat = matched.flat();
+      const places = listPlaces.map((p, i) => ({ list: p, match: flat[i] ?? null }));
+      const firstCity = places.find((p) => p.match?.city)?.match;
+      setDraft(
+        places.map(({ list, match }, i) => ({
+          key: `${i}-${list.name}`,
+          name: list.name,
+          resolved: match,
+          pin: match ? null : { lat: list.lat, lng: list.lng, address: list.address },
+          note: list.note,
+        })),
+      );
+      setResult({ title: listTitle, city: firstCity?.city ?? "", country: firstCity?.country ?? "", places: [], ai: true });
+      setTitle(listTitle);
+      setCity(firstCity?.city ?? "");
+      setFromList(true);
+      setStage("review");
+    } catch (e) {
+      setError(e instanceof Error && e.message ? e.message : MAPS_LIST_FALLBACK);
       setStage(from);
     }
   };
@@ -65,7 +148,13 @@ export function VoiceCreate({ initialMode }: { initialMode: "voice" | "type" }) 
         title: title.trim() || result?.title || "My Guide",
         city: city || result?.city,
         country: result?.country,
-        places: kept.map((p) => ({ name: p.resolved?.name ?? p.name, providerId: p.resolved?.providerId ?? null, cityHint: p.cityHint })),
+        places: kept.map((p) => ({
+          name: p.resolved?.name ?? p.name,
+          providerId: p.resolved?.providerId ?? null,
+          cityHint: p.cityHint,
+          pin: p.resolved ? null : p.pin,
+          note: p.note,
+        })),
       });
       router.push(`/g/${slug}/edit?created=1`);
     } catch (e) {
@@ -205,6 +294,17 @@ export function VoiceCreate({ initialMode }: { initialMode: "voice" | "type" }) 
     );
   }
 
+  /* ---------- importing a Google Maps list ---------- */
+  if (stage === "importing") {
+    return (
+      <div className="px-6 pt-24 flex flex-col items-center text-center gap-4">
+        <Spinner className="text-terracotta w-8 h-8" />
+        <p className="font-display text-[28px] leading-tight">{importMsg || "Reading your Google Maps list…"}</p>
+        <p className="text-[13.5px] text-ink-muted">Big lists take a moment — we&apos;re finding each place on Google.</p>
+      </div>
+    );
+  }
+
   /* ---------- review ---------- */
   if (stage === "review" && result) {
     const kept = draft.filter((p) => !p.removed);
@@ -218,10 +318,19 @@ export function VoiceCreate({ initialMode }: { initialMode: "voice" | "type" }) 
             <input value={city} onChange={(e) => setCity(e.target.value)} placeholder="Where is this guide?" className="flex-1 bg-transparent text-[14px] outline-none border-b border-line focus:border-terracotta-soft py-1" />
           </div>
         </div>
-        <p className="text-[12.5px] text-ink-muted">We only added the places you named{result.ai ? "" : " (structured with the built-in parser)"}. Remove any mistakes, fix a mismatch, or add one you forgot.</p>
+        {fromList ? (
+          <p className="text-[12.5px] text-ink-muted">
+            {(() => {
+              const pins = draft.filter((p) => !p.resolved && p.pin).length;
+              return `Imported ${draft.length} place${draft.length === 1 ? "" : "s"} from your Google Maps list.${pins ? ` ${pins} couldn't be matched to a Google listing, so they're added as dropped pins at the list's location — tap “Find on Google” if you know the right one.` : ""} Remove any you don't want.`;
+            })()}
+          </p>
+        ) : (
+          <p className="text-[12.5px] text-ink-muted">We only added the places you named{result.ai ? "" : " (structured with the built-in parser)"}. Remove any mistakes, fix a mismatch, or add one you forgot.</p>
+        )}
         <ul className="flex flex-col gap-2">
           {draft.map((p) => (
-            <li key={p.key} className={cx("rounded-2xl border bg-paper px-3.5 py-3", p.removed ? "opacity-40 border-line" : p.resolved ? "border-line" : "border-ochre")}>
+            <li key={p.key} className={cx("rounded-2xl border bg-paper px-3.5 py-3", p.removed ? "opacity-40 border-line" : p.resolved || p.pin ? "border-line" : "border-ochre")}>
               <div className="flex items-start gap-3">
                 <span className={cx("mt-0.5 w-7 h-7 rounded-full flex items-center justify-center shrink-0", p.resolved ? "bg-sage-tint text-sage" : "bg-ochre-soft text-ink")}>
                   {p.resolved ? <CheckIcon size={15} /> : <PinIcon size={15} />}
@@ -229,11 +338,16 @@ export function VoiceCreate({ initialMode }: { initialMode: "voice" | "type" }) 
                 <div className="flex-1 min-w-0">
                   <div className="font-semibold text-[15px] leading-snug">{p.resolved?.name ?? p.name}</div>
                   <div className="text-[11.5px] text-ink-muted truncate">
-                    {p.resolved ? `${p.resolved.category} · ${p.resolved.address || p.resolved.city}` : `Heard “${p.name}” — couldn't match it to a place`}
+                    {p.resolved
+                      ? `${p.resolved.category} · ${p.resolved.address || p.resolved.city}`
+                      : p.pin
+                        ? `Dropped pin · ${p.pin.address || formatCoords(p.pin.lat, p.pin.lng)}`
+                        : `Heard “${p.name}” — couldn't match it to a place`}
                   </div>
+                  {p.note && <div className="mt-1 text-[12px] text-ink-muted italic line-clamp-2">“{p.note}”</div>}
                   {!p.removed && (
                     <button type="button" onClick={() => setFixingKey(fixingKey === p.key ? null : p.key)} className="mt-1 text-[11.5px] font-medium text-terracotta">
-                      {p.resolved ? "Wrong place?" : "Find it"}
+                      {p.resolved ? "Wrong place?" : p.pin ? "Find on Google" : "Find it"}
                     </button>
                   )}
                 </div>
@@ -253,7 +367,7 @@ export function VoiceCreate({ initialMode }: { initialMode: "voice" | "type" }) 
                     placeholder={`Search for ${p.name}…`}
                     autoFocus
                     onPick={async (pick) => {
-                      setDraft((d) => d.map((x) => x.key === p.key ? { ...x, name: pick.name, resolved: pick.providerId ? { ...(x.resolved ?? emptyResolved(pick.name, city)), providerId: pick.providerId, name: pick.name } : null } : x));
+                      setDraft((d) => d.map((x) => x.key === p.key ? { ...x, name: pick.name, pin: pick.providerId ? null : x.pin, resolved: pick.providerId ? { ...(x.resolved ?? emptyResolved(pick.name, city)), providerId: pick.providerId, name: pick.name } : null } : x));
                       setFixingKey(null);
                     }}
                   />
@@ -272,7 +386,7 @@ export function VoiceCreate({ initialMode }: { initialMode: "voice" | "type" }) 
         {error && <p className="text-[12.5px] text-danger">{error}</p>}
         <div className="fixed bottom-0 inset-x-0 z-30 flex justify-center pointer-events-none">
           <div className="pointer-events-auto w-full max-w-[480px] safe-bottom bg-paper/95 backdrop-blur border-t border-line px-4 py-3 flex items-center gap-2">
-            <button type="button" onClick={() => { setStage("talk"); speech.reset(); }} className="text-[13px] font-medium text-ink-muted px-3 py-2">Start over</button>
+            <button type="button" onClick={() => { setStage(fromList ? "paste" : "talk"); setFromList(false); speech.reset(); }} className="text-[13px] font-medium text-ink-muted px-3 py-2">Start over</button>
             <div className="flex-1" />
             <Button onClick={finish} disabled={creating || kept.length === 0}>{creating ? <Spinner /> : `Create guide · ${kept.length} place${kept.length === 1 ? "" : "s"}`}</Button>
           </div>

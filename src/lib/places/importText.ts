@@ -30,7 +30,8 @@ async function expand(url: string): Promise<string> {
   let current = url;
   for (let i = 0; i < 4; i++) {
     try {
-      const res = await fetch(current, { method: "GET", redirect: "manual", signal: AbortSignal.timeout(4000) });
+      // A plain (curl-like) request gets a normal 302; a browser-like one can get a JavaScript redirect page.
+      const res = await fetch(current, { method: "GET", redirect: "manual", headers: { "User-Agent": "curl/8.7.1", Accept: "*/*" }, signal: AbortSignal.timeout(4000) });
       const next = res.headers.get("location");
       if (!next) return current;
       current = new URL(next, current).toString();
@@ -63,6 +64,10 @@ function takeoutTitles(text: string): string | null {
   }
   return out.join("\n");
 }
+
+/** Shown when a Google Maps saved list can't be read automatically. */
+export const MAPS_LIST_FALLBACK =
+  "We couldn't read that Google Maps list automatically. Try one of these instead: take screenshots of the list and use Add screenshots above; or on a computer, open the list in Google Maps, select it (click the first place, then shift-click the last, or Cmd/Ctrl+A), copy and paste it here; or download your lists from Google Takeout (Saved) and paste the CSV.";
 
 /** A Google Maps link to a whole saved list (not a single place). */
 export function isMapsListUrl(url: string): boolean {
@@ -132,20 +137,22 @@ function dropMapsNoise(lines: string[]): string[] {
 
 export interface CleanedImport {
   text: string;
-  /** Google Maps links to whole saved lists, which can't be read directly. */
+  /** Google Maps links to whole saved lists — read separately via /api/import/maps-list. */
   listLinks: number;
+  /** The list links as pasted (short links kept short; the list reader resolves them itself). */
+  listUrls: string[];
 }
 
 export async function cleanImportedList(text: string): Promise<CleanedImport> {
   text = takeoutTitles(text) ?? text;
   const urls = [...new Set(text.match(URL_RE) ?? [])];
   const names = new Map<string, string>();
-  let listLinks = 0;
+  const listUrls: string[] = [];
   await Promise.all(
     urls.slice(0, 40).map(async (raw) => {
       const url = raw.replace(/[.,;]+$/, "");
       const full = isShortMapsLink(url) ? await expand(url) : url;
-      if (isMapsListUrl(full)) listLinks++;
+      if (isMapsListUrl(full)) listUrls.push(url);
       const name = isMapsListUrl(full) ? null : nameFromMapsUrl(full);
       names.set(raw, name ?? "");
     }),
@@ -164,5 +171,5 @@ export async function cleanImportedList(text: string): Promise<CleanedImport> {
   const kept = dropMapsNoise(lines)
     .map((l) => l.replace(BULLET, "").trim())
     .filter((l) => l.length > 1);
-  return { text: kept.join("\n"), listLinks };
+  return { text: kept.join("\n"), listLinks: listUrls.length, listUrls };
 }

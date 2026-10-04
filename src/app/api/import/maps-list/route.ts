@@ -1,13 +1,15 @@
 // src/app/api/import/maps-list/route.ts
 // POST { url } → { title?, places: [{ name, lat, lng, address?, note? }] }  or  422 { error: code }
 import { NextResponse } from "next/server";
+import { getCurrentUser } from "@/lib/auth";
 import { fetchGoogleMapsList, MapsListError } from "@/lib/places/googleMapsList";
 
 export const runtime = "nodejs";
 export const maxDuration = 20;
 
 export async function POST(req: Request) {
-  // TODO: add the same signed-in check used by /api/ai/screenshot-places (return 401 if no session).
+  const user = await getCurrentUser();
+  if (!user) return NextResponse.json({ error: "Please log in." }, { status: 401 });
 
   let url: unknown;
   try {
