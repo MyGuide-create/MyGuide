@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useState, useTransition } from "react";
+import { useCallback, useRef, useState, useTransition } from "react";
 import type { GuideDetail } from "@/lib/guides";
 import type { Place, PlaceTip } from "@/lib/db/schema";
-import { addPlace, deleteGuide, markGuideVerified, publishGuide, removePlace, reorderPlaces, replacePlace, updateGuideMeta, updatePlace } from "@/lib/actions/guides";
+import { addPlace, deleteGuide, markGuideVerified, publishGuide, removePlace, unpublishGuide, reorderPlaces, replacePlace, updateGuideMeta, updatePlace } from "@/lib/actions/guides";
 import { CATEGORIES } from "@/lib/places/categories";
 import type { PlaceSuggestion } from "@/lib/places/types";
 import { CoverPicker } from "./CoverPicker";
@@ -33,18 +33,44 @@ export function GuideEditor({ detail, justForked, justCreated, viewerId }: { det
   const [pending, start] = useTransition();
   const owner = detail.owner;
   const isDraft = !guide.publishedAt;
+  /** Saves still in flight, so "Save draft" can wait for the last edit before leaving. */
+  const inflight = useRef(new Set<Promise<void>>());
+  const [leaving, setLeaving] = useState(false);
 
   const run = useCallback(async (label: string, fn: () => Promise<void>) => {
     setSaving(label);
     setError(null);
-    try {
-      await fn();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Something went wrong.");
-    } finally {
-      setSaving(null);
-    }
+    const p = (async () => {
+      try {
+        await fn();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Something went wrong.");
+      } finally {
+        setSaving(null);
+      }
+    })();
+    inflight.current.add(p);
+    try { await p; } finally { inflight.current.delete(p); }
   }, []);
+
+  const saveDraft = async () => {
+    setLeaving(true);
+    // Let the blur that this tap caused register its save, then wait for everything to land.
+    await new Promise((r) => setTimeout(r, 50));
+    await Promise.all([...inflight.current]);
+    router.push(`/u/${owner.username}?draft=saved#drafts`);
+  };
+
+  const backToDrafts = () => {
+    if (!confirm("Move this guide back to drafts? It disappears from the feed, search and your profile until you publish it again.")) return;
+    start(async () => {
+      await unpublishGuide(guide.id);
+      setGuide((g) => ({ ...g, publishedAt: null }));
+      setPublishOpen(false);
+    });
+  };
+
+  const undescribed = places.filter((p) => !p.note.trim()).length;
 
   const saveMeta = (patch: Parameters<typeof updateGuideMeta>[1]) => run("guide", async () => {
     await updateGuideMeta(guide.id, patch);
@@ -105,8 +131,15 @@ export function GuideEditor({ detail, justForked, justCreated, viewerId }: { det
           <span>
             {justForked
               ? `This is your private copy of @${detail.forkedFrom?.username ?? "their"}'s guide. Remove what you don't like, add what you found, then publish it as your own.`
-              : "Your places are in. Add a note to each one (typed or spoken), swap in your own photos, then publish."}
+              : "Your places are in and saved as a draft — only you can see it. Add a description to each one (typed or spoken), swap in your own photos, and publish when it\u2019s ready."}
           </span>
+        </div>
+      )}
+
+      {isDraft && !justCreated && !justForked && detail.viewerIsOwner && (
+        <div className="mx-4 mt-3 rounded-2xl bg-ochre-soft/60 px-4 py-2.5 text-[12.5px] leading-snug flex gap-2 items-center">
+          <LockIcon size={14} className="shrink-0 text-ink-muted" />
+          <span><b className="font-semibold">Draft</b> — only you{detail.collaborators?.length ? " and your co-editors" : ""} can see it. Followers aren&apos;t notified until you publish.</span>
         </div>
       )}
 
@@ -225,6 +258,11 @@ export function GuideEditor({ detail, justForked, justCreated, viewerId }: { det
           {detail.viewerIsOwner ? (
             <>
               <Button variant="ghost" size="sm" onClick={destroy} aria-label="Delete guide" className="text-ink-faint"><TrashIcon size={16} /></Button>
+              {isDraft && (
+                <Button variant="outline" onClick={saveDraft} disabled={leaving}>
+                  {leaving ? <Spinner /> : null} Save draft
+                </Button>
+              )}
               <Button onClick={() => setPublishOpen(true)} disabled={places.length === 0}>
                 {isDraft ? "Publish" : guide.visibility === "public" ? "Published · Public" : "Published · Private"}
               </Button>
@@ -237,7 +275,14 @@ export function GuideEditor({ detail, justForked, justCreated, viewerId }: { det
 
       {publishOpen && (
         <Sheet title={isDraft ? "Publish your guide" : "Who can see this guide?"} onClose={() => setPublishOpen(false)}>
-          <p className="text-[13.5px] text-ink-muted leading-relaxed">You can keep editing after publishing. Nothing is ever locked.</p>
+          <p className="text-[13.5px] text-ink-muted leading-relaxed">
+            {isDraft ? "Not ready yet? Close this and tap Save draft — nobody sees it until you publish." : "You can keep editing after publishing. Nothing is ever locked."}
+          </p>
+          {isDraft && undescribed > 0 && (
+            <p className="mt-2.5 rounded-xl bg-ochre-soft/60 px-3 py-2 text-[12.5px] leading-snug">
+              {undescribed === places.length ? "None of your places have" : `${undescribed} of ${places.length} places don\u2019t have`} a description yet. You can publish anyway, or add them first.
+            </p>
+          )}
           <div className="mt-4 flex flex-col gap-2.5">
             <button type="button" disabled={pending} onClick={() => publish("public")} className={cx("text-left rounded-2xl border px-4 py-3.5 flex gap-3 items-start", guide.visibility === "public" && !isDraft ? "border-terracotta bg-terracotta-tint" : "border-line bg-paper")}>
               <GlobeIcon size={20} className="mt-0.5 text-terracotta shrink-0" />
@@ -254,7 +299,12 @@ export function GuideEditor({ detail, justForked, justCreated, viewerId }: { det
               </span>
             </button>
           </div>
-          {pending && <p className="mt-3 text-[12.5px] text-ink-muted inline-flex items-center gap-1"><Spinner /> Publishing…</p>}
+          {!isDraft && (
+            <button type="button" disabled={pending} onClick={backToDrafts} className="mt-4 w-full text-center text-[12.5px] font-medium text-ink-muted underline underline-offset-2">
+              Move back to drafts
+            </button>
+          )}
+          {pending && <p className="mt-3 text-[12.5px] text-ink-muted inline-flex items-center gap-1"><Spinner /> Saving…</p>}
         </Sheet>
       )}
     </div>

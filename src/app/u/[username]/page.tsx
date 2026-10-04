@@ -13,8 +13,9 @@ import { ReportButton } from "@/components/ReportButton";
 
 export const dynamic = "force-dynamic";
 
-export default async function ProfilePage({ params }: PageProps<"/u/[username]">) {
+export default async function ProfilePage({ params, searchParams }: PageProps<"/u/[username]">) {
   const { username } = await params;
+  const draftSaved = (await searchParams).draft === "saved";
   const profile = await getUserByUsername(username);
   if (!profile) notFound();
   const viewer = await getCurrentUser();
@@ -81,7 +82,8 @@ export default async function ProfilePage({ params }: PageProps<"/u/[username]">
           <>
             {own && drafts.length > 0 && (
               <>
-                <h2 className="font-display text-[22px] px-1">Drafts</h2>
+                <h2 id="drafts" className="font-display text-[22px] px-1 scroll-mt-20">Drafts</h2>
+                {draftSaved && <p className="-mt-1 px-1 text-[12.5px] text-sage font-medium">Draft saved. Only you can see it — open it any time to keep going, then publish.</p>}
                 {drafts.map((c) => <GuideCard key={c.guide.id} data={c} showOwner={false} />)}
                 <h2 className="font-display text-[22px] px-1 mt-2">Published</h2>
               </>

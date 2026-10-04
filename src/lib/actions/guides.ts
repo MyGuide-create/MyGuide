@@ -227,6 +227,18 @@ export async function publishGuide(guideId: string, visibility: "public" | "priv
   revalidateGuide(guide.slug);
 }
 
+/**
+ * Back to drafts: hides the guide from the feed, search and the owner's public profile until
+ * it's published again. Followers who were already told about it aren't told again on re-publish
+ * (notifyGuidePublished is once per follower per guide).
+ */
+export async function unpublishGuide(guideId: string): Promise<void> {
+  const { guide } = await requireTrueOwner(guideId);
+  const db = await getDb();
+  await db.update(guides).set({ publishedAt: null, updatedAt: new Date() }).where(eq(guides.id, guideId));
+  revalidateGuide(guide.slug);
+}
+
 export async function deleteGuide(guideId: string): Promise<void> {
   const { guide } = await requireTrueOwner(guideId);
   const db = await getDb();
