@@ -27,20 +27,30 @@ export async function verifyPassword(pw: string, hash: string): Promise<boolean>
   return bcrypt.compare(pw, hash);
 }
 
-export async function createSession(userId: string): Promise<void> {
-  const token = await new SignJWT({ sub: userId })
+async function sessionToken(userId: string): Promise<string> {
+  return new SignJWT({ sub: userId })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime(`${MAX_AGE}s`)
     .sign(secret());
+}
+
+const sessionCookieOptions = () => ({
+  httpOnly: true,
+  sameSite: "lax" as const,
+  secure: process.env.NODE_ENV === "production",
+  path: "/",
+  maxAge: MAX_AGE,
+});
+
+export async function createSession(userId: string): Promise<void> {
   const store = await cookies();
-  store.set(COOKIE, token, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: MAX_AGE,
-  });
+  store.set(COOKIE, await sessionToken(userId), sessionCookieOptions());
+}
+
+/** Same as createSession, on a response a route handler is about to return (OAuth callbacks). */
+export async function setSessionOn(res: { cookies: { set: (name: string, value: string, opts: ReturnType<typeof sessionCookieOptions>) => unknown } }, userId: string): Promise<void> {
+  res.cookies.set(COOKIE, await sessionToken(userId), sessionCookieOptions());
 }
 
 export async function destroySession(): Promise<void> {

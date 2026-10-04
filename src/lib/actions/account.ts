@@ -15,6 +15,8 @@ import {
   guides,
   media,
   notifications,
+  oauthAccounts,
+  placeLocations,
   placeComments,
   placePhotos,
   placeReactions,
@@ -57,6 +59,7 @@ export async function deleteAccount(_prev: DeleteAccountState, formData: FormDat
     await db.delete(placeTips).where(inArray(placeTips.placeId, placeIds));
     await db.delete(savedPlaces).where(inArray(savedPlaces.placeId, placeIds));
     await db.delete(placeReactions).where(inArray(placeReactions.placeId, placeIds));
+    await db.delete(placeLocations).where(inArray(placeLocations.placeId, placeIds));
     await db.delete(places).where(inArray(places.id, placeIds));
   }
   if (guideIds.length) {
@@ -86,6 +89,7 @@ export async function deleteAccount(_prev: DeleteAccountState, formData: FormDat
   await db.update(reports).set({ reporterId: null }).where(eq(reports.reporterId, user.id));
   await db.update(events).set({ userId: null }).where(eq(events.userId, user.id));
   await db.delete(media).where(eq(media.ownerId, user.id));
+  await db.delete(oauthAccounts).where(eq(oauthAccounts.userId, user.id));
   await db.delete(users).where(eq(users.id, user.id));
 
   await destroySession();

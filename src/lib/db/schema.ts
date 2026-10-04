@@ -42,6 +42,23 @@ export const users = sqliteTable("users", {
     .default(sql`(unixepoch() * 1000)`),
 });
 
+/** "Continue with Google / Apple": one row per linked sign-in. A user can have several, plus a password. */
+export const oauthAccounts = sqliteTable(
+  "oauth_accounts",
+  {
+    /** "google" | "apple" */
+    provider: text("provider").notNull(),
+    /** The provider's stable user id (the id token's `sub`). */
+    providerUserId: text("provider_user_id").notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    email: text("email"),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.provider, t.providerUserId] }), index("oauth_accounts_user_idx").on(t.userId)],
+);
+
 export const guides = sqliteTable(
   "guides",
   {
@@ -296,6 +313,7 @@ export const events = sqliteTable(
 );
 
 export type User = typeof users.$inferSelect;
+export type OAuthAccount = typeof oauthAccounts.$inferSelect;
 export type Guide = typeof guides.$inferSelect;
 export type Place = typeof places.$inferSelect;
 export type PlacePhoto = typeof placePhotos.$inferSelect;

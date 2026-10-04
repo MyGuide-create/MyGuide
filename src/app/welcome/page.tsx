@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { AppShell, Wordmark } from "@/components/AppShell";
 import { FollowButton } from "@/components/FollowButton";
+import { UsernameForm } from "@/components/UsernameForm";
 import { Avatar, Button } from "@/components/ui";
 import { finishOnboarding } from "@/lib/actions/account";
 import { requireUser } from "@/lib/auth";
@@ -26,6 +27,12 @@ export default async function WelcomePage({ searchParams }: { searchParams: Prom
         <p className="mt-2 text-[14px] text-ink-muted leading-relaxed">
           MyGuide is city guides from people whose taste you trust. Follow a few people and their guides show up in your Following tab — and you&apos;ll get an alert when they add something new.
         </p>
+
+        {sp.new === "1" && (
+          <div className="mt-6">
+            <UsernameForm current={user.username} />
+          </div>
+        )}
 
         {creators.length > 0 && (
           <section className="mt-7">

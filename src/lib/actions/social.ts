@@ -75,6 +75,22 @@ export interface ProfileState {
   ok?: boolean;
 }
 
+/** Change your @username (new Google/Apple accounts get one made for them). */
+export async function changeUsername(_prev: ProfileState, formData: FormData): Promise<ProfileState> {
+  const user = await getCurrentUser();
+  if (!user) redirect("/login");
+  const username = String(formData.get("username") ?? "").trim().toLowerCase().replace(/^@/, "");
+  if (username === user.username) return { ok: true };
+  if (!/^[a-z0-9_.]{3,24}$/.test(username)) return { error: "Usernames are 3\u201324 characters: letters, numbers, dots or underscores." };
+  const db = await getDb();
+  const taken = await db.query.users.findFirst({ where: eq(users.username, username) });
+  if (taken) return { error: "That username is taken." };
+  await db.update(users).set({ username }).where(eq(users.id, user.id));
+  revalidatePath("/me");
+  revalidatePath(`/u/${username}`);
+  return { ok: true };
+}
+
 export async function updateProfile(_prev: ProfileState, formData: FormData): Promise<ProfileState> {
   const user = await getCurrentUser();
   if (!user) redirect("/login");

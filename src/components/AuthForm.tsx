@@ -24,11 +24,35 @@ function PasswordInput(props: InputHTMLAttributes<HTMLInputElement>) {
   );
 }
 
-export function AuthForm({ mode, next, why }: { mode: "login" | "signup"; next?: string; why?: AuthReason | null }) {
+function ProviderButtons({ providers, mode, next }: { providers: Array<"google" | "apple">; mode: "login" | "signup"; next?: string }) {
+  if (!providers.length) return null;
+  const href = (p: string) => `/api/auth/${p}?mode=${mode}${next ? `&next=${encodeURIComponent(next)}` : ""}`;
+  return (
+    <div className="flex flex-col gap-2.5">
+      {providers.includes("apple") && (
+        <a href={href("apple")} className="h-12 rounded-full bg-ink text-cream text-[15px] font-medium flex items-center justify-center hover:opacity-90">
+          Continue with Apple
+        </a>
+      )}
+      {providers.includes("google") && (
+        <a href={href("google")} className="h-12 rounded-full border border-line bg-paper text-ink text-[15px] font-medium flex items-center justify-center hover:border-ink-faint">
+          Continue with Google
+        </a>
+      )}
+      <div className="my-1 flex items-center gap-3 text-[12px] text-ink-faint">
+        <span className="h-px flex-1 bg-line" /> or with email <span className="h-px flex-1 bg-line" />
+      </div>
+    </div>
+  );
+}
+
+export function AuthForm({ mode, next, why, providers = [], notice }: { mode: "login" | "signup"; next?: string; why?: AuthReason | null; providers?: Array<"google" | "apple">; notice?: string | null }) {
   const [forgot, setForgot] = useState(false);
   const [state, action, pending] = useActionState<AuthState, FormData>(mode === "login" ? logIn : signUp, {});
   return (
     <form action={action} className="flex flex-col gap-4">
+      {notice && <p className="text-[13px] text-danger bg-danger-tint rounded-xl px-3 py-2">{notice}</p>}
+      <ProviderButtons providers={providers} mode={mode} next={next} />
       {next && <input type="hidden" name="next" value={next} />}
       {mode === "signup" && (
         <>
@@ -72,7 +96,7 @@ export function AuthForm({ mode, next, why }: { mode: "login" | "signup"; next?:
       {state.error && <p className="text-[13px] text-danger bg-danger-tint rounded-xl px-3 py-2">{state.error}</p>}
       {mode === "signup" && (
         <p className="text-[11.5px] text-ink-faint leading-relaxed">
-          By creating an account you agree to the <Link href="/terms" className="underline">Terms</Link> and <Link href="/privacy" className="underline">Privacy notice</Link>.
+          By creating an account{providers.length ? ` or continuing with ${providers.map((p) => (p === "google" ? "Google" : "Apple")).join(" or ")}` : ""} you agree to the <Link href="/terms" className="underline">Terms</Link> and <Link href="/privacy" className="underline">Privacy notice</Link>.
         </p>
       )}
       <Button type="submit" size="lg" disabled={pending} className="mt-1">

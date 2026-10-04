@@ -6,6 +6,7 @@ import { createSession, destroySession, hashPassword, verifyPassword } from "../
 import { getDb } from "../db";
 import { users } from "../db/schema";
 import { newId } from "../utils";
+import { providersFor } from "../oauthUsers";
 
 export interface AuthState {
   error?: string;
@@ -54,6 +55,8 @@ export async function logIn(_prev: AuthState, formData: FormData): Promise<AuthS
   const db = await getDb();
   const user = await db.query.users.findFirst({ where: or(eq(users.email, email), eq(users.username, email)) });
   if (!user || !(await verifyPassword(password, user.passwordHash))) {
+    const via = user ? await providersFor(user.id) : [];
+    if (via.length) return { error: `This account signs in with ${via.map((p) => (p === "google" ? "Google" : "Apple")).join(" or ")} \u2014 use the button above.` };
     return { error: "Email or password didn't match." };
   }
   await createSession(user.id);

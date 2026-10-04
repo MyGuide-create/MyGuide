@@ -5,6 +5,7 @@ import { AuthForm } from "@/components/AuthForm";
 import { XIcon } from "@/components/Icons";
 import { getCurrentUser } from "@/lib/auth";
 import { closeHref, parseReason, reasonText, safeNext } from "@/lib/authContext";
+import { enabledProviders } from "@/lib/oauth";
 import { DEMO_PASSWORD } from "@/lib/seed";
 
 export const dynamic = "force-dynamic";
@@ -27,7 +28,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
         <h1 className="mt-6 font-display text-[36px] leading-[1.02]">{next ? "Log in to continue." : "Welcome back."}</h1>
         <p className="mt-2 text-[14px] text-ink-muted">{reason ?? "Your guides and your people are where you left them."}</p>
         <div className="mt-8">
-          <AuthForm mode="login" next={next} why={why} />
+          <AuthForm mode="login" next={next} why={why} providers={enabledProviders()} notice={sp.oauth === "failed" ? "That didn\u2019t work \u2014 please try again, or use your email." : sp.oauth === "unavailable" ? "That sign-in option isn\u2019t available right now." : null} />
         </div>
         {showDemo && (
           <p className="mt-8 text-[12px] text-ink-faint text-center leading-relaxed">
