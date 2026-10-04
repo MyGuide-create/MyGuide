@@ -35,6 +35,11 @@ export function PlaceLinksEditor({ place, onPatch }: { place: Place; onPatch: (p
     reserveUrl: display("reserveUrl", place.reserveUrl),
   });
   const [errors, setErrors] = useState<Partial<Record<Field, string>>>({});
+  // Only show what's filled in (often by Google already); the rest is one tap away.
+  const [showAll, setShowAll] = useState(false);
+  const [initiallyFilled] = useState(() => new Set(FIELDS.filter((f) => !!place[f.key]).map((f) => f.key)));
+  const visible = FIELDS.filter((f) => showAll || initiallyFilled.has(f.key));
+  const hidden = FIELDS.filter((f) => !visible.includes(f));
 
   const commit = async (key: Field) => {
     const raw = values[key];
@@ -56,7 +61,7 @@ export function PlaceLinksEditor({ place, onPatch }: { place: Place; onPatch: (p
     <div>
       <Label>Links</Label>
       <div className="flex flex-col gap-2">
-        {FIELDS.map(({ key, label, placeholder, icon: Icon, inputMode, hint }) => (
+        {visible.map(({ key, label, placeholder, icon: Icon, inputMode, hint }) => (
           <div key={key}>
             <div className="relative">
               <Icon size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-faint pointer-events-none" />
@@ -81,6 +86,11 @@ export function PlaceLinksEditor({ place, onPatch }: { place: Place; onPatch: (p
             )}
           </div>
         ))}
+        {hidden.length > 0 && (
+          <button type="button" onClick={() => setShowAll(true)} className="self-start rounded-full border border-dashed border-line px-3 py-1.5 text-[12px] font-medium text-ink-muted hover:text-ink">
+            + Add {hidden.map((f) => (f.key === "reserveUrl" ? "reservation link" : f.label)).join(", ").replace(/, ([^,]*)$/, " or $1")}
+          </button>
+        )}
       </div>
     </div>
   );

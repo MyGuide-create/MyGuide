@@ -15,6 +15,7 @@ import { NoteEditor } from "./NoteEditor";
 import { PhotoPicker } from "./PhotoPicker";
 import { PlaceSearch } from "./PlaceSearch";
 import { PinDropSheet } from "./PinDropSheet";
+import { GoogleInfoCard } from "./GoogleInfoCard";
 import { isDroppedPin } from "@/lib/places/pins";
 import { TipsEditor } from "./TipsEditor";
 import { PlaceLinksEditor } from "./PlaceLinksEditor";
@@ -436,6 +437,24 @@ function EditablePlace({
           </button>
         </div>
       )}
+      {place.googlePlaceId ? (
+        <div className="mt-3">
+          <GoogleInfoCard
+            compact
+            info={{
+              address: place.address,
+              phone: place.phone,
+              website: place.website,
+              instagram: place.instagram,
+              hours: place.hoursJson ? (JSON.parse(place.hoursJson) as string[]) : null,
+              photoCount: place.photoUrl ? 1 : 0,
+              country: place.country,
+              lng: place.lng,
+              businessStatus: place.businessStatus,
+            }}
+          />
+        </div>
+      ) : null}
       <div className="mt-3">
         <Label>Description - What Makes It Special</Label>
         {open ? (
@@ -448,7 +467,7 @@ function EditablePlace({
         )}
       </div>
       <div className="mt-3 pt-3 border-t border-line/70">
-        <p className="text-[11px] font-medium uppercase tracking-[0.06em] text-ink-faint mb-2 inline-flex items-center gap-1"><SparkleIcon size={12} /> Shown on the place page</p>
+        <p className="text-[11px] font-medium uppercase tracking-[0.06em] text-ink-faint mb-2 inline-flex items-center gap-1"><SparkleIcon size={12} /> Optional extras · shown on the place page</p>
         <div className="flex flex-col gap-3">
           <TipsEditor guideId={guideId} placeId={place.id} initial={tips} />
           <PlaceLinksEditor place={place} onPatch={onPatch} />

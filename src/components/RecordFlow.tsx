@@ -6,6 +6,7 @@ import { saveRecordedPlace } from "@/lib/actions/record";
 import { PhotoPicker } from "./PhotoPicker";
 import { PlaceSearch } from "./PlaceSearch";
 import { PinDropSheet } from "./PinDropSheet";
+import { GoogleInfoCard, type GoogleInfo } from "./GoogleInfoCard";
 import { CameraIcon, CheckIcon, ChevronLeft, PinIcon, XIcon } from "./Icons";
 import { Button, Spinner, Textarea, cx } from "./ui";
 
@@ -43,6 +44,19 @@ export function RecordFlow({ guides }: { guides: GuideOption[] }) {
   /** Where the person is (used once to suggest places, and to start a dropped pin). */
   const [here, setHere] = useState<{ lat: number; lng: number } | null>(null);
   const [pinning, setPinning] = useState(false);
+  /** What Google already knows about the picked place, shown while capturing. */
+  const [googleInfo, setGoogleInfo] = useState<{ id: string; info: GoogleInfo | null } | null>(null);
+  const pickedId = selected?.providerId;
+  useEffect(() => {
+    if (!pickedId) return;
+    let live = true;
+    fetch(`/api/places/details?id=${encodeURIComponent(pickedId)}`)
+      .then((r) => r.json())
+      .then((d: { info: GoogleInfo | null }) => live && setGoogleInfo({ id: pickedId, info: d.info }))
+      .catch(() => live && setGoogleInfo({ id: pickedId, info: null }));
+    return () => { live = false; };
+  }, [pickedId]);
+  const shownInfo = pickedId && googleInfo?.id === pickedId ? googleInfo.info : null;
 
   const [special, setSpecial] = useState("");
   const [tips, setTips] = useState<string[]>([]);
@@ -230,6 +244,11 @@ export function RecordFlow({ guides }: { guides: GuideOption[] }) {
             <span className="text-[12.5px] font-semibold text-terracotta-deep">{selected.name}</span>
             <button type="button" onClick={() => setStep("confirm")} className="text-[11px] text-ink-muted underline">change</button>
           </div>
+          {shownInfo && (
+            <div className="mx-4 mt-3">
+              <GoogleInfoCard info={shownInfo} compact />
+            </div>
+          )}
 
           <div className="flex flex-col gap-5 px-5 pt-5">
             <div>
