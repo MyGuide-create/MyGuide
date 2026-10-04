@@ -25,6 +25,8 @@ export interface MapPlace {
   photoMediaId?: string | null;
   /** Short line under the name, e.g. the neighbourhood. */
   subtitle?: string;
+  /** Another branch of a place: a smaller pin with the same number. */
+  small?: boolean;
 }
 
 const PIN_SVG = (fill: string, n: number) =>
@@ -194,14 +196,16 @@ function ClusteredPins({ places, activeId, onPick }: { places: Located[]; active
   useEffect(() => {
     pick.current = onPick;
   }, [onPick]);
-  const key = JSON.stringify(places.map((p) => [p.id, p.lat, p.lng, p.pin, p.category]));
+  const key = JSON.stringify(places.map((p) => [p.id, p.lat, p.lng, p.pin, p.category, p.small]));
 
   useEffect(() => {
     if (!map) return;
     const markers = places.map((p) => {
       const m = new google.maps.Marker({
         position: { lat: p.lat, lng: p.lng },
-        icon: { url: PIN_SVG(pinFill(p.category), p.pin), scaledSize: new google.maps.Size(34, 42), anchor: new google.maps.Point(17, 41) },
+        icon: p.small
+          ? { url: PIN_SVG(pinFill(p.category), p.pin), scaledSize: new google.maps.Size(24, 30), anchor: new google.maps.Point(12, 29) }
+          : { url: PIN_SVG(pinFill(p.category), p.pin), scaledSize: new google.maps.Size(34, 42), anchor: new google.maps.Point(17, 41) },
         title: p.name,
       });
       m.set("placeId", p.id);

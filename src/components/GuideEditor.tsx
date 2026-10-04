@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useRef, useState, useTransition } from "react";
 import type { GuideDetail } from "@/lib/guides";
-import type { Place, PlaceTip } from "@/lib/db/schema";
+import type { Place, PlaceLocation, PlaceTip } from "@/lib/db/schema";
 import { addPlace, deleteGuide, markGuideVerified, publishGuide, removePlace, unpublishGuide, addPinnedPlace, setPlacePin, reorderPlaces, replacePlace, updateGuideMeta, updatePlace } from "@/lib/actions/guides";
 import { CATEGORIES } from "@/lib/places/categories";
 import type { PlaceSuggestion } from "@/lib/places/types";
@@ -16,6 +16,7 @@ import { PhotoPicker } from "./PhotoPicker";
 import { PlaceSearch } from "./PlaceSearch";
 import { PinDropSheet } from "./PinDropSheet";
 import { GoogleInfoCard } from "./GoogleInfoCard";
+import { BranchesEditor } from "./BranchesEditor";
 import { isDroppedPin } from "@/lib/places/pins";
 import { TipsEditor } from "./TipsEditor";
 import { PlaceLinksEditor } from "./PlaceLinksEditor";
@@ -34,6 +35,10 @@ export function GuideEditor({ detail, justForked, justCreated, viewerId }: { det
   /** Pin-drop sheet: a new spot with no Google listing, or re-pinning an existing place. */
   const [pinFor, setPinFor] = useState<{ mode: "add"; name: string } | { mode: "move"; place: Place } | null>(null);
   const firstPinned = places.find((p) => p.lat != null && p.lng != null);
+  /** The place just added from search — its card looks for other branches straight away. */
+  const [justAddedId, setJustAddedId] = useState<string | null>(null);
+  /** Bumped when a merge rewrites a place's description, so its editor reloads the text. */
+  const [noteRev, setNoteRev] = useState<Record<string, number>>({});
   const [saving, setSaving] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -88,6 +93,7 @@ export function GuideEditor({ detail, justForked, justCreated, viewerId }: { det
     try {
       const p = await addPlace(guide.id, { providerId, name, cityHint: guide.city || undefined });
       setPlaces((ps) => [p, ...ps]);
+      setJustAddedId(p.id);
       if (!guide.city && p.city) setGuide((g) => ({ ...g, city: p.city, country: p.country }));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't add that place.");
@@ -281,6 +287,13 @@ export function GuideEditor({ detail, justForked, justCreated, viewerId }: { det
               onPatch={(patch) => patchPlace(p.id, patch)}
               onReplaced={(np) => setPlaces((ps) => ps.map((x) => (x.id === np.id ? np : x)))}
               onPin={() => setPinFor({ mode: "move", place: p })}
+              branches={detail.placeLocations[p.id] ?? []}
+              autoFindBranches={justAddedId === p.id}
+              noteRev={noteRev[p.id] ?? 0}
+              onMerged={(ids, note) => {
+                setPlaces((ps) => ps.filter((x) => !ids.includes(x.id)).map((x) => (x.id === p.id ? { ...x, note } : x)));
+                setNoteRev((r) => ({ ...r, [p.id]: (r[p.id] ?? 0) + 1 }));
+              }}
             />
           ))}
         </ol>
@@ -362,6 +375,10 @@ function EditablePlace({
   onPatch,
   onReplaced,
   onPin,
+  branches,
+  autoFindBranches,
+  onMerged,
+  noteRev,
 }: {
   place: Place;
   index: number;
@@ -376,6 +393,10 @@ function EditablePlace({
   onPatch: (patch: Parameters<typeof updatePlace>[2]) => Promise<void>;
   onReplaced: (p: Place) => void;
   onPin: () => void;
+  branches: PlaceLocation[];
+  autoFindBranches: boolean;
+  onMerged: (mergedPlaceIds: string[], note: string) => void;
+  noteRev: number;
 }) {
   const [fixing, setFixing] = useState(false);
   const [open, setOpen] = useState(!place.note && !place.noteClipMediaId);
@@ -455,10 +476,22 @@ function EditablePlace({
           />
         </div>
       ) : null}
+      {place.lat != null && (
+        <div className="mt-3">
+          <BranchesEditor
+            guideId={guideId}
+            place={place}
+            initial={branches}
+            cityHint={cityHint || undefined}
+            autoFind={autoFindBranches}
+            onMerged={onMerged}
+          />
+        </div>
+      )}
       <div className="mt-3">
         <Label>Description - What Makes It Special</Label>
         {open ? (
-          <NoteEditor placeName={place.name} note={place.note} clipMediaId={place.noteClipMediaId} onSave={(patch) => onPatch(patch)} />
+          <NoteEditor key={noteRev} placeName={place.name} note={place.note} clipMediaId={place.noteClipMediaId} onSave={(patch) => onPatch(patch)} />
         ) : (
           <button type="button" onClick={() => setOpen(true)} className="w-full text-left whitespace-pre-line rounded-2xl bg-cream px-3.5 py-2.5 text-[12.5px] italic text-ink-muted leading-[1.45] hover:bg-cream-deep/60">
             {place.note || "What is it, and what makes it special…"}

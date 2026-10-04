@@ -1,3 +1,4 @@
+import type { BranchCandidate } from "./branches";
 import type { Category } from "./categories";
 
 export interface PlaceResult {
@@ -44,4 +45,6 @@ export interface PlacesProvider {
   businessStatus(providerId: string): Promise<PlaceResult["businessStatus"]>;
   /** Real places near a coordinate, closest first. Used by the "record a place" flow to confirm where the user is standing. */
   nearby(lat: number, lng: number, radiusMeters?: number): Promise<NearbyPlaceResult[]>;
+  /** Other listings with the same name near a point — candidate branches of a place. */
+  branches(name: string, near: { lat: number; lng: number }): Promise<BranchCandidate[]>;
 }

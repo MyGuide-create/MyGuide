@@ -154,6 +154,32 @@ export const placeTips = sqliteTable(
   (t) => [index("place_tips_place_idx").on(t.placeId, t.position)],
 );
 
+/**
+ * Extra branches of a place (a café with four locations): one guide entry, one description,
+ * several pins. The place row itself stays the main branch.
+ */
+export const placeLocations = sqliteTable(
+  "place_locations",
+  {
+    id: text("id").primaryKey(),
+    placeId: text("place_id")
+      .notNull()
+      .references(() => places.id, { onDelete: "cascade" }),
+    /** Branch name as Google lists it, e.g. "Ravi Restaurant - Satwa"; may equal the place name. */
+    name: text("name").notNull(),
+    address: text("address").notNull().default(""),
+    lat: real("lat").notNull(),
+    lng: real("lng").notNull(),
+    /** Null for a dropped pin. */
+    googlePlaceId: text("google_place_id"),
+    phone: text("phone"),
+    hoursJson: text("hours_json"),
+    position: integer("position").notNull().default(0),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [index("place_locations_place_idx").on(t.placeId, t.position)],
+);
+
 export const placeComments = sqliteTable(
   "place_comments",
   {
@@ -305,6 +331,7 @@ export const savedGuides = sqliteTable(
   (t) => [primaryKey({ columns: [t.userId, t.guideId] }), index("saved_guides_guide_idx").on(t.guideId)],
 );
 export type PlaceTip = typeof placeTips.$inferSelect;
+export type PlaceLocation = typeof placeLocations.$inferSelect;
 export type PlaceComment = typeof placeComments.$inferSelect;
 export type Notification = typeof notifications.$inferSelect;
 export type Media = typeof media.$inferSelect;

@@ -1,6 +1,6 @@
 import { and, desc, eq, inArray, isNotNull, like, or, sql, type SQL } from "drizzle-orm";
 import { getDb } from "./db";
-import { follows, guideCollaborators, guideShares, guides, placeComments, placePhotos, placeReactions, placeTips, places, savedGuides, savedPlaces, users, type Guide, type Place, type PlaceComment, type PlacePhoto, type PlaceTip, type User } from "./db/schema";
+import { follows, guideCollaborators, guideShares, guides, placeComments, placeLocations, placePhotos, placeReactions, placeTips, places, savedGuides, savedPlaces, users, type Guide, type Place, type PlaceComment, type PlacePhoto, type PlaceLocation, type PlaceTip, type User } from "./db/schema";
 import { toPublicUser, type PublicUser } from "./auth";
 import type { SearchIntent } from "./ai";
 import { hiddenUserIds } from "./blocks";
@@ -28,6 +28,8 @@ export interface GuideDetail extends GuideCard {
   placePhotos: Record<string, PlacePhoto[]>;
   /** Creator-authored expert tips for each place, in order, keyed by placeId. */
   placeTips: Record<string, PlaceTip[]>;
+  /** Other branches of each place (the place row is the main one), keyed by placeId. */
+  placeLocations: Record<string, PlaceLocation[]>;
   viewerCanEdit: boolean;
   /** Only the owner can publish, delete, share and manage co-editors. */
   viewerIsOwner: boolean;
@@ -238,6 +240,11 @@ export async function getGuideDetail(guide: Guide, viewer: User | null): Promise
     : [];
   const placeTipsByPlace: Record<string, PlaceTip[]> = {};
   for (const t of tipRows) (placeTipsByPlace[t.placeId] ??= []).push(t);
+  const locationRows = placeIds.length
+    ? await db.select().from(placeLocations).where(inArray(placeLocations.placeId, placeIds)).orderBy(placeLocations.position, placeLocations.createdAt)
+    : [];
+  const placeLocationsByPlace: Record<string, PlaceLocation[]> = {};
+  for (const l of locationRows) (placeLocationsByPlace[l.placeId] ??= []).push(l);
   const commentAuthorIds = [...new Set(commentRows.map((c) => c.authorId))];
   const commentAuthors = commentAuthorIds.length ? await db.select().from(users).where(inArray(users.id, commentAuthorIds)) : [];
   const commentAuthorMap = new Map(commentAuthors.map((u) => [u.id, toPublicUser(u)]));
@@ -279,6 +286,7 @@ export async function getGuideDetail(guide: Guide, viewer: User | null): Promise
     placeComments: placeCommentsByPlace,
     placePhotos: placePhotosByPlace,
     placeTips: placeTipsByPlace,
+    placeLocations: placeLocationsByPlace,
     viewerCanEdit: viewerIsOwner || viewerIsCollaborator,
     viewerIsOwner,
     collaborators,

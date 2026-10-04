@@ -1,4 +1,5 @@
 import { categoryFromGoogleTypes } from "./categories";
+import { sameBrand } from "./branches";
 import { findCity } from "./cities";
 import { haversineMeters } from "./geo";
 import type { PlaceResult, PlaceSuggestion, PlacesProvider } from "./types";
@@ -131,6 +132,27 @@ export const googleProvider: PlacesProvider = {
     const p = await gfetch<GooglePlace>(`/places/${encodeURIComponent(providerId)}`, { method: "GET", fieldMask: "id,businessStatus" });
     const s = p?.businessStatus;
     return s === "OPERATIONAL" || s === "CLOSED_TEMPORARILY" || s === "CLOSED_PERMANENTLY" ? s : null;
+  },
+
+  async branches(name, near) {
+    // Light field mask on purpose: this is a list to tick from; full details are fetched for the ones picked.
+    const data = await gfetch<{ places?: Array<{ id: string; displayName?: { text: string }; formattedAddress?: string; shortFormattedAddress?: string; location?: { latitude: number; longitude: number } }> }>(
+      "/places:searchText",
+      {
+        method: "POST",
+        fieldMask: "places.id,places.displayName,places.formattedAddress,places.shortFormattedAddress,places.location",
+        body: JSON.stringify({ textQuery: name, pageSize: 20, locationBias: { circle: { center: { latitude: near.lat, longitude: near.lng }, radius: 50000 } } }),
+      },
+    );
+    return (data?.places ?? [])
+      .filter((p) => p.location && p.displayName?.text && sameBrand(p.displayName.text, name))
+      .map((p) => ({
+        providerId: p.id,
+        name: p.displayName!.text,
+        address: p.shortFormattedAddress || p.formattedAddress || "",
+        lat: p.location!.latitude,
+        lng: p.location!.longitude,
+      }));
   },
 
   async nearby(lat, lng, radiusMeters = 600) {

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { formatCoords, isDroppedPin, mapsUrl } from "@/lib/places/pins";
+import { LocationsList } from "@/components/LocationsList";
 import { notFound } from "next/navigation";
 import { AppShell, TopBar } from "@/components/AppShell";
 import { PlaceComments } from "@/components/PlaceComments";
@@ -66,6 +67,7 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
   }
 
   const tips = detail.placeTips[place.id] ?? [];
+  const branches = detail.placeLocations[place.id] ?? [];
   const hours = place.hoursJson ? (JSON.parse(place.hoursJson) as string[]) : [];
   const mapsHref = mapsUrl(place);
   const ordered = orderPlaces(detail.places);
@@ -210,9 +212,22 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
 
         {place.lat != null && place.lng != null && (
           <GuideMap
-            places={[{ id: place.id, name: place.name, lat: place.lat, lng: place.lng, category: place.category, n: pos >= 0 ? pos + 1 : 1 }]}
-            height={180}
+            places={[
+              { id: place.id, name: place.name, lat: place.lat, lng: place.lng, category: place.category, n: pos >= 0 ? pos + 1 : 1 },
+              ...branches.map((b) => ({ id: b.id, name: b.name, lat: b.lat, lng: b.lng, category: place.category, n: pos >= 0 ? pos + 1 : 1, small: true })),
+            ]}
+            height={branches.length ? 220 : 180}
             showCard={false}
+          />
+        )}
+
+        {branches.length > 0 && place.lat != null && place.lng != null && (
+          <LocationsList
+            track={trackAttrs("tap_directions", place.guideId, place.id)}
+            items={[
+              { id: place.id, name: place.name, address: place.address, lat: place.lat, lng: place.lng, googlePlaceId: place.googlePlaceId, main: true },
+              ...branches.map((b) => ({ id: b.id, name: b.name, address: b.address, lat: b.lat, lng: b.lng, googlePlaceId: b.googlePlaceId })),
+            ]}
           />
         )}
 

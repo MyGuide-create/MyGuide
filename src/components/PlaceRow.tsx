@@ -29,8 +29,11 @@ export function PlaceRow({
   shareKey,
   social,
   friends,
+  branchCount = 0,
 }: {
   place: Place;
+  /** Other branches besides this one ("3 locations"). */
+  branchCount?: number;
   index?: number;
   noteAuthor?: PublicUser | null;
   ownerId: string;
@@ -67,7 +70,11 @@ export function PlaceRow({
         </div>
         <div className="mt-0.5 text-[11.5px] text-ink-muted flex items-center gap-1 truncate">
           <span className="rounded-full bg-cream-deep px-1.5 py-[1px] text-[10.5px] font-medium text-ink-muted shrink-0">{place.category}</span>
-          {(area || place.address) && <span className="truncate" title={place.address}>· {area || place.address}</span>}
+          {branchCount > 0 ? (
+            <span className="truncate text-terracotta-deep font-medium">· {branchCount + 1} locations</span>
+          ) : (
+            (area || place.address) && <span className="truncate" title={place.address}>· {area || place.address}</span>
+          )}
         </div>
         {place.note && (
           <p className={cx("mt-1.5 whitespace-pre-line text-[12.5px] italic leading-[1.45] text-ink-muted", !expanded && "line-clamp-3")}>

@@ -1,6 +1,6 @@
-import { and, desc, eq, gt, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, sql } from "drizzle-orm";
 import { getDb } from "./db";
-import { guides, notifications, places, trips, type Guide, type Place } from "./db/schema";
+import { guides, notifications, placeLocations, places, trips, type Guide, type Place } from "./db/schema";
 import { addNotifications } from "./notifications";
 import { newId, slugify } from "./utils";
 
@@ -37,6 +37,17 @@ export function copyPlace(p: Place, source: Pick<Guide, "ownerId" | "allowFork">
     special: null,
     photoMediaId: withNotes ? p.photoMediaId : null,
   };
+}
+
+/** Branches are public facts (addresses), so they always come along with a copied place. */
+export async function copyBranches(pairs: Array<[fromPlaceId: string, toPlaceId: string]>): Promise<void> {
+  if (!pairs.length) return;
+  const db = await getDb();
+  const to = new Map(pairs);
+  const rows = await db.select().from(placeLocations).where(inArray(placeLocations.placeId, [...to.keys()]));
+  if (!rows.length) return;
+  const now = new Date();
+  await db.insert(placeLocations).values(rows.map((r) => ({ ...r, id: newId(), placeId: to.get(r.placeId)!, createdAt: now })));
 }
 
 const BATCH_WINDOW_MS = 24 * 60 * 60 * 1000;

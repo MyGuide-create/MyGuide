@@ -5,17 +5,18 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "../auth";
 import { getDb } from "../db";
-import { guideCollaborators, guideShares, guides, media, notifications, placeTips, places, users, type Guide, type Place, type PlaceTip } from "../db/schema";
+import { guideCollaborators, guideShares, guides, media, notifications, placeComments, placeLocations, placePhotos, placeTips, places, users, type Guide, type Place, type PlaceLocation, type PlaceTip } from "../db/schema";
 import { canViewGuide, getGuideById, isCollaborator } from "../guides";
 import { notifyGuidePublished, notifyPlacesAdded } from "../notify";
 import { getPlacesProvider, isCategory, resolvePlaceByName, type PlaceResult } from "../places";
 import { findCity } from "../places/cities";
 import { getPlacePhotos, reverseGeocode } from "../places/google";
 import { validPin } from "../places/pins";
+import type { BranchCandidate } from "../places/branches";
 import { claimUnsplashPhoto } from "../covers/unsplash";
 import { newId, newToken, slugify } from "../utils";
 import { addNotifications } from "../notifications";
-import { notifyGuideUsed } from "../reuse";
+import { copyBranches, notifyGuideUsed } from "../reuse";
 import { normaliseInstagram, normaliseReserve, normaliseWebsite, normaliseWhatsapp, type Normalised } from "@/lib/placeLinks";
 
 /** Owner or invited co-editor. Use for editing places, notes, tips and guide details. */
@@ -304,6 +305,132 @@ export async function setPlacePin(guideId: string, placeId: string, input: { lat
   return (await db.query.places.findFirst({ where: eq(places.id, placeId) }))!;
 }
 
+/* ---------------------------------------------------------------------------
+ * Branches: one guide entry with several locations (a café with four branches).
+ * ------------------------------------------------------------------------- */
+
+async function getPlaceInGuide(guideId: string, placeId: string): Promise<Place> {
+  const db = await getDb();
+  const p = await db.query.places.findFirst({ where: and(eq(places.id, placeId), eq(places.guideId, guideId)) });
+  if (!p) throw new Error("That place isn't in this guide any more.");
+  return p;
+}
+
+async function listBranches(placeId: string): Promise<PlaceLocation[]> {
+  const db = await getDb();
+  return db.select().from(placeLocations).where(eq(placeLocations.placeId, placeId)).orderBy(placeLocations.position, placeLocations.createdAt);
+}
+
+export interface BranchSuggestion extends BranchCandidate {
+  /** This branch is already a separate entry in the guide — adding it merges that entry in. */
+  existingPlaceId?: string;
+}
+
+/** Other listings with the same name near the place, minus the ones already added. */
+export async function findBranches(guideId: string, placeId: string): Promise<BranchSuggestion[]> {
+  await requireOwner(guideId);
+  const place = await getPlaceInGuide(guideId, placeId);
+  if (!place.googlePlaceId || place.lat == null || place.lng == null) return [];
+  const db = await getDb();
+  let found: BranchCandidate[] = [];
+  try {
+    found = await getPlacesProvider().branches(place.name, { lat: place.lat, lng: place.lng });
+  } catch (e) {
+    console.warn("[findBranches]", e);
+    return [];
+  }
+  const have = new Set([place.googlePlaceId, ...(await listBranches(placeId)).map((b) => b.googlePlaceId)].filter(Boolean));
+  const others = await db.select({ id: places.id, googlePlaceId: places.googlePlaceId }).from(places).where(eq(places.guideId, guideId));
+  const inGuide = new Map(others.filter((o) => o.id !== placeId && o.googlePlaceId).map((o) => [o.googlePlaceId!, o.id]));
+  return found
+    .filter((b) => !have.has(b.providerId))
+    .slice(0, 12)
+    .map((b) => ({ ...b, existingPlaceId: inGuide.get(b.providerId) }));
+}
+
+/**
+ * Add branches by Google id (ticked suggestions or a search pick), or one dropped pin.
+ * A branch that's already its own entry in this guide is merged in: its description is appended,
+ * its tips, photos and comments move over, and the separate entry is removed.
+ */
+export async function addBranches(
+  guideId: string,
+  placeId: string,
+  input: { providerIds?: string[]; pin?: { name: string; lat: number; lng: number } },
+): Promise<{ branches: PlaceLocation[]; mergedPlaceIds: string[]; note: string }> {
+  const { guide } = await requireOwner(guideId);
+  const place = await getPlaceInGuide(guideId, placeId);
+  const db = await getDb();
+  const existing = await listBranches(placeId);
+  const have = new Set([place.googlePlaceId, ...existing.map((b) => b.googlePlaceId)].filter(Boolean));
+  let position = existing.reduce((m, b) => Math.max(m, b.position + 1), 0);
+  const now = new Date();
+  const rows: (typeof placeLocations.$inferInsert)[] = [];
+  const mergedPlaceIds: string[] = [];
+  let note = place.note;
+
+  if (input.pin) {
+    if (!validPin(input.pin.lat, input.pin.lng)) throw new Error("That pin isn't on the map.");
+    const where = await reverseGeocode(input.pin.lat, input.pin.lng);
+    rows.push({ id: newId(), placeId, name: input.pin.name.trim().slice(0, 120) || place.name, address: where?.area ?? "", lat: input.pin.lat, lng: input.pin.lng, googlePlaceId: null, position: position++, createdAt: now });
+  }
+
+  const provider = getPlacesProvider();
+  for (const pid of [...new Set(input.providerIds ?? [])].slice(0, 20)) {
+    if (have.has(pid)) continue;
+    have.add(pid);
+    const dup = await db.query.places.findFirst({ where: and(eq(places.guideId, guideId), eq(places.googlePlaceId, pid)) });
+    if (dup && dup.id !== placeId && dup.lat != null && dup.lng != null) {
+      rows.push({ id: newId(), placeId, name: dup.name, address: dup.address, lat: dup.lat, lng: dup.lng, googlePlaceId: pid, phone: dup.phone, hoursJson: dup.hoursJson, position: position++, createdAt: now });
+      const extra = dup.note.trim();
+      if (extra && !note.includes(extra)) note = note.trim() ? `${note.trim()}\n\n${extra}` : extra;
+      await db.update(placeTips).set({ placeId }).where(eq(placeTips.placeId, dup.id));
+      await db.update(placePhotos).set({ placeId }).where(eq(placePhotos.placeId, dup.id));
+      await db.update(placeComments).set({ placeId }).where(eq(placeComments.placeId, dup.id));
+      await db.update(placeLocations).set({ placeId }).where(eq(placeLocations.placeId, dup.id));
+      await db.delete(places).where(eq(places.id, dup.id));
+      mergedPlaceIds.push(dup.id);
+      continue;
+    }
+    let r: PlaceResult | null = null;
+    try {
+      r = await provider.details(pid);
+    } catch (e) {
+      console.warn("[addBranches] details failed", e);
+    }
+    if (!r) continue;
+    rows.push({
+      id: newId(),
+      placeId,
+      name: r.name,
+      address: r.address,
+      lat: r.lat,
+      lng: r.lng,
+      googlePlaceId: r.source === "google" || r.source === "mock" ? r.providerId : null,
+      phone: r.phone,
+      hoursJson: r.hours ? JSON.stringify(r.hours) : null,
+      position: position++,
+      createdAt: now,
+    });
+  }
+  if (rows.length) await db.insert(placeLocations).values(rows);
+  if (note !== place.note) await db.update(places).set({ note }).where(eq(places.id, placeId));
+  await touch(guideId);
+  revalidateGuide(guide.slug);
+  return { branches: await listBranches(placeId), mergedPlaceIds, note };
+}
+
+export async function removeBranch(guideId: string, locationId: string): Promise<void> {
+  const { guide } = await requireOwner(guideId);
+  const db = await getDb();
+  const loc = await db.query.placeLocations.findFirst({ where: eq(placeLocations.id, locationId) });
+  if (!loc) return;
+  await getPlaceInGuide(guideId, loc.placeId);
+  await db.delete(placeLocations).where(eq(placeLocations.id, locationId));
+  await touch(guideId);
+  revalidateGuide(guide.slug);
+}
+
 /** Add a place by provider id (from autocomplete) or by free-text name. */
 export async function addPlace(guideId: string, input: { providerId?: string; name: string; cityHint?: string }): Promise<Place> {
   const { guide, userId } = await requireOwner(guideId);
@@ -512,10 +639,11 @@ export async function forkGuide(guideId: string, shareKey?: string | null): Prom
     updatedAt: now,
   });
   if (sourcePlaces.length) {
+    const newIds = sourcePlaces.map(() => newId());
     await db.insert(places).values(
       sourcePlaces.map((p, i) => ({
         ...p,
-        id: newId(),
+        id: newIds[i],
         guideId: id,
         position: i,
         // Carry the original creator's note (and voice clip) with attribution.
@@ -523,6 +651,7 @@ export async function forkGuide(guideId: string, shareKey?: string | null): Prom
         createdAt: now,
       })),
     );
+    await copyBranches(sourcePlaces.map((p, i) => [p.id, newIds[i]]));
   }
   await notifyGuideUsed(source, user.id, sourcePlaces.length);
   revalidatePath("/me");

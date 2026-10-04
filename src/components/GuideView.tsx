@@ -158,7 +158,8 @@ export function GuideView({ detail, viewerId, viewer, shareUrl, shareKey }: { de
       {mode === "map" ? (
         <div className="px-4 mt-4">
           <GuideMap
-            places={visible.map((p) => ({
+            places={visible.flatMap((p, i) => [{
+              n: i + 1,
               id: p.id,
               name: p.name,
               lat: p.lat,
@@ -170,7 +171,21 @@ export function GuideView({ detail, viewerId, viewer, shareUrl, shareKey }: { de
               subtitle: neighbourhood(p.address, p.city, p.country),
               href: `/g/${guide.slug}/p/${p.id}${keyQuery}`,
               mapsHref: mapsUrl(p),
-            }))}
+            }, ...(detail.placeLocations[p.id] ?? []).map((b) => ({
+              n: i + 1,
+              small: true,
+              id: `${p.id}:${b.id}`,
+              name: p.name,
+              lat: b.lat,
+              lng: b.lng,
+              category: p.category,
+              note: p.note,
+              photoUrl: p.photoUrl,
+              photoMediaId: p.photoMediaId,
+              subtitle: b.address,
+              href: `/g/${guide.slug}/p/${p.id}${keyQuery}`,
+              mapsHref: mapsUrl({ name: b.name, address: b.address, lat: b.lat, lng: b.lng, googlePlaceId: b.googlePlaceId }),
+            }))])}
             height="min(62dvh, 560px)"
           />
           <ol className="mt-3 flex flex-col gap-1.5 text-[12.5px]">
@@ -196,7 +211,7 @@ export function GuideView({ detail, viewerId, viewer, shareUrl, shareKey }: { de
                 </h2>
               )}
               {g.places.map((p) => (
-                <PlaceRow key={p.id} place={p} index={numberOf.get(p.id)} ownerId={guide.ownerId} guideSlug={guide.slug} noteAuthor={p.noteAuthorId ? noteAuthors[p.noteAuthorId] : null} flagged={flags[p.id]} comments={detail.placeComments[p.id] ?? []} currentUser={viewer} tips={detail.placeTips[p.id]} saved={saved.has(p.id)} shareKey={shareKey} social={detail.placeSocial[p.id]} friends={detail.friendsWhoLike[p.id]} expanded />
+                <PlaceRow key={p.id} place={p} index={numberOf.get(p.id)} ownerId={guide.ownerId} guideSlug={guide.slug} noteAuthor={p.noteAuthorId ? noteAuthors[p.noteAuthorId] : null} flagged={flags[p.id]} comments={detail.placeComments[p.id] ?? []} currentUser={viewer} tips={detail.placeTips[p.id]} saved={saved.has(p.id)} shareKey={shareKey} social={detail.placeSocial[p.id]} friends={detail.friendsWhoLike[p.id]} branchCount={detail.placeLocations[p.id]?.length ?? 0} expanded />
               ))}
             </section>
           ))}

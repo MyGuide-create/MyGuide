@@ -1,4 +1,5 @@
 import { guessCategoryFromName } from "./categories";
+import { sameBrand } from "./branches";
 import { CITIES, detectCityInText, findCity } from "./cities";
 import { haversineMeters } from "./geo";
 import { MOCK_PLACES, type MockPlace } from "./mock-data";
@@ -156,6 +157,16 @@ export const mockProvider: PlacesProvider = {
 
   async businessStatus() {
     return "OPERATIONAL";
+  },
+
+  async branches(name, near) {
+    return MOCK_PLACES.filter((p) => sameBrand(p.name, name) && haversineMeters(near.lat, near.lng, p.lat, p.lng) <= 50000).map((p) => ({
+      providerId: `mock:${p.slug}`,
+      name: p.name,
+      address: p.address,
+      lat: p.lat,
+      lng: p.lng,
+    }));
   },
 
   async nearby(lat, lng, radiusMeters = 600): Promise<NearbyPlaceResult[]> {

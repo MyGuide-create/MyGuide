@@ -8,7 +8,7 @@ import { getDb } from "../db";
 import { guides, places, trips, type Guide, type Place, type Trip, type User } from "../db/schema";
 import { canViewGuide, isCollaborator } from "../guides";
 import { findCity } from "../places/cities";
-import { copyPlace, freshGuideSlug, isReusable, notifyGuideUsed, placeKey } from "../reuse";
+import { copyBranches, copyPlace, freshGuideSlug, isReusable, notifyGuideUsed, placeKey } from "../reuse";
 import { newId, newToken } from "../utils";
 
 type Result = { ok: true; slug: string; title: string; added: number } | { ok: false; error: string };
@@ -66,6 +66,7 @@ async function copyInto(user: User, target: Guide, placeIds: string[]): Promise<
   const now = new Date();
   const rows: (typeof places.$inferInsert)[] = [];
   const perSource = new Map<string, number>();
+  const pairs: Array<[string, string]> = [];
   for (const id of ids) {
     const p: Place | undefined = byId.get(id);
     const source = p && usable.get(p.guideId);
@@ -73,11 +74,14 @@ async function copyInto(user: User, target: Guide, placeIds: string[]): Promise<
     const key = placeKey(p);
     if (have.has(key)) continue;
     have.add(key);
-    rows.push(copyPlace(p, source, { guideId: target.id, position: position++, now }));
+    const row = copyPlace(p, source, { guideId: target.id, position: position++, now });
+    rows.push(row);
+    pairs.push([p.id, row.id!]);
     perSource.set(source.id, (perSource.get(source.id) ?? 0) + 1);
   }
   if (!rows.length) return 0;
   await db.insert(places).values(rows);
+  await copyBranches(pairs);
   await db.update(guides).set({ updatedAt: now }).where(eq(guides.id, target.id));
   for (const [gid, n] of perSource) {
     const g = usable.get(gid)!;
