@@ -14,6 +14,12 @@ export function BottomNav({ signedIn, username, unread }: { signedIn: boolean; u
   const youActive = (username && (is(`/u/${username}`) || is("/me") || is("/saved"))) || false;
   const item = "flex flex-col items-center justify-center gap-0.5 w-16 h-12 rounded-2xl transition-colors";
   const label = "text-[10px] leading-none font-medium";
+  // Like other apps: tapping the tab you're already on scrolls back to the top instead of reloading.
+  const toTopIfHere = (href: string) => (e: React.MouseEvent) => {
+    if (path !== href.split("?")[0]) return;
+    e.preventDefault();
+    window.scrollTo({ top: 0, behavior: window.scrollY > 4000 ? "auto" : "smooth" });
+  };
   return (
     <>
       {creating && (
@@ -46,11 +52,11 @@ export function BottomNav({ signedIn, username, unread }: { signedIn: boolean; u
       )}
       <nav className="fixed bottom-0 inset-x-0 z-40 flex justify-center pointer-events-none">
         <div className="pointer-events-auto w-full max-w-[480px] safe-bottom bg-paper/95 backdrop-blur border-t border-line flex items-end justify-around px-2 pt-2 pb-2">
-          <Link href="/" aria-label="Home" className={cx(item, is("/") ? "text-ink" : "text-ink-muted")}>
+          <Link href="/" onClick={toTopIfHere("/")} aria-label="Home" className={cx(item, is("/") ? "text-ink" : "text-ink-muted")}>
             <HomeIcon size={22} />
             <span className={label}>Home</span>
           </Link>
-          <Link href="/search" aria-label="Search" className={cx(item, is("/search") ? "text-ink" : "text-ink-muted")}>
+          <Link href="/search" onClick={toTopIfHere("/search")} aria-label="Search" className={cx(item, is("/search") ? "text-ink" : "text-ink-muted")}>
             <SearchIcon size={22} />
             <span className={label}>Search</span>
           </Link>
@@ -75,7 +81,7 @@ export function BottomNav({ signedIn, username, unread }: { signedIn: boolean; u
               <PlusIcon size={26} />
             </Link>
           )}
-          <Link href={signedIn ? "/notifications" : "/login?next=/notifications&why=notifications"} aria-label="Activity" className={cx(item, "relative", is("/notifications") ? "text-ink" : "text-ink-muted")}>
+          <Link href={signedIn ? "/notifications" : "/login?next=/notifications&why=notifications"} onClick={signedIn ? toTopIfHere("/notifications") : undefined} aria-label="Activity" className={cx(item, "relative", is("/notifications") ? "text-ink" : "text-ink-muted")}>
             <BellIcon size={22} />
             <span className={label}>Activity</span>
             {unread > 0 && (
@@ -84,7 +90,7 @@ export function BottomNav({ signedIn, username, unread }: { signedIn: boolean; u
               </span>
             )}
           </Link>
-          <Link href={youHref} aria-label="You" className={cx(item, youActive ? "text-ink" : "text-ink-muted")}>
+          <Link href={youHref} onClick={toTopIfHere(youHref)} aria-label="You" className={cx(item, youActive ? "text-ink" : "text-ink-muted")}>
             <UserIcon size={22} />
             <span className={label}>{signedIn ? "You" : "Log in"}</span>
           </Link>
