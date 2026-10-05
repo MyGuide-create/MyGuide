@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { AppShell, Wordmark } from "@/components/AppShell";
 import { GuideCard } from "@/components/GuideCard";
-import { MicIcon, SearchIcon } from "@/components/Icons";
 import { Avatar, EmptyState, LinkButton, cx } from "@/components/ui";
 import { getCurrentUser } from "@/lib/auth";
 import { listFeed, listFeedCities, suggestedCreators } from "@/lib/guides";
@@ -45,16 +44,8 @@ export default async function HomePage({ searchParams }: PageProps<"/">) {
         <p className="mt-3 font-display text-[30px] leading-[1.05]">
           {user ? `Where next, ${user.displayName.split(" ")[0]}?` : "Guides from people whose taste you trust."}
         </p>
-        <Link
-          href="/search"
-          className="mt-4 flex items-center gap-3 rounded-2xl border border-line bg-paper px-4 py-3 text-[14px] text-ink-faint"
-        >
-          <SearchIcon size={18} className="text-ink-muted" />
-          <span className="flex-1">“Search a city, place or person…”</span>
-          <span className="w-8 h-8 rounded-full bg-terracotta text-white flex items-center justify-center"><MicIcon size={16} /></span>
-        </Link>
         {user && (
-          <Link href="/trips" className="mt-2.5 flex items-center justify-between rounded-2xl bg-sage-tint/70 px-4 py-2.5 text-[13px]">
+          <Link href="/trips" className="mt-4 flex items-center justify-between rounded-2xl bg-sage-tint/70 px-4 py-2.5 text-[13px]">
             <span><b className="font-semibold">Going somewhere?</b> Plan a trip and we&apos;ll gather the guides.</span>
             <span className="text-sage font-medium shrink-0 ml-2">Plan →</span>
           </Link>

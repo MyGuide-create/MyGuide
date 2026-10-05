@@ -89,6 +89,9 @@ export const CITIES: CityInfo[] = [
 
 const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
 
+/** `phrase` appears in `text` as whole words ("dubai marina" has "dubai"; "valais" doesn't have "la"). */
+const hasWords = (text: string, phrase: string) => ` ${text.replace(/[^\p{L}\p{N}]+/gu, " ")} `.includes(` ${phrase.replace(/[^\p{L}\p{N}]+/gu, " ").trim()} `);
+
 /** Find a known city by name or alias. Prefers exact matches, then substring matches. */
 export function findCity(input: string | undefined | null): CityInfo | undefined {
   if (!input) return undefined;
@@ -98,7 +101,8 @@ export function findCity(input: string | undefined | null): CityInfo | undefined
   for (const c of CITIES) {
     const names = [c.city, ...(c.aliases ?? [])].map(norm);
     if (names.includes(q)) return c;
-    if (!best && names.some((n) => q.includes(n) || (n.length > 3 && n.includes(q)))) best = c;
+    // Partial matches need whole words, so "Valais" doesn't become Los Angeles via "la".
+    if (!best && names.some((n) => (n.length >= 3 && hasWords(q, n)) || (q.length >= 4 && hasWords(n, q)))) best = c;
   }
   return best;
 }

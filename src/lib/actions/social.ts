@@ -63,6 +63,8 @@ export async function setProfileVisibility(visibility: "public" | "private"): Pr
 export interface ProfileState {
   error?: string;
   ok?: boolean;
+  /** What was saved, so the form can switch back to showing it as plain text. */
+  saved?: { displayName: string; bio: string; avatarMediaId: string | null; instagram: string | null; website: string | null };
 }
 
 /** Change your @username (new Google/Apple accounts get one made for them). */
@@ -99,7 +101,7 @@ export async function updateProfile(_prev: ProfileState, formData: FormData): Pr
     .where(eq(users.id, user.id));
   revalidatePath("/me");
   revalidatePath(`/u/${user.username}`);
-  return { ok: true };
+  return { ok: true, saved: { displayName, bio, avatarMediaId: avatarMediaId ?? user.avatarMediaId, instagram: ig.value, website: site.value } };
 }
 
 /** "Follow all" on the welcome screen: follows (or requests) everyone listed. Never unfollows. Returns each person's status. */
