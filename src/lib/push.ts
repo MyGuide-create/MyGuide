@@ -23,6 +23,10 @@ export interface PushMessage {
   body: string;
   url?: string;
   tag?: string;
+  /** Buttons on the notification (Android / desktop; iPhone ignores them and just opens `url`). */
+  actions?: { action: string; title: string }[];
+  /** For the "follow-back" action: who to follow. */
+  followUserId?: string;
 }
 
 /** Best-effort push to every device a user has subscribed. Never throws. */

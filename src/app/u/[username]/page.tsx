@@ -65,7 +65,12 @@ export default async function ProfilePage({ params, searchParams }: PageProps<"/
               <LinkButton href="/saved" size="sm" variant="outline"><HeartIcon size={14} /> Favourites</LinkButton>
             </div>
           ) : (
-            !hiddenFromMe && <FollowButton userId={profile.id} initial={stats.viewerRequested ? "pending" : stats.viewerFollows} next={`/u/${profile.username}`} size="md" />
+            !hiddenFromMe && (
+              <div className="flex items-center gap-3">
+                <FollowButton userId={profile.id} initial={stats.viewerRequested ? "pending" : stats.viewerFollows} next={`/u/${profile.username}`} size="md" followsYou={stats.followsViewer} />
+                {stats.followsViewer && <span className="text-[12px] font-medium text-ink-muted rounded-full bg-cream-deep px-2.5 py-1">Follows you</span>}
+              </div>
+            )
           )}
         </div>
       </div>

@@ -30,24 +30,55 @@ self.addEventListener("push", (event) => {
       body: data.body || "",
       icon: "/icons/icon-192.png",
       badge: "/icons/icon-192.png",
-      data: { url: data.url || "/notifications" },
+      data: { url: data.url || "/notifications", followUserId: data.followUserId },
       tag: data.tag,
+      actions: Array.isArray(data.actions) ? data.actions : undefined,
     })
   );
 });
 
+function openUrl(url) {
+  return self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((wins) => {
+    for (const w of wins) {
+      if ("focus" in w) {
+        w.navigate(url);
+        return w.focus();
+      }
+    }
+    return self.clients.openWindow(url);
+  });
+}
+
+// "Follow back" tapped on a new-follower notification: follow without opening the app,
+// then confirm with a quiet notification. If it fails (e.g. logged out), open their profile instead.
+function followBack(data) {
+  const fallback = data.url || "/notifications";
+  return fetch("/api/follow-back", {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ userId: data.followUserId }),
+  })
+    .then((res) => (res.ok ? res.json() : Promise.reject(res.status)))
+    .then((r) =>
+      self.registration.showNotification(r.status === "pending" ? `Follow request sent to ${r.name}` : `You're now following ${r.name}`, {
+        body: r.status === "pending" ? "Their account is private — you'll see their guides once they accept." : "Their new guides will show up in your feed.",
+        icon: "/icons/icon-192.png",
+        badge: "/icons/icon-192.png",
+        data: { url: `/u/${r.username}` },
+        tag: `followed:${data.followUserId}`,
+        silent: true,
+      })
+    )
+    .catch(() => openUrl(fallback));
+}
+
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const url = (event.notification.data && event.notification.data.url) || "/notifications";
-  event.waitUntil(
-    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((wins) => {
-      for (const w of wins) {
-        if ("focus" in w) {
-          w.navigate(url);
-          return w.focus();
-        }
-      }
-      return self.clients.openWindow(url);
-    })
-  );
+  const data = event.notification.data || {};
+  if (event.action === "follow-back" && data.followUserId) {
+    event.waitUntil(followBack(data));
+    return;
+  }
+  event.waitUntil(openUrl(data.url || "/notifications"));
 });

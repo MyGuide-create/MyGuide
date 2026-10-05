@@ -7,10 +7,12 @@ import { Avatar, Button, EmptyState, LinkButton } from "@/components/ui";
 import { respondToFollowRequest } from "@/lib/actions/social";
 import { requireUser, toPublicUser } from "@/lib/auth";
 import { getDb } from "@/lib/db";
-import { guides, notifications, places, users } from "@/lib/db/schema";
+import { follows, guides, notifications, places, users } from "@/lib/db/schema";
 import { listSharedWithUser } from "@/lib/guides";
 import { timeAgo } from "@/lib/utils";
 import { PushToggle } from "@/components/PushToggle";
+import { FollowButton } from "@/components/FollowButton";
+import { hiddenUserIds } from "@/lib/blocks";
 import { pushPublicKey } from "@/lib/push";
 
 export const dynamic = "force-dynamic";
@@ -23,11 +25,18 @@ export default async function NotificationsPage() {
   const actorIds = [...new Set(rows.map((r) => r.actorId).filter((x): x is string => !!x))];
   const guideIds = [...new Set(rows.map((r) => r.guideId).filter((x): x is string => !!x))];
   const placeIds = [...new Set(rows.map((r) => r.placeId).filter((x): x is string => !!x))];
-  const [actors, guideRows, placeRows] = await Promise.all([
+  const [actors, guideRows, placeRows, myFollows, theirFollows, hidden] = await Promise.all([
     actorIds.length ? db.select().from(users).where(inArray(users.id, actorIds)) : Promise.resolve([]),
     guideIds.length ? db.select().from(guides).where(inArray(guides.id, guideIds)) : Promise.resolve([]),
     placeIds.length ? db.select().from(places).where(inArray(places.id, placeIds)) : Promise.resolve([]),
+    // Who I already follow / have asked to follow (for "Follow back")…
+    actorIds.length ? db.select().from(follows).where(and(eq(follows.followerId, user.id), inArray(follows.followingId, actorIds))) : Promise.resolve([]),
+    // …and where each person stands with me (a follow request may since have been accepted or declined).
+    actorIds.length ? db.select().from(follows).where(and(eq(follows.followingId, user.id), inArray(follows.followerId, actorIds))) : Promise.resolve([]),
+    hiddenUserIds(user.id),
   ]);
+  const myStatus = new Map(myFollows.map((f) => [f.followingId, f.status === "pending" ? ("pending" as const) : ("accepted" as const)]));
+  const theirStatus = new Map(theirFollows.map((f) => [f.followerId, f.status]));
   const actorMap = new Map(actors.map((a) => [a.id, toPublicUser(a)]));
   const guideMap = new Map(guideRows.map((g) => [g.id, g]));
   const placeMap = new Map(placeRows.map((p) => [p.id, p]));
@@ -131,7 +140,10 @@ export default async function NotificationsPage() {
                   {n.type === "guide_used" && actor && <Link href={`/u/${actor.username}`} className="font-medium text-terracotta">View profile →</Link>}
                   {(n.type === "new_follower" || n.type === "follow_accepted") && actor && <Link href={`/u/${actor.username}`} className="font-medium text-terracotta">View profile →</Link>}
                 </div>
-                {n.type === "follow_request" && actor && (
+                {n.type === "follow_request" && actor && theirStatus.get(actor.id) === "accepted" && (
+                  <p className="mt-1.5 text-[12px] text-sage font-medium">You accepted — they can see your guides now.</p>
+                )}
+                {n.type === "follow_request" && actor && theirStatus.get(actor.id) === "pending" && (
                   <div className="mt-2 flex gap-2">
                     <form action={respondToFollowRequest.bind(null, actor.id, true)}>
                       <Button size="sm" type="submit">Accept</Button>
@@ -142,6 +154,11 @@ export default async function NotificationsPage() {
                   </div>
                 )}
               </div>
+              {actor && !hidden.has(actor.id) && theirStatus.get(actor.id) === "accepted" && (n.type === "new_follower" || n.type === "follow_request") && (
+                <div className="shrink-0 self-center">
+                  <FollowButton userId={actor.id} initial={myStatus.get(actor.id) ?? "none"} next="/notifications" followsYou />
+                </div>
+              )}
             </div>
           );
         })}

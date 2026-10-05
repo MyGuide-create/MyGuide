@@ -8,17 +8,16 @@ import { getDb } from "../db";
 import { follows, users } from "../db/schema";
 import { addNotifications } from "../notifications";
 import { normaliseInstagram, normaliseWebsite } from "../placeLinks";
-import { hiddenUserIds } from "../blocks";
+import { startFollowing, type FollowStatus } from "../follow";
 import { newId } from "../utils";
 
-export type FollowStatus = "none" | "pending" | "accepted";
+export type { FollowStatus } from "../follow";
 
 /** Follow, request-to-follow (private accounts), cancel a pending request, or unfollow — toggled from current state. */
 export async function toggleFollow(targetUserId: string, next?: string): Promise<{ status: FollowStatus }> {
   const user = await getCurrentUser();
   if (!user) redirect(`/signup?next=${encodeURIComponent(next ?? "/")}&why=follow`);
   if (user.id === targetUserId) return { status: "none" };
-  if ((await hiddenUserIds(user.id)).has(targetUserId)) return { status: "none" };
   const db = await getDb();
   const existing = await db.query.follows.findFirst({ where: and(eq(follows.followerId, user.id), eq(follows.followingId, targetUserId)) });
   if (existing) {
@@ -28,19 +27,10 @@ export async function toggleFollow(targetUserId: string, next?: string): Promise
     if (next) revalidatePath(next);
     return { status: "none" };
   }
-  const target = await db.query.users.findFirst({ where: eq(users.id, targetUserId) });
-  const needsApproval = target?.profileVisibility === "private";
-  await db.insert(follows).values({ followerId: user.id, followingId: targetUserId, status: needsApproval ? "pending" : "accepted", createdAt: new Date() });
-  await addNotifications([{
-    id: newId(),
-    userId: targetUserId,
-    type: needsApproval ? "follow_request" : "new_follower",
-    actorId: user.id,
-    createdAt: new Date(),
-  }]);
+  const status = await startFollowing(user.id, targetUserId);
   revalidatePath("/");
   if (next) revalidatePath(next);
-  return { status: needsApproval ? "pending" : "accepted" };
+  return { status };
 }
 
 /** Accept or decline a pending follow request (only the target can respond). */

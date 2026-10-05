@@ -1,7 +1,7 @@
-import { inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "./db";
-import { guides, notifications, places, users } from "./db/schema";
-import { sendPush } from "./push";
+import { follows, guides, notifications, places, users } from "./db/schema";
+import { sendPush, type PushMessage } from "./push";
 
 type NewNotification = typeof notifications.$inferInsert;
 
@@ -23,7 +23,7 @@ export async function addNotifications(rows: NewNotification[]): Promise<void> {
     const guide = new Map(gs.map((g) => [g.id, g]));
     const place = new Map(ps.map((p) => [p.id, p]));
     await Promise.all(
-      rows.map((r) => {
+      rows.map(async (r) => {
         const a = r.actorId ? actor.get(r.actorId) : undefined;
         const g = r.guideId ? guide.get(r.guideId) : undefined;
         const p = r.placeId ? place.get(r.placeId) : undefined;
@@ -32,6 +32,7 @@ export async function addNotifications(rows: NewNotification[]): Promise<void> {
         let title = "MyGuide";
         let body = "";
         let url = "/notifications";
+        let extra: Pick<PushMessage, "actions" | "followUserId"> = {};
         switch (r.type) {
           case "guide_shared":
             title = `${who} shared a guide with you`;
@@ -40,7 +41,15 @@ export async function addNotifications(rows: NewNotification[]): Promise<void> {
             break;
           case "new_follower":
             title = `${who} started following you`;
-            if (a) url = `/u/${a.username}`;
+            if (a) {
+              url = `/u/${a.username}`;
+              // Offer "Follow back" right on the notification unless they already follow them.
+              const already = await db.query.follows.findFirst({ where: and(eq(follows.followerId, r.userId), eq(follows.followingId, a.id)) });
+              if (!already) {
+                body = "Follow them back to see their guides in your feed.";
+                extra = { actions: [{ action: "follow-back", title: "Follow back" }], followUserId: a.id };
+              }
+            }
             break;
           case "follow_request":
             title = `${who} wants to follow you`;
@@ -76,7 +85,7 @@ export async function addNotifications(rows: NewNotification[]): Promise<void> {
             if (g) url = `/g/${g.slug}/edit`;
             break;
         }
-        return sendPush([r.userId], { title, body, url, tag: r.guideId ? `${r.type}:${r.guideId}` : r.type });
+        return sendPush([r.userId], { title, body, url, tag: r.guideId ? `${r.type}:${r.guideId}` : r.actorId ? `${r.type}:${r.actorId}` : r.type, ...extra });
       }),
     );
   } catch (e) {

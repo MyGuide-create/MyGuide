@@ -54,7 +54,7 @@ export async function ConnectionsView({ username, kind }: { username: string; ki
                     <span className="block truncate text-[12.5px] text-ink-muted">@{user.username}</span>
                   </span>
                 </Link>
-                {viewer && viewerStatus !== "self" && <FollowButton userId={user.id} initial={viewerStatus} next={`${base}/${kind}`} />}
+                {viewer && viewerStatus !== "self" && <FollowButton userId={user.id} initial={viewerStatus} next={`${base}/${kind}`} followsYou={own && kind === "followers"} />}
               </li>
             ))}
           </ul>

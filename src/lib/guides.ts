@@ -371,12 +371,18 @@ export async function getFollowStats(userId: string, viewerId?: string | null) {
   ]);
   let viewerFollows = false;
   let viewerRequested = false;
+  /** This profile follows the viewer (so the button can say "Follow back"). */
+  let followsViewer = false;
   if (viewerId && viewerId !== userId) {
-    const f = await db.query.follows.findFirst({ where: and(eq(follows.followerId, viewerId), eq(follows.followingId, userId)) });
+    const [f, back] = await Promise.all([
+      db.query.follows.findFirst({ where: and(eq(follows.followerId, viewerId), eq(follows.followingId, userId)) }),
+      db.query.follows.findFirst({ where: and(eq(follows.followerId, userId), eq(follows.followingId, viewerId), eq(follows.status, "accepted")) }),
+    ]);
     viewerFollows = f?.status === "accepted";
     viewerRequested = f?.status === "pending";
+    followsViewer = !!back;
   }
-  return { followers: Number(followers?.n ?? 0), following: Number(following?.n ?? 0), viewerFollows, viewerRequested };
+  return { followers: Number(followers?.n ?? 0), following: Number(following?.n ?? 0), viewerFollows, viewerRequested, followsViewer };
 }
 
 export async function listFollowing(userId: string): Promise<PublicUser[]> {
