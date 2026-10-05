@@ -2,7 +2,7 @@ import Link from "next/link";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { AppShell, TopBar } from "@/components/AppShell";
 import { GuideCard } from "@/components/GuideCard";
-import { ChatIcon, ForkIcon, LockIcon, PinIcon, PlusIcon, ShareIcon, UserIcon } from "@/components/Icons";
+import { ChatIcon, ForkIcon, LockIcon, PinIcon, PlusIcon, ShareIcon, SparkleIcon, UserIcon } from "@/components/Icons";
 import { Avatar, Button, EmptyState, LinkButton } from "@/components/ui";
 import { respondToFollowRequest } from "@/lib/actions/social";
 import { requireUser, toPublicUser } from "@/lib/auth";
@@ -82,6 +82,12 @@ export default async function NotificationsPage() {
                       <Link href={`/u/${actor?.username ?? ""}`} className="font-semibold">{actor?.displayName ?? "Someone"}</Link> started following you.
                     </>
                   )}
+                  {n.type === "wish_granted" && rawGuide && (
+                    <>
+                      {who} made you a guide from your wish list: <span className="font-display text-[16px]">“{rawGuide.title}”</span>{rawGuide.city ? ` · ${rawGuide.city}` : ""}
+                    </>
+                  )}
+                  {n.type === "wish_granted" && !rawGuide && <span className="text-ink-muted">A guide made for your wish list that has since been deleted.</span>}
                   {n.type === "user_joined" && (
                     <>
                       {who} joined MyGuide.{" "}
@@ -135,10 +141,12 @@ export default async function NotificationsPage() {
                     {n.type === "guide_published" && <PlusIcon size={12} />}
                     {n.type === "places_added" && <PinIcon size={12} />}
                     {n.type === "guide_used" && <ForkIcon size={12} />}
+                    {n.type === "wish_granted" && <SparkleIcon size={12} />}
                     {timeAgo(n.createdAt)}
                   </span>
+                  {n.type === "wish_granted" && rawGuide && <Link href={`/g/${rawGuide.slug}`} className="font-medium text-terracotta">Open your guide →</Link>}
                   {n.type === "collab_invite" && rawGuide && <Link href={`/g/${rawGuide.slug}/edit`} className="font-medium text-terracotta">Start editing →</Link>}
-                  {guide && n.type !== "place_comment" && n.type !== "places_added" && n.type !== "collab_invite" && n.type !== "guide_used" && <Link href={`/g/${guide.slug}`} className="font-medium text-terracotta">Open guide →</Link>}
+                  {guide && n.type !== "place_comment" && n.type !== "places_added" && n.type !== "collab_invite" && n.type !== "guide_used" && n.type !== "wish_granted" && <Link href={`/g/${guide.slug}`} className="font-medium text-terracotta">Open guide →</Link>}
                   {guide && n.type === "places_added" && (
                     <Link href={n.count === 1 && addedPlace ? `/g/${guide.slug}/p/${addedPlace.id}` : `/g/${guide.slug}`} className="font-medium text-terracotta">{n.count === 1 && addedPlace ? "See the place →" : "See what's new →"}</Link>
                   )}

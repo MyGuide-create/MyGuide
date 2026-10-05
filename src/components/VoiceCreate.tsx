@@ -35,7 +35,14 @@ const SINGLE_PLACE_MSG = "This looks like a single place, not a list. Paste it i
  * Create a Guide by voice: name the places you want in one go, we structure
  * them and pull in Maps data. Only the places you name, never suggestions.
  */
-export function VoiceCreate({ initialMode }: { initialMode: "voice" | "type" }) {
+export interface ForWish {
+  ids: string[];
+  city: string;
+  /** First names of the people it's for. */
+  names: string[];
+}
+
+export function VoiceCreate({ initialMode, forWish }: { initialMode: "voice" | "type"; forWish?: ForWish | null }) {
   const router = useRouter();
   const speech = useSpeech({ continuous: true });
   const [stage, setStage] = useState<Stage>(initialMode === "type" ? "typed" : "talk");
@@ -44,7 +51,7 @@ export function VoiceCreate({ initialMode }: { initialMode: "voice" | "type" }) 
   const [result, setResult] = useState<ParsedPlacesResponse | null>(null);
   const [draft, setDraft] = useState<DraftPlace[]>([]);
   const [title, setTitle] = useState("");
-  const [city, setCity] = useState("");
+  const [city, setCity] = useState(forWish?.city ?? "");
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [fixingKey, setFixingKey] = useState<string | null>(null);
@@ -180,6 +187,7 @@ export function VoiceCreate({ initialMode }: { initialMode: "voice" | "type" }) 
         title: title.trim() || result?.title || "My Guide",
         city: city || result?.city,
         country: result?.country,
+        wishIds: forWish?.ids,
         places: kept.map((p) => ({
           name: p.resolved?.name ?? p.name,
           providerId: p.resolved?.providerId ?? null,
@@ -199,7 +207,7 @@ export function VoiceCreate({ initialMode }: { initialMode: "voice" | "type" }) 
     if (!title.trim()) { setError("Give your guide a title."); return; }
     setCreating(true);
     try {
-      const slug = await createGuide({ title: title.trim(), city });
+      const slug = await createGuide({ title: title.trim(), city, wishIds: forWish?.ids });
       router.push(`/g/${slug}/edit`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't create the guide.");
@@ -217,7 +225,7 @@ export function VoiceCreate({ initialMode }: { initialMode: "voice" | "type" }) 
         </div>
         <div>
           <Label>Title</Label>
-          <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Lisbon for a Long Weekend" autoFocus />
+          <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={forWish ? `e.g. ${forWish.city} for ${forWish.names[0]}` : "e.g. Lisbon for a Long Weekend"} autoFocus />
         </div>
         <div>
           <Label>City (optional)</Label>

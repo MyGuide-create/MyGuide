@@ -10,6 +10,8 @@ import { getFollowStats, getUserByUsername, listGuidesByOwner } from "@/lib/guid
 import { hiddenUserIds, viewerBlocked } from "@/lib/blocks";
 import { BlockButton } from "@/components/BlockButton";
 import { ReportButton } from "@/components/ReportButton";
+import { WishList } from "@/components/WishList";
+import { listWishesFor } from "@/lib/wishes";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +24,7 @@ export default async function ProfilePage({ params, searchParams }: PageProps<"/
   const own = viewer?.id === profile.id;
   const iBlocked = !!viewer && !own && (await viewerBlocked(viewer.id, profile.id));
   const hiddenFromMe = !!viewer && !own && (await hiddenUserIds(viewer.id)).has(profile.id);
-  const [cards, stats] = await Promise.all([listGuidesByOwner(profile.id, viewer?.id), getFollowStats(profile.id, viewer?.id)]);
+  const [cards, stats, wishes] = await Promise.all([listGuidesByOwner(profile.id, viewer?.id), getFollowStats(profile.id, viewer?.id), listWishesFor(profile, viewer?.id)]);
   const published = cards.filter((c) => c.guide.publishedAt);
   const drafts = cards.filter((c) => !c.guide.publishedAt);
   // listGuidesByOwner already hides guides from a locked private profile, but the page still
@@ -85,6 +87,7 @@ export default async function ProfilePage({ params, searchParams }: PageProps<"/
           />
         ) : (
           <>
+            {wishes && <WishList wishes={wishes} own={own} ownerName={profile.displayName} ownerUsername={profile.username} signedIn={!!viewer} />}
             {own && drafts.length > 0 && (
               <>
                 <h2 id="drafts" className="font-display text-[22px] px-1 scroll-mt-20">Drafts</h2>

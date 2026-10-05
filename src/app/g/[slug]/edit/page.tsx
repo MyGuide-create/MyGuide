@@ -3,6 +3,7 @@ import { AppShell, TopBar } from "@/components/AppShell";
 import { GuideEditor } from "@/components/GuideEditor";
 import { requireUser } from "@/lib/auth";
 import { getGuideBySlug, getGuideDetail, isCollaborator } from "@/lib/guides";
+import { pendingWishPeople } from "@/lib/wishes";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Edit guide" };
@@ -14,11 +15,11 @@ export default async function EditGuidePage({ params, searchParams }: PageProps<
   const guide = await getGuideBySlug(slug);
   if (!guide) notFound();
   if (guide.ownerId !== user.id && !(await isCollaborator(guide.id, user.id))) redirect(`/g/${slug}`);
-  const detail = await getGuideDetail(guide, user);
+  const [detail, wishFor] = await Promise.all([getGuideDetail(guide, user), pendingWishPeople(guide.id)]);
   return (
     <AppShell nav={false} className="pb-24">
       <TopBar back={`/g/${slug}`} title="Edit guide" />
-      <GuideEditor detail={detail} justForked={sp.forked === "1"} justCreated={sp.created === "1"} viewerId={user.id} />
+      <GuideEditor detail={detail} justForked={sp.forked === "1"} justCreated={sp.created === "1"} viewerId={user.id} wishFor={wishFor.map((u) => u.displayName.split(" ")[0])} />
     </AppShell>
   );
 }

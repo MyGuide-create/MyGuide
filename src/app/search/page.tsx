@@ -7,6 +7,9 @@ import { interpretSearch } from "@/lib/ai";
 import { getCurrentUser, toPublicUser } from "@/lib/auth";
 import { listFeedCities, searchGuides, searchPeople, searchPlaces, suggestedCreators, topPlaceCategories } from "@/lib/guides";
 import { PersonRow } from "@/components/PersonRow";
+import { WishForCityButton } from "@/components/WishList";
+import { SparkleIcon } from "@/components/Icons";
+import { listAllWishes } from "@/lib/wishes";
 import { PlaceTile } from "@/components/PlaceTile";
 import { neighbourhood } from "@/lib/places/neighbourhood";
 
@@ -53,6 +56,7 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
   const [results, placeHits] = intent ? await Promise.all([searchGuides(intent, user?.id), searchPlaces(intent, user?.id)]) : [[], []];
   const cities = q ? [] : await listFeedCities();
   const examples = q ? [] : await buildExamples(cities, !!user);
+  const wanted = q ? [] : (await listAllWishes(user?.id)).slice(0, 3);
 
   return (
     <AppShell>
@@ -73,6 +77,17 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
             </div>
           </div>
           )}
+          <Link href="/wishes" className="block rounded-2xl border border-terracotta-soft bg-terracotta-tint/50 px-4 py-3 hover:border-terracotta">
+            <span className="flex items-center justify-between gap-3">
+              <span className="inline-flex items-center gap-2 text-[14.5px] font-semibold"><SparkleIcon size={16} className="text-terracotta" /> Wanted guides</span>
+              <span className="text-[12.5px] font-medium text-terracotta">See all →</span>
+            </span>
+            <span className="block mt-1 text-[12.5px] text-ink-muted leading-snug">
+              {wanted.length
+                ? wanted.map((w) => `${w.city} (${w.people.length})`).join(" · ")
+                : "Cities people want a guide to. Add yours, or make one for someone."}
+            </span>
+          </Link>
           {cities.length > 0 && (
             <div>
               <h2 className="text-[12px] font-medium uppercase tracking-[0.08em] text-ink-muted mb-2">Cities with guides</h2>
@@ -150,7 +165,20 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
           )}
           {results.length > 0 && (placeHits.length > 0 || people.hits.length > 0) && <h2 className="px-1 -mb-1 text-[12px] font-medium uppercase tracking-[0.08em] text-ink-muted">Guides</h2>}
           {results.length === 0 && placeHits.length === 0 && people.hits.length === 0 && (user || intent.scope !== "following") && (
-            <EmptyState title="No guides match yet" body={intent.city ? `Nobody has published a ${intent.city} guide${intent.scope === "following" ? " that you follow" : ""}. Maybe that's you?` : "Try a city name, or say what you're looking for."} action={<LinkButton href="/create" size="sm">Create a guide</LinkButton>} />
+            <EmptyState
+              title="No guides match yet"
+              body={intent.city ? `Nobody has published a ${intent.city} guide${intent.scope === "following" ? " that you follow" : ""} yet. Add it to your wish list — people who know ${intent.city} can make one for you.` : "Try a city name, or say what you're looking for."}
+              action={
+                intent.city ? (
+                  <span className="flex flex-col items-center gap-2.5">
+                    {user ? <WishForCityButton city={intent.city} /> : <LinkButton href={`/login?next=${encodeURIComponent(`/search?q=${q}`)}`} size="sm">Log in to wish for a {intent.city} guide</LinkButton>}
+                    <Link href={`/wishes?city=${encodeURIComponent(intent.city)}`} className="text-[12.5px] font-medium text-terracotta">Who else wants one →</Link>
+                  </span>
+                ) : (
+                  <LinkButton href="/create" size="sm">Create a guide</LinkButton>
+                )
+              }
+            />
           )}
           {results.map((g) => <GuideCard key={g.guide.id} data={g} />)}
         </main>

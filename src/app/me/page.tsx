@@ -47,6 +47,7 @@ export default async function MePage() {
           <Link href="/trips" className="inline-flex items-center gap-2 rounded-2xl border border-line bg-paper px-3.5 py-3 hover:border-terracotta-soft"><PinIcon size={16} className="text-terracotta" /> Trips</Link>
           <Link href="/stats" className="inline-flex items-center gap-2 rounded-2xl border border-line bg-paper px-3.5 py-3 hover:border-terracotta-soft"><ListIcon size={16} className="text-terracotta" /> Guide stats</Link>
           <Link href="/feedback?from=/me" className="inline-flex items-center gap-2 rounded-2xl border border-line bg-paper px-3.5 py-3 hover:border-terracotta-soft"><ChatIcon size={16} className="text-terracotta" /> Send feedback</Link>
+          <Link href={`/u/${user.username}#wishes`} className="col-span-2 inline-flex items-center gap-2 rounded-2xl border border-line bg-paper px-3.5 py-3 hover:border-terracotta-soft"><SparkleIcon size={16} className="text-terracotta" /> My guide wish list</Link>
           <Link href="/welcome?tour=1" className="col-span-2 inline-flex items-center gap-2 rounded-2xl border border-line bg-paper px-3.5 py-3 hover:border-terracotta-soft"><SparkleIcon size={16} className="text-terracotta" /> How MyGuide works</Link>
           {admin && <Link href="/admin" className="col-span-2 rounded-2xl border border-terracotta-soft bg-terracotta-tint/50 px-3.5 py-3">Admin · pilot stats &amp; users</Link>}
         </nav>

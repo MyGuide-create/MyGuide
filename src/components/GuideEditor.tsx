@@ -11,6 +11,7 @@ import type { PlaceSuggestion } from "@/lib/places/types";
 import { CoverPicker } from "./CoverPicker";
 import { CityPill, GuideCover } from "./GuideCover";
 import { coverCityLabel } from "@/lib/coverCity";
+import { namesSentence } from "@/lib/utils";
 import { CameraIcon, ChevronDown, ChevronUp, ForkIcon, GlobeIcon, LockIcon, PinIcon, SparkleIcon, TrashIcon } from "./Icons";
 import { NoteEditor } from "./NoteEditor";
 import { PhotoPicker } from "./PhotoPicker";
@@ -26,7 +27,7 @@ import { Sheet } from "./ShareSheet";
 import { CollaboratorsEditor } from "./CollaboratorsEditor";
 import { Button, Input, Label, LinkButton, Spinner, Tag, Textarea, cx } from "./ui";
 
-export function GuideEditor({ detail, justForked, justCreated, viewerId }: { detail: GuideDetail; justForked?: boolean; justCreated?: boolean; viewerId: string }) {
+export function GuideEditor({ detail, justForked, justCreated, viewerId, wishFor = [] }: { detail: GuideDetail; justForked?: boolean; justCreated?: boolean; viewerId: string; /** First names whose wish this guide is for (until it's published and sent). */ wishFor?: string[] }) {
   const router = useRouter();
   const [guide, setGuide] = useState(detail.guide);
   const [places, setPlaces] = useState<Place[]>(detail.places);
@@ -151,6 +152,13 @@ export function GuideEditor({ detail, justForked, justCreated, viewerId }: { det
               ? `This is your private copy of @${detail.forkedFrom?.username ?? "their"}'s guide. Remove what you don't like, add what you found, then publish it as your own.`
               : "Your places are in and saved as a draft — only you can see it. Add a description to each one (typed or spoken), swap in your own photos, and publish when it\u2019s ready."}
           </span>
+        </div>
+      )}
+
+      {wishFor.length > 0 && (
+        <div className="mx-4 mt-3 rounded-2xl bg-terracotta-tint/70 px-4 py-2.5 text-[12.5px] leading-snug flex gap-2 items-center">
+          <SparkleIcon size={14} className="shrink-0 text-terracotta" />
+          <span>Made for <b className="font-semibold">{namesSentence(wishFor, 2)}</b>&apos;s wish list — {isDraft ? "we'll send it the moment you publish." : "sending now."}</span>
         </div>
       )}
 
@@ -355,6 +363,11 @@ export function GuideEditor({ detail, justForked, justCreated, viewerId }: { det
           <p className="text-[13.5px] text-ink-muted leading-relaxed">
             {isDraft ? "Not ready yet? Close this and tap Save draft — nobody sees it until you publish." : "You can keep editing after publishing. Nothing is ever locked."}
           </p>
+          {wishFor.length > 0 && (
+            <p className="mt-2.5 rounded-xl bg-terracotta-tint/70 px-3 py-2 text-[12.5px] leading-snug">
+              Either way, it&apos;s shared with {namesSentence(wishFor, 2)} and they get a notification — even a private guide.
+            </p>
+          )}
           {isDraft && undescribed > 0 && (
             <p className="mt-2.5 rounded-xl bg-ochre-soft/60 px-3 py-2 text-[12.5px] leading-snug">
               {undescribed === places.length ? "None of your places have" : `${undescribed} of ${places.length} places don\u2019t have`} a description yet. You can publish anyway, or add them first.

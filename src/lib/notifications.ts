@@ -79,6 +79,11 @@ export async function addNotifications(rows: NewNotification[]): Promise<void> {
             body = g ? `${g.title} — for their own trip guide` : "";
             if (g) url = `/g/${g.slug}`;
             break;
+          case "wish_granted":
+            title = g?.city ? `${who} made you a ${g.city} guide` : `${who} made you a guide`;
+            body = g ? `From your wish list · ${g.title}` : "From your wish list";
+            if (g) url = `/g/${g.slug}`;
+            break;
           case "user_joined":
             title = `${shortName(a?.displayName ?? "Someone new")} just joined MyGuide`;
             if (a) {

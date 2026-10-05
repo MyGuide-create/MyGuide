@@ -5,9 +5,10 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "../auth";
 import { getDb } from "../db";
-import { guideCollaborators, guideShares, guides, media, notifications, placeComments, placeLocations, placePhotos, placeTips, places, users, type Guide, type Place, type PlaceLocation, type PlaceTip } from "../db/schema";
+import { guideCollaborators, guideShares, guides, media, notifications, placeComments, placeLocations, placePhotos, placeTips, places, users, wishGrants, type Guide, type Place, type PlaceLocation, type PlaceTip } from "../db/schema";
 import { canViewGuide, getGuideById, isCollaborator } from "../guides";
 import { notifyGuidePublished, notifyPlacesAdded } from "../notify";
+import { sendWishGrants, wishesForMaking } from "../wishes";
 import { getPlacesProvider, isCategory, resolvePlaceByName, type PlaceResult } from "../places";
 import { findCity } from "../places/cities";
 import { getPlacePhotos, reverseGeocode } from "../places/google";
@@ -75,7 +76,7 @@ export interface DraftPlaceInput {
 const CREATE_CONCURRENCY = 6;
 
 /** Create a guide (optionally with already-resolved places) and go to the editor. */
-export async function createGuide(input: { title: string; city?: string; country?: string; places?: DraftPlaceInput[] }): Promise<string> {
+export async function createGuide(input: { title: string; city?: string; country?: string; places?: DraftPlaceInput[]; wishIds?: string[] }): Promise<string> {
   const user = await getCurrentUser();
   if (!user) redirect("/login?next=/create");
   const db = await getDb();
@@ -128,6 +129,11 @@ export async function createGuide(input: { title: string; city?: string; country
   const derivedCity = rows.find((r) => r.city);
   if (!known && derivedCity) {
     await db.update(guides).set({ city: derivedCity.city, country: derivedCity.country }).where(eq(guides.id, id));
+  }
+  // Made from someone's wish list: remember who it's for; it's sent to them when published.
+  if (input.wishIds?.length) {
+    const wanted = await wishesForMaking(input.wishIds, user.id);
+    if (wanted.length) await db.insert(wishGrants).values(wanted.map((w) => ({ wishId: w.wish.id, guideId: id, grantedById: user.id, createdAt: now }))).onConflictDoNothing();
   }
   revalidatePath("/me");
   return slug;
@@ -245,9 +251,11 @@ export async function publishGuide(guideId: string, visibility: "public" | "priv
     .set({ visibility, publishedAt: guide.publishedAt ?? new Date(), verifiedAt: guide.verifiedAt ?? new Date(), updatedAt: new Date() })
     .where(eq(guides.id, guideId));
   // Tell followers the first time a guide goes public (re-publishing doesn't ping again).
-  if (visibility === "public") {
-    const fresh = await getGuideById(guideId);
-    if (fresh) await notifyGuidePublished(fresh);
+  const fresh = await getGuideById(guideId);
+  if (fresh) {
+    if (visibility === "public") await notifyGuidePublished(fresh);
+    // Made for someone's wish? Send it to them now (public or private — it's shared with them).
+    if (await sendWishGrants(fresh)) revalidatePath("/wishes");
   }
   revalidateGuide(guide.slug);
 }

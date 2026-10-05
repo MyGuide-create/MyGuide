@@ -261,7 +261,7 @@ export const notifications = sqliteTable(
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    /** "guide_shared" | "new_follower" | "follow_request" | "follow_accepted" | "place_comment" | "guide_published" | "places_added" | "guide_used" | "collab_invite" | "user_joined" */
+    /** "guide_shared" | "new_follower" | "follow_request" | "follow_accepted" | "place_comment" | "guide_published" | "places_added" | "guide_used" | "collab_invite" | "user_joined" | "wish_granted" */
     type: text("type").notNull(),
     actorId: text("actor_id").references(() => users.id, { onDelete: "cascade" }),
     guideId: text("guide_id").references(() => guides.id, { onDelete: "cascade" }),
@@ -459,3 +459,48 @@ export const trips = sqliteTable(
 
 export type Trip = typeof trips.$inferSelect;
 export type Report = typeof reports.$inferSelect;
+
+/**
+ * Guide wish list: cities someone wants a guide to, shown on their profile and on /wishes.
+ * One row per person per city (city stored canonical via findCity when known).
+ */
+export const guideWishes = sqliteTable(
+  "guide_wishes",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    city: text("city").notNull(),
+    country: text("country").notNull().default(""),
+    /** What they're after, e.g. "with kids", "vegan", "nightlife". */
+    note: text("note").notNull().default(""),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [index("guide_wishes_user_idx").on(t.userId, t.createdAt), index("guide_wishes_city_idx").on(t.city)],
+);
+
+/**
+ * A guide made (or sent) for a wish. Created when someone starts a guide "for" a wish;
+ * `sentAt` is set once the guide is published and shared with the wisher.
+ */
+export const wishGrants = sqliteTable(
+  "wish_grants",
+  {
+    wishId: text("wish_id")
+      .notNull()
+      .references(() => guideWishes.id, { onDelete: "cascade" }),
+    guideId: text("guide_id")
+      .notNull()
+      .references(() => guides.id, { onDelete: "cascade" }),
+    grantedById: text("granted_by_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    sentAt: integer("sent_at", { mode: "timestamp_ms" }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.wishId, t.guideId] }), index("wish_grants_guide_idx").on(t.guideId)],
+);
+
+export type GuideWish = typeof guideWishes.$inferSelect;
+export type WishGrant = typeof wishGrants.$inferSelect;

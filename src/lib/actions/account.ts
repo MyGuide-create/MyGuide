@@ -28,6 +28,8 @@ import {
   savedPlaces,
   trips,
   users,
+  guideWishes,
+  wishGrants,
 } from "../db/schema";
 import { newId } from "../utils";
 
@@ -63,6 +65,7 @@ export async function deleteAccount(_prev: DeleteAccountState, formData: FormDat
     await db.delete(places).where(inArray(places.id, placeIds));
   }
   if (guideIds.length) {
+    await db.delete(wishGrants).where(inArray(wishGrants.guideId, guideIds));
     await db.delete(guideShares).where(inArray(guideShares.guideId, guideIds));
     await db.delete(guideCollaborators).where(inArray(guideCollaborators.guideId, guideIds));
     await db.delete(savedGuides).where(inArray(savedGuides.guideId, guideIds));
@@ -85,6 +88,10 @@ export async function deleteAccount(_prev: DeleteAccountState, formData: FormDat
   await db.delete(blocks).where(or(eq(blocks.blockerId, user.id), eq(blocks.blockedId, user.id)));
   await db.delete(pushSubscriptions).where(eq(pushSubscriptions.userId, user.id));
   await db.delete(trips).where(eq(trips.userId, user.id));
+  await db.delete(wishGrants).where(eq(wishGrants.grantedById, user.id));
+  const myWishes = await db.select({ id: guideWishes.id }).from(guideWishes).where(eq(guideWishes.userId, user.id));
+  if (myWishes.length) await db.delete(wishGrants).where(inArray(wishGrants.wishId, myWishes.map((w) => w.id)));
+  await db.delete(guideWishes).where(eq(guideWishes.userId, user.id));
   await db.update(feedback).set({ userId: null }).where(eq(feedback.userId, user.id));
   await db.update(reports).set({ reporterId: null }).where(eq(reports.reporterId, user.id));
   await db.update(events).set({ userId: null }).where(eq(events.userId, user.id));
