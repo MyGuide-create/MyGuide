@@ -101,3 +101,13 @@ export async function updateProfile(_prev: ProfileState, formData: FormData): Pr
   revalidatePath(`/u/${user.username}`);
   return { ok: true };
 }
+
+/** "Follow all" on the welcome screen: follows (or requests) everyone listed. Never unfollows. Returns each person's status. */
+export async function followMany(targetUserIds: string[]): Promise<Record<string, FollowStatus>> {
+  const user = await getCurrentUser();
+  if (!user) redirect("/login");
+  const out: Record<string, FollowStatus> = {};
+  for (const id of targetUserIds.slice(0, 30)) out[id] = await startFollowing(user.id, id);
+  revalidatePath("/");
+  return out;
+}

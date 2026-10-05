@@ -9,7 +9,7 @@ import { requireUser } from "@/lib/auth";
 import { getFollowStats, listFollowRequests, listFollowing } from "@/lib/guides";
 import { hasAnthropicKey } from "@/lib/ai";
 import { hasGoogleKey } from "@/lib/places";
-import { ChatIcon, HeartIcon, ListIcon, PinIcon } from "@/components/Icons";
+import { ChatIcon, HeartIcon, ListIcon, PinIcon, SparkleIcon } from "@/components/Icons";
 import { DeleteAccountForm } from "@/components/DeleteAccountForm";
 import { PushToggle } from "@/components/PushToggle";
 import { BlockButton } from "@/components/BlockButton";
@@ -43,6 +43,7 @@ export default async function MePage() {
           <Link href="/trips" className="inline-flex items-center gap-2 rounded-2xl border border-line bg-paper px-3.5 py-3 hover:border-terracotta-soft"><PinIcon size={16} className="text-terracotta" /> Trips</Link>
           <Link href="/stats" className="inline-flex items-center gap-2 rounded-2xl border border-line bg-paper px-3.5 py-3 hover:border-terracotta-soft"><ListIcon size={16} className="text-terracotta" /> Guide stats</Link>
           <Link href="/feedback?from=/me" className="inline-flex items-center gap-2 rounded-2xl border border-line bg-paper px-3.5 py-3 hover:border-terracotta-soft"><ChatIcon size={16} className="text-terracotta" /> Send feedback</Link>
+          <Link href="/welcome?tour=1" className="col-span-2 inline-flex items-center gap-2 rounded-2xl border border-line bg-paper px-3.5 py-3 hover:border-terracotta-soft"><SparkleIcon size={16} className="text-terracotta" /> How MyGuide works</Link>
           {admin && <Link href="/admin" className="col-span-2 rounded-2xl border border-terracotta-soft bg-terracotta-tint/50 px-3.5 py-3">Pilot dashboard (admin)</Link>}
         </nav>
 
