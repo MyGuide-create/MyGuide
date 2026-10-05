@@ -4,6 +4,7 @@ import { follows, guideCollaborators, guideShares, guides, placeComments, placeL
 import { toPublicUser, type PublicUser } from "./auth";
 import type { SearchIntent } from "./ai";
 import { hiddenUserIds } from "./blocks";
+import { coverCityLabel } from "./coverCity";
 
 export interface PlaceCommentView {
   comment: PlaceComment;
@@ -18,6 +19,8 @@ export interface GuideCard {
   forkedFrom?: PublicUser | null;
   /** Set for signed-in viewers: whether they've saved this guide. */
   viewerSaved?: boolean;
+  /** City pill on the cover: the guide's city, or derived from its places ("Bali + 2 more"). */
+  coverCity: string | null;
 }
 
 export interface GuideDetail extends GuideCard {
@@ -88,14 +91,16 @@ async function hydrateCards(rows: Guide[]): Promise<GuideCard[]> {
   const ownerMap = new Map(owners.map((u) => [u.id, toPublicUser(u)]));
   const guideIds = rows.map((g) => g.id);
   const placeRows = await db
-    .select({ guideId: places.guideId, category: places.category })
+    .select({ guideId: places.guideId, category: places.category, city: places.city })
     .from(places)
-    .where(inArray(places.guideId, guideIds));
-  const counts = new Map<string, { n: number; cats: Set<string> }>();
+    .where(inArray(places.guideId, guideIds))
+    .orderBy(places.position, places.createdAt);
+  const counts = new Map<string, { n: number; cats: Set<string>; cities: string[] }>();
   for (const p of placeRows) {
-    const e = counts.get(p.guideId) ?? { n: 0, cats: new Set<string>() };
+    const e = counts.get(p.guideId) ?? { n: 0, cats: new Set<string>(), cities: [] };
     e.n++;
     e.cats.add(p.category);
+    e.cities.push(p.city);
     counts.set(p.guideId, e);
   }
   return rows.map((g) => ({
@@ -104,6 +109,7 @@ async function hydrateCards(rows: Guide[]): Promise<GuideCard[]> {
     placeCount: counts.get(g.id)?.n ?? 0,
     categories: [...(counts.get(g.id)?.cats ?? [])],
     forkedFrom: g.forkedFromUserId ? ownerMap.get(g.forkedFromUserId) ?? null : null,
+    coverCity: coverCityLabel(g.city, counts.get(g.id)?.cities ?? []),
   }));
 }
 
@@ -356,6 +362,63 @@ export async function searchUsers(q: string, excludeId?: string, limit = 8): Pro
     .where(or(like(users.username, term), like(users.displayName, term)))
     .limit(limit + 1);
   return rows.filter((u) => u.id !== excludeId).slice(0, limit).map(toPublicUser);
+}
+
+export interface PersonHit {
+  user: PublicUser;
+  /** Published public guides. */
+  guideCount: number;
+  /** The viewer's follow status towards them ("none" when signed out). */
+  viewerStatus: "none" | "pending" | "accepted";
+  /** They follow the viewer (so the button can say "Follow back"). */
+  followsViewer: boolean;
+}
+
+/**
+ * People for the Search page: names and @usernames containing the query.
+ * Exact username first, then names/usernames that start with it, then by guides published.
+ * Skips the viewer and anyone blocked either way.
+ */
+export async function searchPeople(q: string, viewerId?: string | null, limit = 3): Promise<{ hits: PersonHit[]; total: number }> {
+  const clean = q.replace(/^@/, "").trim().toLowerCase();
+  if (clean.length < 2) return { hits: [], total: 0 };
+  const db = await getDb();
+  const term = `%${clean.replace(/[%_]/g, (c) => `\\${c}`)}%`;
+  const rows = await db
+    .select({ u: users, n: sql<number>`count(${guides.id})` })
+    .from(users)
+    .leftJoin(guides, and(eq(guides.ownerId, users.id), publicPublished()))
+    .where(or(sql`lower(${users.username}) like ${term} escape '\\'`, sql`lower(${users.displayName}) like ${term} escape '\\'`))
+    .groupBy(users.id)
+    .limit(200);
+  const hidden = await hiddenUserIds(viewerId);
+  const rank = (u: User) => {
+    const un = u.username.toLowerCase();
+    const dn = u.displayName.toLowerCase();
+    if (un === clean) return 0;
+    if (dn === clean) return 1;
+    if (un.startsWith(clean) || dn.startsWith(clean) || dn.split(/\s+/).some((w) => w.startsWith(clean))) return 2;
+    return 3;
+  };
+  const all = rows
+    .filter((r) => r.u.id !== viewerId && !hidden.has(r.u.id))
+    .sort((a, b) => rank(a.u) - rank(b.u) || Number(b.n) - Number(a.n) || a.u.displayName.localeCompare(b.u.displayName));
+  const page = all.slice(0, limit);
+  const mine = new Map<string, "pending" | "accepted">();
+  const theirs = new Set<string>();
+  if (viewerId && page.length) {
+    const ids = page.map((r) => r.u.id);
+    const [out, back] = await Promise.all([
+      db.select({ id: follows.followingId, status: follows.status }).from(follows).where(and(eq(follows.followerId, viewerId), inArray(follows.followingId, ids))),
+      db.select({ id: follows.followerId }).from(follows).where(and(eq(follows.followingId, viewerId), inArray(follows.followerId, ids), eq(follows.status, "accepted"))),
+    ]);
+    for (const f of out) mine.set(f.id, f.status === "pending" ? "pending" : "accepted");
+    for (const f of back) theirs.add(f.id);
+  }
+  return {
+    total: all.length,
+    hits: page.map((r) => ({ user: toPublicUser(r.u), guideCount: Number(r.n), viewerStatus: mine.get(r.u.id) ?? "none", followsViewer: theirs.has(r.u.id) })),
+  };
 }
 
 export async function getUserByUsername(username: string): Promise<User | null> {

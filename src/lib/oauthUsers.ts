@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
 import { hashPassword } from "./auth";
 import { getDb } from "./db";
@@ -65,4 +65,35 @@ export async function providersFor(userId: string): Promise<Provider[]> {
   const db = await getDb();
   const rows = await db.select({ p: oauthAccounts.provider }).from(oauthAccounts).where(eq(oauthAccounts.userId, userId));
   return rows.map((r) => r.p as Provider);
+}
+
+export interface SignUpInfo {
+  /** How the account was created. Google/Apple sign-ups have no password anyone knows. */
+  method: "email" | Provider;
+  /** Google/Apple sign-ins linked later to an email account. */
+  linked: Provider[];
+}
+
+/** An OAuth link made within this long of the account itself means the account was created by it. */
+const SAME_MOMENT_MS = 2 * 60 * 1000;
+
+/** Sign-up method per account (for Admin › Users, and to know who has a usable password). */
+export async function signUpInfo(accounts: Array<Pick<User, "id" | "createdAt">>): Promise<Map<string, SignUpInfo>> {
+  const out = new Map<string, SignUpInfo>(accounts.map((u) => [u.id, { method: "email", linked: [] }]));
+  if (!accounts.length) return out;
+  const db = await getDb();
+  const ids = accounts.map((u) => u.id);
+  const rows: Array<{ userId: string; provider: string; createdAt: Date }> = [];
+  // Chunked: SQLite caps bound parameters.
+  for (let i = 0; i < ids.length; i += 400) {
+    rows.push(...(await db.select({ userId: oauthAccounts.userId, provider: oauthAccounts.provider, createdAt: oauthAccounts.createdAt }).from(oauthAccounts).where(inArray(oauthAccounts.userId, ids.slice(i, i + 400)))));
+  }
+  const created = new Map(accounts.map((u) => [u.id, u.createdAt.getTime()]));
+  for (const r of rows.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())) {
+    const info = out.get(r.userId)!;
+    const p = r.provider as Provider;
+    if (info.method === "email" && !info.linked.length && Math.abs(r.createdAt.getTime() - (created.get(r.userId) ?? 0)) < SAME_MOMENT_MS) info.method = p;
+    else if (!info.linked.includes(p) && info.method !== p) info.linked.push(p);
+  }
+  return out;
 }

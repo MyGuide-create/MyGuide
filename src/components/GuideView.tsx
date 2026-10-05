@@ -14,6 +14,7 @@ import { timeAgo } from "@/lib/utils";
 import { track } from "@/lib/track";
 import { FollowButton } from "./FollowButton";
 import { GuideCover } from "./GuideCover";
+import { coverCityLabel } from "@/lib/coverCity";
 import { GuideMap } from "./GuideMap";
 import { CheckIcon, EditIcon, ForkIcon, ListIcon, LockIcon, MapIcon, ShareIcon } from "./Icons";
 import { PlaceRow } from "./PlaceRow";
@@ -76,7 +77,7 @@ export function GuideView({ detail, viewerId, viewer, shareUrl, shareKey }: { de
 
   return (
     <>
-      <GuideCover guide={guide} ownerUsername={owner.username} className="aspect-[390/220]" bare creditLinks />
+      <GuideCover guide={guide} ownerUsername={owner.username} className="aspect-[390/220]" bare creditLinks cityLabel={coverCityLabel(guide.city, places.map((p) => p.city))} />
 
       <div className="px-5 pt-[18px]">
         <h1 className="font-display text-[34px] leading-[1.05]">{guide.title}</h1>

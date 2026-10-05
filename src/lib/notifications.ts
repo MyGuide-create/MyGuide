@@ -79,6 +79,15 @@ export async function addNotifications(rows: NewNotification[]): Promise<void> {
             body = g ? `${g.title} — for their own trip guide` : "";
             if (g) url = `/g/${g.slug}`;
             break;
+          case "user_joined":
+            title = `${shortName(a?.displayName ?? "Someone new")} just joined MyGuide`;
+            if (a) {
+              // By id: Google/Apple sign-ups may still change their @username on the welcome screen.
+              url = `/people/${a.id}`;
+              body = "Follow them to see their guides when they post.";
+              extra = { actions: [{ action: "follow-back", title: "Follow" }], followUserId: a.id };
+            }
+            break;
           case "collab_invite":
             title = `${who} invited you to edit a guide`;
             body = g?.title ?? "";
@@ -91,4 +100,11 @@ export async function addNotifications(rows: NewNotification[]): Promise<void> {
   } catch (e) {
     console.warn("[addNotifications] push failed", e);
   }
+}
+
+/** "Lina Khoury" → "Lina K." (push titles stay short and a little more private). */
+export function shortName(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length < 2) return name.trim();
+  return `${parts[0]} ${parts[parts.length - 1][0].toUpperCase()}.`;
 }

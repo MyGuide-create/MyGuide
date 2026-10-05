@@ -3,7 +3,7 @@
 import { and, eq, inArray, or } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { destroySession, getCurrentUser } from "../auth";
+import { destroySession, getCurrentUser, hashPassword, verifyPassword } from "../auth";
 import { getDb } from "../db";
 import {
   blocks,
@@ -155,4 +155,23 @@ export async function finishOnboarding(next?: string): Promise<void> {
   const db = await getDb();
   await db.update(users).set({ onboardedAt: new Date() }).where(eq(users.id, user.id));
   redirect(next && next.startsWith("/") && !next.startsWith("//") ? next : "/");
+}
+
+export interface ChangePasswordState {
+  error?: string;
+  done?: boolean;
+}
+
+/** "Change password" on the You page — e.g. after an admin sent a temporary one. */
+export async function changePassword(_prev: ChangePasswordState, formData: FormData): Promise<ChangePasswordState> {
+  const user = await getCurrentUser();
+  if (!user) redirect("/login?next=/me");
+  const current = String(formData.get("current") ?? "");
+  const next = String(formData.get("password") ?? "");
+  if (!(await verifyPassword(current, user.passwordHash))) return { error: "Your current password didn't match." };
+  if (next.length < 8) return { error: "Use at least 8 characters for your new password." };
+  if (next !== String(formData.get("confirm") ?? "")) return { error: "The two new passwords don't match." };
+  const db = await getDb();
+  await db.update(users).set({ passwordHash: await hashPassword(next) }).where(eq(users.id, user.id));
+  return { done: true };
 }

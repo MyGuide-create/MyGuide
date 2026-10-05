@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AppShell, TopBar } from "@/components/AppShell";
@@ -5,18 +6,114 @@ import { isAdmin } from "@/lib/admin";
 import { requireUser, toPublicUser } from "@/lib/auth";
 import { pilotStats } from "@/lib/stats";
 import { timeAgo } from "@/lib/utils";
+import { adminUsers, type AdminUserFilter } from "@/lib/adminUsers";
+import { Avatar, cx } from "@/components/ui";
+import { ResetPasswordButton } from "@/components/ResetPasswordButton";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Pilot dashboard" };
+export const metadata = { title: "Admin" };
 
-export default async function AdminPage() {
+export default async function AdminPage({ searchParams }: PageProps<"/admin">) {
   const user = await requireUser("/admin");
   if (!isAdmin(user)) notFound();
+  const sp = await searchParams;
+  const tab = sp.tab === "users" ? "users" : "stats";
+  const filter: AdminUserFilter = sp.filter === "new" || sp.filter === "never" ? sp.filter : "all";
+  return (
+    <AppShell>
+      <TopBar back="/me" title="Admin" avatarUser={toPublicUser(user)} />
+      <nav className="px-4 pt-3 flex gap-2" aria-label="Admin sections">
+        <TabLink href="/admin" active={tab === "stats"}>Pilot stats</TabLink>
+        <TabLink href="/admin?tab=users" active={tab === "users"}>Users</TabLink>
+      </nav>
+      {tab === "users" ? <UsersTab filter={filter} /> : <StatsTab />}
+    </AppShell>
+  );
+}
+
+function TabLink({ href, active, children }: { href: string; active: boolean; children: ReactNode }) {
+  return (
+    <Link href={href} aria-current={active ? "page" : undefined} className={cx("rounded-full px-4 py-[7px] text-[13px] font-medium", active ? "bg-ink text-cream" : "border border-line text-ink-muted hover:text-ink")}>
+      {children}
+    </Link>
+  );
+}
+
+const METHOD_LABEL = { email: "Email", google: "Google", apple: "Apple" } as const;
+
+async function UsersTab({ filter }: { filter: AdminUserFilter }) {
+  const { summary, rows } = await adminUsers(filter);
+  const filters: Array<{ key: AdminUserFilter; label: string }> = [
+    { key: "all", label: "All" },
+    { key: "new", label: "New (7 days)" },
+    { key: "never", label: "Never posted" },
+  ];
+  return (
+    <div className="px-4 pt-4 pb-10 flex flex-col gap-4">
+      <div className="grid grid-cols-4 gap-2">
+        <Tile label="Users" value={summary.total} />
+        <Tile label="New today" value={summary.newToday} hint="Since midnight, UAE time" />
+        <Tile label="This week" value={summary.newThisWeek} hint="Last 7 days" />
+        <Tile label="Published a guide" value={summary.publishers} />
+      </div>
+      <div className="flex gap-2 overflow-x-auto no-scrollbar">
+        {filters.map((f) => (
+          <Link
+            key={f.key}
+            href={f.key === "all" ? "/admin?tab=users" : `/admin?tab=users&filter=${f.key}`}
+            aria-current={filter === f.key ? "page" : undefined}
+            className={cx("shrink-0 rounded-full px-[15px] py-[7px] text-[12.5px] font-medium whitespace-nowrap", filter === f.key ? "bg-terracotta text-white" : "border border-line text-ink-muted hover:text-ink")}
+          >
+            {f.label}
+          </Link>
+        ))}
+      </div>
+      {rows.length === 0 ? (
+        <p className="px-1 text-[12.5px] text-ink-faint">{filter === "new" ? "Nobody new in the last 7 days." : filter === "never" ? "Everyone has published a guide." : "No users yet."}</p>
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {rows.map((r) => {
+            const method = METHOD_LABEL[r.signUp.method];
+            const linked = r.signUp.linked.map((p) => METHOD_LABEL[p]).join(" + ");
+            return (
+              <li key={r.user.id} className="rounded-2xl bg-paper border border-line/70 px-3 py-2.5">
+                <Link href={`/u/${r.user.username}`} className="flex gap-3 items-start">
+                  <Avatar user={r.user} size={40} />
+                  <span className="flex-1 min-w-0">
+                    <span className="flex items-baseline gap-2">
+                      <span className="flex-1 min-w-0 font-semibold text-[14px] truncate">{r.user.displayName}</span>
+                      <span className="shrink-0 text-[11.5px] text-ink-muted tabular-nums">{timeAgo(r.createdAt)}</span>
+                    </span>
+                    <span className="block text-[12px] text-ink-muted truncate">
+                      @{r.user.username} · {method}{linked ? ` (+ ${linked})` : ""}
+                    </span>
+                    <span className="block text-[12px] text-ink-muted tabular-nums">
+                      <b className={cx("font-semibold", r.guidesPublished ? "text-ink" : "text-ink-faint")}>{r.guidesPublished}</b> {r.guidesPublished === 1 ? "guide" : "guides"} published · {r.followers} {r.followers === 1 ? "follower" : "followers"} · {r.following} following
+                    </span>
+                  </span>
+                </Link>
+                <div className="mt-2 pl-[52px] flex items-center justify-between gap-2">
+                  <span className="min-w-0 truncate text-[11px] text-ink-faint">{r.email.endsWith(".invalid") ? "No email shared" : r.email}</span>
+                  <ResetPasswordButton
+                    userId={r.user.id}
+                    username={r.user.username}
+                    displayName={r.user.displayName}
+                    disabledReason={r.signUp.method === "email" ? null : `${method} sign-in · no password`}
+                  />
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+async function StatsTab() {
   const s = await pilotStats();
   const maxViews = Math.max(1, ...s.weekly.map((w) => w.views));
   return (
-    <AppShell>
-      <TopBar back="/me" title="Pilot dashboard" avatarUser={toPublicUser(user)} />
       <div className="px-4 pt-4 pb-10 flex flex-col gap-6">
         <section>
           <h2 className="px-1 text-[12px] font-medium uppercase tracking-[0.08em] text-ink-muted mb-2">Last 7 days</h2>
@@ -113,7 +210,6 @@ export default async function AdminPage() {
           )}
         </section>
       </div>
-    </AppShell>
   );
 }
 

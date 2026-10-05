@@ -59,7 +59,7 @@ export default async function NotificationsPage() {
         {rows.length === 0 && (
           <EmptyState title="Nothing here yet" body="New guides and places from people you follow, guides shared with you, and new followers all land here." action={<LinkButton href="/" size="sm" variant="outline">Browse the feed</LinkButton>} />
         )}
-        {rows.map((n) => {
+        {rows.filter((n) => !(n.type === "user_joined" && n.actorId && hidden.has(n.actorId))).map((n) => {
           const actor = n.actorId ? actorMap.get(n.actorId) : undefined;
           const rawGuide = n.guideId ? guideMap.get(n.guideId) : undefined;
           const followerUpdate = n.type === "guide_published" || n.type === "places_added";
@@ -80,6 +80,12 @@ export default async function NotificationsPage() {
                   {n.type === "new_follower" && (
                     <>
                       <Link href={`/u/${actor?.username ?? ""}`} className="font-semibold">{actor?.displayName ?? "Someone"}</Link> started following you.
+                    </>
+                  )}
+                  {n.type === "user_joined" && (
+                    <>
+                      {who} joined MyGuide.{" "}
+                      <span className="text-ink-muted">{actor ? `@${actor.username}` : ""}</span>
                     </>
                   )}
                   {n.type === "follow_request" && (
@@ -123,7 +129,7 @@ export default async function NotificationsPage() {
                 <div className="mt-1.5 flex items-center gap-3 text-[11.5px] text-ink-muted">
                   <span className="inline-flex items-center gap-1">
                     {n.type === "guide_shared" && <ShareIcon size={12} />}
-                    {n.type === "new_follower" && <UserIcon size={12} />}
+                    {(n.type === "new_follower" || n.type === "user_joined") && <UserIcon size={12} />}
                     {(n.type === "follow_request" || n.type === "follow_accepted") && <LockIcon size={12} />}
                     {n.type === "place_comment" && <ChatIcon size={12} />}
                     {n.type === "guide_published" && <PlusIcon size={12} />}
@@ -138,7 +144,7 @@ export default async function NotificationsPage() {
                   )}
                   {guide && n.type === "place_comment" && <Link href={`/g/${guide.slug}${n.placeId ? `#place-${n.placeId}` : ""}`} className="font-medium text-terracotta">Open guide →</Link>}
                   {n.type === "guide_used" && actor && <Link href={`/u/${actor.username}`} className="font-medium text-terracotta">View profile →</Link>}
-                  {(n.type === "new_follower" || n.type === "follow_accepted") && actor && <Link href={`/u/${actor.username}`} className="font-medium text-terracotta">View profile →</Link>}
+                  {(n.type === "new_follower" || n.type === "follow_accepted" || n.type === "user_joined") && actor && <Link href={`/u/${actor.username}`} className="font-medium text-terracotta">View profile →</Link>}
                 </div>
                 {n.type === "follow_request" && actor && theirStatus.get(actor.id) === "accepted" && (
                   <p className="mt-1.5 text-[12px] text-sage font-medium">You accepted — they can see your guides now.</p>
@@ -157,6 +163,11 @@ export default async function NotificationsPage() {
               {actor && !hidden.has(actor.id) && theirStatus.get(actor.id) === "accepted" && (n.type === "new_follower" || n.type === "follow_request") && (
                 <div className="shrink-0 self-center">
                   <FollowButton userId={actor.id} initial={myStatus.get(actor.id) ?? "none"} next="/notifications" followsYou />
+                </div>
+              )}
+              {actor && !hidden.has(actor.id) && n.type === "user_joined" && (
+                <div className="shrink-0 self-center">
+                  <FollowButton userId={actor.id} initial={myStatus.get(actor.id) ?? "none"} next="/notifications" followsYou={theirStatus.get(actor.id) === "accepted"} />
                 </div>
               )}
             </div>

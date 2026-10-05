@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
+import { notifyUserJoined } from "@/lib/notify";
 import { cookies } from "next/headers";
 import { jwtVerify } from "jose";
 import { setSessionOn } from "@/lib/auth";
@@ -49,6 +50,7 @@ async function finish(req: Request, provider: string, fields: { code: string | n
       appleUser: fields.user,
     });
     const { user, isNew } = await userForProvider(provider, profile);
+    if (isNew) after(() => notifyUserJoined(user.id));
     const next = pending.next || "/";
     const dest = isNew ? `/welcome?new=1${next !== "/" ? `&next=${encodeURIComponent(next)}` : ""}` : next;
     const res = NextResponse.redirect(new URL(dest, origin), 303);

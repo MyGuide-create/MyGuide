@@ -9,7 +9,8 @@ import { addPlace, deleteGuide, markGuideVerified, publishGuide, removePlace, un
 import { CATEGORIES } from "@/lib/places/categories";
 import type { PlaceSuggestion } from "@/lib/places/types";
 import { CoverPicker } from "./CoverPicker";
-import { GuideCover } from "./GuideCover";
+import { CityPill, GuideCover } from "./GuideCover";
+import { coverCityLabel } from "@/lib/coverCity";
 import { CameraIcon, ChevronDown, ChevronUp, ForkIcon, GlobeIcon, LockIcon, PinIcon, SparkleIcon, TrashIcon } from "./Icons";
 import { NoteEditor } from "./NoteEditor";
 import { PhotoPicker } from "./PhotoPicker";
@@ -82,6 +83,11 @@ export function GuideEditor({ detail, justForked, justCreated, viewerId }: { det
   };
 
   const undescribed = places.filter((p) => !p.note.trim()).length;
+  /** What's typed in the City box right now, so the cover pill previews before it saves. */
+  const [cityDraft, setCityDraft] = useState<string | null>(null);
+  const placeCities = places.map((p) => p.city);
+  const coverCity = coverCityLabel(cityDraft ?? guide.city, placeCities);
+  const derivedCity = coverCityLabel("", placeCities);
 
   const saveMeta = (patch: Parameters<typeof updateGuideMeta>[1]) => run("guide", async () => {
     await updateGuideMeta(guide.id, patch);
@@ -157,8 +163,8 @@ export function GuideEditor({ detail, justForked, justCreated, viewerId }: { det
 
       {/* Cover */}
       <div className="relative mt-3 mx-4 rounded-[22px] overflow-hidden">
-        <GuideCover guide={guide} ownerUsername={owner.username} className="aspect-[16/9]" />
-        <div className="absolute bottom-3 right-3 flex gap-2">
+        <GuideCover guide={guide} ownerUsername={owner.username} className="aspect-[16/9]" cityLabel={coverCity} />
+        <div className="absolute top-3 right-3 flex gap-2">
           <button type="button" onClick={() => setCoverOpen(true)} className="rounded-full bg-paper/90 backdrop-blur px-3 py-1.5 text-[12px] font-medium inline-flex items-center gap-1.5">
             <CameraIcon size={14} /> {guide.coverMediaId || guide.coverUrl ? "Change cover" : "Add cover photo"}
           </button>
@@ -183,15 +189,36 @@ export function GuideEditor({ detail, justForked, justCreated, viewerId }: { det
             placeholder="Name your guide"
           />
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <Label>City</Label>
-            <Input defaultValue={guide.city} placeholder="Tokyo" onBlur={(e) => e.target.value.trim() !== guide.city && saveMeta({ city: e.target.value })} />
+        <div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label htmlFor="guide-city">City</Label>
+              <Input
+                id="guide-city"
+                key={guide.city}
+                defaultValue={guide.city}
+                placeholder={derivedCity ?? "Tokyo"}
+                onChange={(e) => setCityDraft(e.target.value)}
+                onBlur={(e) => {
+                  if (e.target.value.trim() !== guide.city) saveMeta({ city: e.target.value });
+                  setCityDraft(null);
+                }}
+              />
+            </div>
+            <div>
+              <Label htmlFor="guide-country">Country</Label>
+              <Input id="guide-country" defaultValue={guide.country} placeholder="Japan" onBlur={(e) => e.target.value.trim() !== guide.country && saveMeta({ country: e.target.value })} />
+            </div>
           </div>
-          <div>
-            <Label>Country</Label>
-            <Input defaultValue={guide.country} placeholder="Japan" onBlur={(e) => e.target.value.trim() !== guide.country && saveMeta({ country: e.target.value })} />
+          <div className="mt-2 flex items-center gap-2 text-[11.5px] text-ink-muted leading-snug">
+            <span className="shrink-0">On the cover:</span>
+            {coverCity ? <CityPill label={coverCity} className="max-w-[70%] bg-ink/75" /> : <span className="text-ink-faint">nothing yet — add a city or some places</span>}
           </div>
+          <p className="mt-1 text-[11px] text-ink-faint leading-snug">
+            {(cityDraft ?? guide.city).trim()
+              ? "Type a region (e.g. “Bali”) to cover several towns. Clear it to use your places’ cities."
+              : "Blank: worked out from your places — the most common city, plus how many others."}
+          </p>
         </div>
         <div>
           <Label>Description</Label>

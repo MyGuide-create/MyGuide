@@ -1,5 +1,7 @@
+import type { ReactNode } from "react";
 import { hashInt } from "@/lib/utils";
 import { UNSPLASH_HOME } from "@/lib/covers/shared";
+import { PinIcon } from "./Icons";
 import { cx } from "./ui";
 
 /**
@@ -13,6 +15,7 @@ export function GuideCover({
   compact,
   bare,
   creditLinks,
+  cityLabel,
 }: {
   guide: {
     id: string;
@@ -32,12 +35,15 @@ export function GuideCover({
   bare?: boolean;
   /** Render the photo credit as links (off inside cards, which are already one big link). */
   creditLinks?: boolean;
+  /** City pill, bottom-left ("Crans-Montana", "Bali + 2 more"). See lib/coverCity. */
+  cityLabel?: string | null;
 }) {
   if (guide.coverMediaId) {
     return (
       <div className={cx("relative overflow-hidden bg-cream-deep", className)}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={`/api/media/${guide.coverMediaId}`} alt="" className="absolute inset-0 w-full h-full object-cover" />
+        <CoverOverlay city={cityLabel} />
       </div>
     );
   }
@@ -46,7 +52,7 @@ export function GuideCover({
       <div className={cx("relative overflow-hidden bg-cream-deep", className)}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={guide.coverUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
-        <CoverCredit guide={guide} links={creditLinks} />
+        <CoverOverlay city={cityLabel} credit={<CoverCredit guide={guide} links={creditLinks} />} />
       </div>
     );
   }
@@ -58,7 +64,10 @@ export function GuideCover({
   ];
   const p = palettes[hashInt(guide.id, palettes.length)];
   const variant = hashInt(guide.title, 3);
-  const place = [guide.city, guide.country].filter(Boolean).join(", ");
+  // Illustrated covers already print the place under the title; the pill is only for the bare header.
+  const place = cityLabel
+    ? cityLabel === guide.city && guide.country ? `${cityLabel}, ${guide.country}` : cityLabel
+    : [guide.city, guide.country].filter(Boolean).join(", ");
   return (
     <div className={cx("relative overflow-hidden", className)} style={{ background: p.bg }}>
       <svg className="absolute inset-0 w-full h-full" viewBox="0 0 390 220" preserveAspectRatio="xMidYMid slice" aria-hidden>
@@ -94,11 +103,33 @@ export function GuideCover({
           </g>
         ))}
       </svg>
+      {bare && <CoverOverlay city={cityLabel} />}
       {!bare && <div className={cx("absolute inset-0 flex flex-col justify-end", compact ? "p-3" : "p-5")}>
         <div className={cx("text-ink-muted font-medium", compact ? "text-[10px]" : "text-[12px]")}>@{ownerUsername}{place ? ` · ${place}` : ""}</div>
         <div className={cx("font-display text-ink leading-[1.02] mt-0.5 line-clamp-2", compact ? "text-[19px]" : "text-[30px]")}>{guide.title}</div>
       </div>}
     </div>
+  );
+}
+
+/** Bottom row over a cover: city pill on the left, photo credit on the right. */
+function CoverOverlay({ city, credit }: { city?: string | null; credit?: ReactNode }) {
+  if (!city && !credit) return null;
+  return (
+    <div className="absolute inset-x-2 bottom-2 flex items-end justify-between gap-2 pointer-events-none">
+      {city ? <CityPill label={city} /> : <span />}
+      {credit}
+    </div>
+  );
+}
+
+/** "📍 Crans-Montana" — the same pill everywhere a cover shows. */
+export function CityPill({ label, className }: { label: string; className?: string }) {
+  return (
+    <span className={cx("min-w-0 max-w-[60%] inline-flex items-center gap-1 rounded-full bg-ink/55 backdrop-blur-sm pl-1.5 pr-2.5 py-[3px] text-[11.5px] font-medium leading-4 text-white shadow-[0_1px_4px_oklch(22%_0.02_60/0.25)]", className)}>
+      <PinIcon size={13} className="shrink-0" />
+      <span className="truncate">{label}</span>
+    </span>
   );
 }
 
@@ -123,7 +154,7 @@ function CoverCredit({
     "Google Maps"
   );
   return (
-    <div className="absolute bottom-2 right-2 max-w-[85%] truncate rounded-full bg-ink/45 backdrop-blur-sm px-2 py-0.5 text-[10px] leading-4 text-white/95">
+    <div className="pointer-events-auto min-w-0 max-w-[60%] shrink truncate rounded-full bg-ink/45 backdrop-blur-sm px-2 py-0.5 text-[10px] leading-4 text-white/95">
       Photo: {name} · {source}
     </div>
   );

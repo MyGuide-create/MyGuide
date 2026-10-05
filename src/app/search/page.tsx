@@ -5,7 +5,8 @@ import { SearchBar } from "@/components/SearchBar";
 import { EmptyState, LinkButton, Tag } from "@/components/ui";
 import { interpretSearch } from "@/lib/ai";
 import { getCurrentUser, toPublicUser } from "@/lib/auth";
-import { listFeedCities, searchGuides, searchPlaces, suggestedCreators, topPlaceCategories } from "@/lib/guides";
+import { listFeedCities, searchGuides, searchPeople, searchPlaces, suggestedCreators, topPlaceCategories } from "@/lib/guides";
+import { PersonRow } from "@/components/PersonRow";
 import { PlaceTile } from "@/components/PlaceTile";
 import { neighbourhood } from "@/lib/places/neighbourhood";
 
@@ -44,7 +45,11 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
   const sp = await searchParams;
   const q = typeof sp.q === "string" ? sp.q.trim() : "";
   const user = await getCurrentUser();
-  const intent = q ? await interpretSearch(q) : null;
+  // "See all" on the People section: just the people, no guide search.
+  const allPeople = sp.people === "all";
+  const here = `/search?q=${encodeURIComponent(q)}${allPeople ? "&people=all" : ""}`;
+  const people = q ? await searchPeople(q, user?.id, allPeople ? 50 : 3) : { hits: [], total: 0 };
+  const intent = q && !allPeople ? await interpretSearch(q) : null;
   const [results, placeHits] = intent ? await Promise.all([searchGuides(intent, user?.id), searchPlaces(intent, user?.id)]) : [[], []];
   const cities = q ? [] : await listFeedCities();
   const examples = q ? [] : await buildExamples(cities, !!user);
@@ -81,6 +86,22 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
         </div>
       )}
 
+      {q && allPeople && (
+        <main className="px-4 pt-4 pb-6 flex flex-col gap-3">
+          <div className="flex items-baseline justify-between px-1">
+            <h2 className="text-[12px] font-medium uppercase tracking-[0.08em] text-ink-muted">People matching “{q}”</h2>
+            <Link href={`/search?q=${encodeURIComponent(q)}`} className="text-[12.5px] font-medium text-terracotta">Guides too →</Link>
+          </div>
+          {people.hits.length === 0 ? (
+            <EmptyState title="Nobody by that name yet" body="Try part of their name or their @username." />
+          ) : (
+            <ul className="flex flex-col gap-2">
+              {people.hits.map((h) => <PersonRow key={h.user.id} hit={h} signedIn={!!user} next={here} />)}
+            </ul>
+          )}
+        </main>
+      )}
+
       {q && intent && (
         <main className="px-4 pt-4 pb-6 flex flex-col gap-4">
           <div className="flex flex-wrap items-center gap-1.5 text-[12px] text-ink-muted px-1">
@@ -94,6 +115,19 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
           </div>
           {intent.scope === "following" && !user && (
             <EmptyState title="Log in to search your people" body="“By people I'm following” needs to know who you follow." action={<LinkButton href={`/login?next=${encodeURIComponent(`/search?q=${q}`)}`} size="sm">Log in</LinkButton>} />
+          )}
+          {people.hits.length > 0 && (
+            <section>
+              <div className="flex items-baseline justify-between px-1 mb-2">
+                <h2 className="text-[12px] font-medium uppercase tracking-[0.08em] text-ink-muted">People</h2>
+                {people.total > people.hits.length && (
+                  <Link href={`/search?q=${encodeURIComponent(q)}&people=all`} className="text-[12.5px] font-medium text-terracotta">See all {people.total} →</Link>
+                )}
+              </div>
+              <ul className="flex flex-col gap-2">
+                {people.hits.map((h) => <PersonRow key={h.user.id} hit={h} signedIn={!!user} next={here} />)}
+              </ul>
+            </section>
           )}
           {placeHits.length > 0 && (
             <section>
@@ -114,8 +148,8 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
               </ul>
             </section>
           )}
-          {results.length > 0 && placeHits.length > 0 && <h2 className="px-1 -mb-1 text-[12px] font-medium uppercase tracking-[0.08em] text-ink-muted">Guides</h2>}
-          {results.length === 0 && placeHits.length === 0 && (user || intent.scope !== "following") && (
+          {results.length > 0 && (placeHits.length > 0 || people.hits.length > 0) && <h2 className="px-1 -mb-1 text-[12px] font-medium uppercase tracking-[0.08em] text-ink-muted">Guides</h2>}
+          {results.length === 0 && placeHits.length === 0 && people.hits.length === 0 && (user || intent.scope !== "following") && (
             <EmptyState title="No guides match yet" body={intent.city ? `Nobody has published a ${intent.city} guide${intent.scope === "following" ? " that you follow" : ""}. Maybe that's you?` : "Try a city name, or say what you're looking for."} action={<LinkButton href="/create" size="sm">Create a guide</LinkButton>} />
           )}
           {results.map((g) => <GuideCard key={g.guide.id} data={g} />)}

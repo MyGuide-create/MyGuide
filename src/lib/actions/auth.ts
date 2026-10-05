@@ -2,6 +2,8 @@
 
 import { eq, or } from "drizzle-orm";
 import { redirect } from "next/navigation";
+import { after } from "next/server";
+import { notifyUserJoined } from "../notify";
 import { createSession, destroySession, hashPassword, verifyPassword } from "../auth";
 import { getDb } from "../db";
 import { users } from "../db/schema";
@@ -44,6 +46,8 @@ export async function signUp(_prev: AuthState, formData: FormData): Promise<Auth
     createdAt: new Date(),
   });
   await createSession(id);
+  // "X just joined MyGuide" — after the response, so sign-up isn't slowed by pushes.
+  after(() => notifyUserJoined(id));
   // New people first see a short welcome with people to follow, then continue where they were going.
   redirect(`/welcome${next && next !== "/" ? `?next=${encodeURIComponent(next)}` : ""}`);
 }

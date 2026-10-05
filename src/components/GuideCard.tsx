@@ -13,7 +13,7 @@ export function GuideCard({ data, showOwner = true }: { data: GuideCardData; sho
   return (
     <article className="fade-up rounded-[22px] bg-paper border border-line/80 overflow-hidden shadow-[0_1px_2px_oklch(22%_0.02_60/0.04)]">
       <Link href={`/g/${guide.slug}`} className="block">
-        <GuideCover guide={guide} ownerUsername={owner.username} className="aspect-[16/9]" />
+        <GuideCover guide={guide} ownerUsername={owner.username} className="aspect-[16/9]" cityLabel={data.coverCity} />
       </Link>
       <div className="px-4 pt-3 pb-4">
         <div className="flex items-start gap-3">

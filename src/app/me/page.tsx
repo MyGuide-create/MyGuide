@@ -11,6 +11,8 @@ import { hasAnthropicKey } from "@/lib/ai";
 import { hasGoogleKey } from "@/lib/places";
 import { ChatIcon, HeartIcon, ListIcon, PinIcon, SparkleIcon } from "@/components/Icons";
 import { DeleteAccountForm } from "@/components/DeleteAccountForm";
+import { ChangePasswordForm } from "@/components/ChangePasswordForm";
+import { signUpInfo } from "@/lib/oauthUsers";
 import { PushToggle } from "@/components/PushToggle";
 import { BlockButton } from "@/components/BlockButton";
 import { pushPublicKey } from "@/lib/push";
@@ -30,6 +32,8 @@ export default async function MePage() {
   const blockedRows = await db.select({ u: users }).from(blocks).innerJoin(users, eq(users.id, blocks.blockedId)).where(eq(blocks.blockerId, user.id));
   const blocked = blockedRows.map((b) => toPublicUser(b.u));
   const admin = isAdmin(user);
+  // Google/Apple sign-ups have no password to change.
+  const hasPassword = (await signUpInfo([user])).get(user.id)?.method === "email";
   return (
     <AppShell>
       <TopBar title="You" right={<Link href={`/u/${user.username}`} className="text-[13px] font-medium text-terracotta px-2">View profile</Link>} />
@@ -44,7 +48,7 @@ export default async function MePage() {
           <Link href="/stats" className="inline-flex items-center gap-2 rounded-2xl border border-line bg-paper px-3.5 py-3 hover:border-terracotta-soft"><ListIcon size={16} className="text-terracotta" /> Guide stats</Link>
           <Link href="/feedback?from=/me" className="inline-flex items-center gap-2 rounded-2xl border border-line bg-paper px-3.5 py-3 hover:border-terracotta-soft"><ChatIcon size={16} className="text-terracotta" /> Send feedback</Link>
           <Link href="/welcome?tour=1" className="col-span-2 inline-flex items-center gap-2 rounded-2xl border border-line bg-paper px-3.5 py-3 hover:border-terracotta-soft"><SparkleIcon size={16} className="text-terracotta" /> How MyGuide works</Link>
-          {admin && <Link href="/admin" className="col-span-2 rounded-2xl border border-terracotta-soft bg-terracotta-tint/50 px-3.5 py-3">Pilot dashboard (admin)</Link>}
+          {admin && <Link href="/admin" className="col-span-2 rounded-2xl border border-terracotta-soft bg-terracotta-tint/50 px-3.5 py-3">Admin · pilot stats &amp; users</Link>}
         </nav>
 
         <PushToggle publicKey={pushPublicKey()} />
@@ -130,6 +134,7 @@ export default async function MePage() {
             <Link href="/terms" className="hover:text-terracotta">Terms</Link>
             <Link href="/privacy" className="hover:text-terracotta">Privacy</Link>
           </div>
+          {hasPassword && <ChangePasswordForm />}
           <DeleteAccountForm username={user.username} />
         </div>
       </div>
