@@ -14,7 +14,7 @@ export const CITIES: CityInfo[] = [
   { city: "Athens", country: "Greece", lat: 37.9838, lng: 23.7275, aliases: ["plaka", "psyri", "koukaki", "exarcheia"] },
   { city: "Mexico City", country: "Mexico", lat: 19.4326, lng: -99.1332, aliases: ["cdmx", "ciudad de mexico", "ciudad de méxico", "roma norte", "condesa", "coyoacan", "coyoacán", "polanco"] },
   { city: "Oaxaca", country: "Mexico", lat: 17.0732, lng: -96.7266 },
-  { city: "Dubai", country: "United Arab Emirates", lat: 25.2048, lng: 55.2708, aliases: ["jumeirah", "deira", "al quoz", "marina"] },
+  { city: "Dubai", country: "United Arab Emirates", lat: 25.2048, lng: 55.2708, aliases: ["jumeirah", "deira", "al quoz", "marina", "dubai marina", "downtown dubai", "business bay", "al barsha", "jebel ali", "al qudra", "hatta", "dubai emirate", "دبي"] },
   { city: "Abu Dhabi", country: "United Arab Emirates", lat: 24.4539, lng: 54.3773 },
   { city: "Lisbon", country: "Portugal", lat: 38.7223, lng: -9.1393, aliases: ["lisboa", "alfama", "belem", "belém", "bairro alto", "chiado"] },
   { city: "Porto", country: "Portugal", lat: 41.1579, lng: -8.6291 },
@@ -101,6 +101,13 @@ export function findCity(input: string | undefined | null): CityInfo | undefined
     if (!best && names.some((n) => q.includes(n) || (n.length > 3 && n.includes(q)))) best = c;
   }
   return best;
+}
+
+/** A known city whose name or alias is exactly this (no partial matches). */
+export function findCityExact(input: string | undefined | null): CityInfo | undefined {
+  const q = norm(input ?? "");
+  if (!q) return undefined;
+  return CITIES.find((c) => [c.city, ...(c.aliases ?? [])].some((n) => norm(n) === q));
 }
 
 /** Scan free text for any mention of a known city. */
