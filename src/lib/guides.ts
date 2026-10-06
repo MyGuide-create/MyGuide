@@ -605,7 +605,7 @@ export async function suggestedCreators(viewerId?: string | null, limit = 6): Pr
     .from(users)
     .leftJoin(guides, and(eq(guides.ownerId, users.id), publicPublished()))
     .groupBy(users.id)
-    .orderBy(desc(sql`count(${guides.id})`))
+    .orderBy(desc(sql`count(${guides.id})`), desc(users.createdAt))
     .limit(limit + 1);
   const hidden = await hiddenUserIds(viewerId);
   return rows

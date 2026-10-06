@@ -109,7 +109,7 @@ export async function followMany(targetUserIds: string[]): Promise<Record<string
   const user = await getCurrentUser();
   if (!user) redirect("/login");
   const out: Record<string, FollowStatus> = {};
-  for (const id of targetUserIds.slice(0, 30)) out[id] = await startFollowing(user.id, id);
+  for (const id of targetUserIds.slice(0, 100)) out[id] = await startFollowing(user.id, id);
   revalidatePath("/");
   return out;
 }

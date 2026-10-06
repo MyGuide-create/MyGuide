@@ -291,7 +291,7 @@ function FollowStep({ people, finish }: { people: WelcomePerson[]; finish: () =>
                     <div className="min-w-0">
                       <div className="text-[16px] font-semibold truncate">{p.displayName}</div>
                       <div className="text-[13px] text-ink-muted truncate">
-                        @{p.username} · {p.guideCount} guide{p.guideCount === 1 ? "" : "s"}
+                        @{p.username} · {p.guideCount ? `${p.guideCount} guide${p.guideCount === 1 ? "" : "s"}` : "New on MyGuide"}
                       </div>
                     </div>
                   </Link>
@@ -314,7 +314,7 @@ function FollowStep({ people, finish }: { people: WelcomePerson[]; finish: () =>
         </>
       ) : (
         <p className="mt-6 rounded-2xl bg-cream-deep/60 px-4 py-3.5 text-[14px] text-ink-muted leading-relaxed">
-          Nobody you know has published a guide yet. You can find people any time from Search.
+          You&rsquo;re one of the first here. You can find people any time from Search.
         </p>
       )}
 

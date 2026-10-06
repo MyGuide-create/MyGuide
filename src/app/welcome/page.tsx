@@ -18,14 +18,14 @@ export default async function WelcomePage({ searchParams }: { searchParams: Prom
   const user = await requireUser(tour ? "/welcome?tour=1" : "/welcome");
   const db = await getDb();
   const [creators, feed, mine] = await Promise.all([
-    suggestedCreators(user.id, 12),
+    // Everyone on MyGuide for now (pilot-sized): creators with the most guides first, then the rest.
+    suggestedCreators(user.id, 200),
     listFeed({ viewerId: user.id, limit: 12 }),
     db.select({ id: follows.followingId, status: follows.status }).from(follows).where(and(eq(follows.followerId, user.id))),
   ]);
   const myStatus = new Map(mine.map((f) => [f.id, (f.status === "pending" ? "pending" : "accepted") as FollowStatus]));
 
   const people: WelcomePerson[] = creators
-    .filter((c) => c.guideCount > 0)
     .map((c) => ({ id: c.id, username: c.username, displayName: c.displayName, avatarMediaId: c.avatarMediaId, guideCount: c.guideCount, status: myStatus.get(c.id) ?? "none" }));
 
   // Two real guides from different people for the first slide's illustration.
