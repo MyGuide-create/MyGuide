@@ -1,6 +1,7 @@
 "use server";
 
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { tidyCity } from "@/lib/places/cityName";
 import { revalidatePath } from "next/cache";
 import { getCurrentUser } from "../auth";
 import { hiddenUserIds } from "../blocks";
@@ -127,7 +128,8 @@ export async function addPlaceToMyGuide(placeId: string, target: string): Promis
   let tripId: string | undefined;
   if (target === "trip") {
     const source = await db.query.guides.findFirst({ where: eq(guides.id, place.guideId) });
-    const rawCity = place.city || source?.city || "";
+    // The guide's city ("Bali") beats a place's admin area; tidyCity cleans older rows.
+    const rawCity = tidyCity(source?.city || place.city);
     if (!rawCity) return { ok: false, error: "We don't know which city this place is in." };
     let trip = await db.query.trips.findFirst({
       where: and(eq(trips.userId, user.id), sql`lower(${trips.city}) = ${rawCity.toLowerCase()}`),

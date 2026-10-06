@@ -82,8 +82,9 @@ export function VoiceCreate({ initialMode, forWish }: { initialMode: "voice" | "
       setFromList(false);
       setResult(data);
       setDraft(data.places.map((p, i) => ({ ...p, key: `${i}-${p.name}` })));
-      setTitle(data.title);
-      setCity(data.city);
+      // Keep a title the creator already typed; only fill in the suggestion when it's empty.
+      setTitle((t) => t.trim() || data.title);
+      setCity((c) => c.trim() || data.city);
       setStage("review");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't structure that.");
@@ -169,8 +170,8 @@ export function VoiceCreate({ initialMode, forWish }: { initialMode: "voice" | "
       ]);
       const guideTitle = listTitle || opts.fallbackTitle || "";
       setResult({ title: guideTitle, city: firstCity?.city ?? "", country: firstCity?.country ?? "", places: [], ai: true });
-      setTitle(guideTitle);
-      setCity(firstCity?.city ?? "");
+      setTitle((t) => t.trim() || guideTitle);
+      setCity((c) => c.trim() || (firstCity?.city ?? ""));
       setFromList(true);
       setStage("review");
     } catch {
@@ -393,7 +394,7 @@ export function VoiceCreate({ initialMode, forWish }: { initialMode: "voice" | "
     return (
       <div className="px-5 pt-3 pb-28 flex flex-col gap-4">
         <div>
-          <Label>Suggested title</Label>
+          <Label>Title</Label>
           <input value={title} onChange={(e) => setTitle(e.target.value)} className="w-full bg-transparent font-display text-[32px] leading-[1.05] outline-none border-b border-line focus:border-terracotta-soft" />
           <div className="mt-2 flex items-center gap-2">
             <Label className="mb-0">City</Label>

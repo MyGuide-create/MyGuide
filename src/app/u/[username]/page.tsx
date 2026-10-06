@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AppShell, TopBar } from "@/components/AppShell";
@@ -14,6 +15,14 @@ import { WishList } from "@/components/WishList";
 import { listWishesFor } from "@/lib/wishes";
 
 export const dynamic = "force-dynamic";
+
+export async function generateMetadata({ params }: PageProps<"/u/[username]">): Promise<Metadata> {
+  const { username } = await params;
+  const profile = await getUserByUsername(username);
+  if (!profile) return { title: "Profile" };
+  const title = `${profile.displayName} (@${profile.username})`;
+  return { title, description: profile.bio?.trim() || `${profile.displayName}'s guides on MyGuide`, openGraph: { title, siteName: "MyGuide" } };
+}
 
 export default async function ProfilePage({ params, searchParams }: PageProps<"/u/[username]">) {
   const { username } = await params;

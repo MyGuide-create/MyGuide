@@ -20,6 +20,7 @@ export async function GET(req: Request) {
         hours: p.hours,
         photoCount: p.photoUrls.length || (p.photoUrl ? 1 : 0),
         country: p.country,
+        city: p.city,
         lng: p.lng,
         businessStatus: p.businessStatus,
       },

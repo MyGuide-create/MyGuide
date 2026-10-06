@@ -1,4 +1,5 @@
 import { categoryFromGoogleTypes } from "./categories";
+import { tidyCity } from "./cityName";
 import { sameBrand } from "./branches";
 import { findCity } from "./cities";
 import { haversineMeters } from "./geo";
@@ -45,7 +46,7 @@ function key(): string {
 
 function toResult(p: GooglePlace): PlaceResult {
   const comp = (type: string) => p.addressComponents?.find((c) => c.types?.includes(type))?.longText ?? "";
-  const city = comp("locality") || comp("postal_town") || comp("administrative_area_level_2") || comp("administrative_area_level_1");
+  const city = tidyCity(comp("locality") || comp("postal_town") || comp("administrative_area_level_2") || comp("administrative_area_level_1"));
   const country = comp("country");
   const photoUrls = (p.photos ?? []).slice(0, 8).map((ph) => `/api/places/photo?ref=${encodeURIComponent(ph.name)}`);
   const status = p.businessStatus;
@@ -57,7 +58,7 @@ function toResult(p: GooglePlace): PlaceResult {
     country,
     lat: p.location?.latitude ?? 0,
     lng: p.location?.longitude ?? 0,
-    category: categoryFromGoogleTypes(p.primaryType, p.types),
+    category: categoryFromGoogleTypes(p.primaryType, p.types, p.displayName?.text),
     photoUrl: photoUrls[0] ?? null,
     photoUrls,
     phone: p.internationalPhoneNumber ?? p.nationalPhoneNumber ?? null,
@@ -101,7 +102,7 @@ export const googleProvider: PlacesProvider = {
       "/places:autocomplete",
       { method: "POST", body: JSON.stringify({ input, locationBias: locationBias(cityHint) }) },
     );
-    return (data?.suggestions ?? [])
+    const suggestions = (data?.suggestions ?? [])
       .map((s) => s.placePrediction)
       .filter((p): p is NonNullable<typeof p> => !!p)
       .map<PlaceSuggestion>((p) => ({
@@ -110,6 +111,19 @@ export const googleProvider: PlacesProvider = {
         secondaryText: p.structuredFormat?.secondaryText?.text ?? "",
         source: "google",
       }));
+    if (suggestions.length || input.trim().split(/\s+/).length < 2) return suggestions;
+    // Autocomplete gives up on "name + area" ("Nightjar Coffee Alserkal"); a text search handles it.
+    const found = await gfetch<{ places?: Array<{ id: string; displayName?: { text: string }; formattedAddress?: string }> }>("/places:searchText", {
+      method: "POST",
+      fieldMask: "places.id,places.displayName,places.formattedAddress",
+      body: JSON.stringify({ textQuery: input, pageSize: 5, locationBias: locationBias(cityHint) }),
+    });
+    return (found?.places ?? []).map<PlaceSuggestion>((p) => ({
+      providerId: p.id,
+      mainText: p.displayName?.text ?? input,
+      secondaryText: p.formattedAddress ?? "",
+      source: "google",
+    }));
   },
 
   async searchText(query, cityHint) {
@@ -236,7 +250,7 @@ export async function reverseGeocode(lat: number, lng: number): Promise<{ area: 
     const comps = data.results.flatMap((r) => r.address_components);
     const find = (...types: string[]) => comps.find((c) => types.some((t) => c.types.includes(t)))?.long_name ?? "";
     const near = find("neighborhood", "sublocality", "sublocality_level_1");
-    const city = find("locality", "postal_town") || find("administrative_area_level_2") || find("administrative_area_level_1");
+    const city = tidyCity(find("locality", "postal_town") || find("administrative_area_level_2") || find("administrative_area_level_1"));
     const country = find("country");
     const area = [near && near !== city ? near : "", city, country].filter(Boolean).join(", ");
     return { area, city, country };

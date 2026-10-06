@@ -120,30 +120,37 @@ const GOOGLE_TYPE_MAP: Record<string, Category> = {
   inn: "Stay",
 };
 
-export function categoryFromGoogleTypes(primaryType?: string, types?: string[]): Category {
+export function categoryFromGoogleTypes(primaryType?: string, types?: string[], name?: string): Category {
   if (primaryType && GOOGLE_TYPE_MAP[primaryType]) return GOOGLE_TYPE_MAP[primaryType];
   for (const t of types ?? []) {
     if (GOOGLE_TYPE_MAP[t]) return GOOGLE_TYPE_MAP[t];
   }
-  return "Scenic Spots";
+  // Google type we don't map (e.g. a Lagree studio): the name is a better guess than a blanket default.
+  return (name && categoryFromName(name)) || "Scenic Spots";
 }
 
 /** Rough category guess from a place name, used for mock data / offline mode. */
 export function guessCategoryFromName(name: string): Category {
-  const n = name.toLowerCase();
+  return categoryFromName(name) ?? "Food & Drinks";
+}
+
+/** Category when the name clearly says one ("… Lagree Studio", "… Coffee"), else null. */
+export function categoryFromName(name: string): Category | null {
+  // Strip accents too, so "Café" matches \bcafe\b.
+  const n = `${name.toLowerCase()} ${name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")}`;
   const rules: Array<[RegExp, Category]> = [
     [/\b(club|lounge|bar|pub|taproom|speakeasy|karaoke|disco|izakaya|cocktail)\b/, "Nightlife"],
     [/\b(ramen|sushi|cafe|café|coffee|kissaten|bistro|taverna|trattoria|osteria|restaurant|kitchen|bakery|boulangerie|pizzeria|taco|taquer[ií]a|grill|diner|noodle|udon|soba|tempura|yakitori|gelato|pastel|pastéis|patisserie|deli|brasserie|cantina|mezcaler[ií]a|churrascaria|dumpling|curry|bbq|steak|eatery|ten|tei)\b/, "Food & Drinks"],
     [/\b(temple|shrine|mosque|church|cathedral|basilica|monastery|synagogue|chapel|wat|pagoda|gurdwara)\b/, "Spiritual"],
     [/\b(park|garden|gardens|beach|forest|lake|falls|waterfall|trail|island|mountain|hill|bay|cove|reserve)\b/, "Nature"],
     [/\b(hotel|hostel|ryokan|riad|inn|resort|lodge|guesthouse|b&b|apartments|villa)\b/, "Stay"],
+    [/\b(gym|spa|onsen|sento|hammam|yoga|pool|baths|climbing|surf|pilates|wellness|lagree|barre|crossfit|fitness|padel|boxing|reformer|bootcamp|tennis)\b/, "Sports & Wellness"],
     [/\b(museum|gallery|theatre|theater|cinema|aquarium|zoo|arena|opera|hall|studio)\b/, "Entertainment"],
     [/\b(market|mall|souk|souq|bazaar|store|shop|boutique|bookshop|books|records|depachika)\b/, "Shopping"],
-    [/\b(gym|spa|onsen|sento|hammam|yoga|pool|baths|climbing|surf|pilates|wellness)\b/, "Sports & Wellness"],
     [/\b(tower|bridge|square|plaza|castle|palace|viewpoint|lookout|acropolis|crossing|monument|fort|citadel|arch|gate)\b/, "Scenic Spots"],
   ];
   for (const [re, cat] of rules) if (re.test(n)) return cat;
-  return "Food & Drinks";
+  return null;
 }
 
 export const CATEGORY_ICON: Record<Category, string> = {

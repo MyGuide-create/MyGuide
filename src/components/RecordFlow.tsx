@@ -23,6 +23,7 @@ interface GuideOption {
   slug: string;
   title: string;
   placeCount: number;
+  city: string;
 }
 
 type Step = "confirm" | "capture" | "save";
@@ -63,7 +64,13 @@ export function RecordFlow({ guides }: { guides: GuideOption[] }) {
   const [tipDraft, setTipDraft] = useState("");
   const [photoIds, setPhotoIds] = useState<string[]>([]);
 
-  const [guideChoice, setGuideChoice] = useState<string | null>(guides[0]?.id ?? null);
+  /** Where the place is, once Google has told us (dropped pins don't say). */
+  const placeCity = shownInfo?.city?.trim() ?? "";
+  const sameCity = (g: GuideOption) => !!placeCity && g.city.trim().toLowerCase() === placeCity.toLowerCase();
+  /** Same-city guides first; nothing pre-picked unless one matches (a Dubai café shouldn't default into the Bali trip). */
+  const sortedGuides = [...guides.filter(sameCity), ...guides.filter((g) => !sameCity(g))];
+  const [userChoice, setGuideChoice] = useState<string | null | undefined>(undefined);
+  const guideChoice = userChoice !== undefined ? userChoice : (guides.find(sameCity)?.id ?? null);
   const [saving, startSaving] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -153,9 +160,13 @@ export function RecordFlow({ guides }: { guides: GuideOption[] }) {
             <div className="w-16 h-16 rounded-full bg-terracotta-tint flex items-center justify-center mb-3.5">
               <PinIcon size={30} className="text-terracotta" />
             </div>
-            <h1 className="font-display text-[22px]">You&apos;re at…</h1>
+            <h1 className="font-display text-[22px]">{locate === "found" || locate === "locating" ? "You\u2019re at\u2026" : "Where are you?"}</h1>
             <p className="mt-1 text-[13px] text-ink-muted leading-relaxed">
-              {locate === "locating" ? "Finding out where you are…" : "Based on where you are right now — pick the right one, or search if we didn't get it."}
+              {locate === "locating"
+                ? "Finding out where you are…"
+                : locate === "found"
+                  ? "Based on where you are right now — pick the right one, or search if we didn't get it."
+                  : "Search for the place you\u2019re at — the name and area work best."}
             </p>
           </div>
 
@@ -351,7 +362,7 @@ export function RecordFlow({ guides }: { guides: GuideOption[] }) {
             <button
               type="button"
               disabled={saving}
-              onClick={() => save({ newGuideTitle: selected.name })}
+              onClick={() => save({ newGuideTitle: placeCity ? `My ${placeCity} guide` : selected.name })}
               className="w-full flex items-center gap-3 rounded-2xl border-[1.5px] border-dashed border-terracotta bg-terracotta-tint p-4 text-left"
             >
               <div className="w-10 h-10 rounded-full bg-terracotta text-white flex items-center justify-center shrink-0">
@@ -370,7 +381,7 @@ export function RecordFlow({ guides }: { guides: GuideOption[] }) {
                 <div className="flex-1 h-px bg-line" /> or add to an existing guide <div className="flex-1 h-px bg-line" />
               </div>
               <div className="flex flex-col gap-2 px-5 pt-2">
-                {guides.map((g) => (
+                {sortedGuides.map((g) => (
                   <button
                     type="button"
                     key={g.id}
@@ -395,7 +406,7 @@ export function RecordFlow({ guides }: { guides: GuideOption[] }) {
           {error && <p className="px-5 pt-3 text-[12.5px] text-danger">{error}</p>}
 
           <div className="mt-auto px-5 pt-5 pb-8 flex flex-col items-center gap-3">
-            {guides.length > 0 && (
+            {guides.length > 0 && guideChoice && (
               <Button
                 className="w-full"
                 disabled={saving || !guideChoice}

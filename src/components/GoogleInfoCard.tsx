@@ -14,6 +14,8 @@ export interface GoogleInfo {
   hours: string[] | null;
   photoCount: number;
   country: string;
+  /** Town or region, tidied ("Bali", not "Kabupaten Badung"). */
+  city?: string;
   lng: number | null;
   businessStatus?: string | null;
 }

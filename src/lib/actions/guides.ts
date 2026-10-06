@@ -1,6 +1,7 @@
 "use server";
 
 import { and, eq, sql } from "drizzle-orm";
+import { tidyCity } from "@/lib/places/cityName";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "../auth";
@@ -90,7 +91,7 @@ export async function createGuide(input: { title: string; city?: string; country
     ownerId: user.id,
     slug,
     title,
-    city: known?.city ?? input.city?.trim() ?? "",
+    city: known?.city ?? tidyCity(input.city),
     country: known?.country ?? input.country?.trim() ?? "",
     shareToken: newToken(),
     createdAt: now,
@@ -174,7 +175,7 @@ export async function updateGuideMeta(
   if (patch.title !== undefined) set.title = patch.title.trim() || guide.title;
   if (patch.city !== undefined) {
     const known = findCity(patch.city);
-    set.city = known?.city ?? patch.city.trim();
+    set.city = known?.city ?? tidyCity(patch.city);
     if (known && patch.country === undefined) set.country = known.country;
   }
   if (patch.country !== undefined) set.country = patch.country.trim();

@@ -403,25 +403,44 @@ export async function searchGuides(intent: SearchIntent, viewerId?: string | nul
   } else if (intent.country) {
     conds.push(like(guides.country, `%${intent.country}%`));
   }
-  if (intent.category) {
-    const withCat = db.select({ id: places.guideId }).from(places).where(eq(places.category, intent.category));
-    conds.push(inArray(guides.id, withCat));
-  }
+  const query = (extra: (SQL | undefined)[]) =>
+    db.select().from(guides).where(and(...conds, ...extra)).orderBy(desc(guides.publishedAt)).limit(40);
+  const catCond = intent.category
+    ? inArray(guides.id, db.select({ id: places.guideId }).from(places).where(eq(places.category, intent.category)))
+    : undefined;
+  let rows: Guide[];
   if (intent.keywords.length) {
-    const kw = intent.keywords.map((k) =>
-      or(
-        like(guides.title, `%${k}%`),
-        like(guides.description, `%${k}%`),
-        like(guides.city, `%${k}%`),
-        like(guides.country, `%${k}%`),
-        inArray(guides.id, db.select({ id: places.guideId }).from(places).where(or(like(places.name, `%${k}%`), like(places.note, `%${k}%`)))),
+    // The words people typed always count. A category guessed from them ("gelato" → Food & Drinks)
+    // only decides what comes after the guides that actually match.
+    const kwCond = or(
+      ...intent.keywords.map((k) =>
+        or(
+          like(guides.title, `%${k}%`),
+          like(guides.description, `%${k}%`),
+          like(guides.city, `%${k}%`),
+          like(guides.country, `%${k}%`),
+          inArray(guides.id, db.select({ id: places.guideId }).from(places).where(or(like(places.name, `%${k}%`), like(places.note, `%${k}%`)))),
+          inArray(
+            guides.id,
+            db.select({ id: places.guideId }).from(placeTips).innerJoin(places, eq(placeTips.placeId, places.id)).where(like(placeTips.body, `%${k}%`)),
+          ),
+        ),
       ),
     );
-    // Keyword match is a soft filter: only required when nothing else narrowed the search.
-    const narrowed = !!(intent.city || intent.country || intent.category || intent.byUsername);
-    if (!narrowed) conds.push(or(...kw)!);
+    const strict = await query([kwCond]);
+    const hardNarrowed = !!(intent.city || intent.country || intent.byUsername);
+    if (hardNarrowed) {
+      // e.g. "coffee in dubai": Dubai guides that mention coffee first, then other Dubai guides (food ones if a category was guessed).
+      const seen = new Set(strict.map((g) => g.id));
+      let more = await query([catCond]);
+      if (!more.length && catCond) more = await query([]);
+      rows = [...strict, ...more.filter((g) => !seen.has(g.id))].slice(0, 40);
+    } else {
+      rows = strict.length ? strict : catCond ? await query([catCond]) : [];
+    }
+  } else {
+    rows = await query([catCond]);
   }
-  const rows = await db.select().from(guides).where(and(...conds)).orderBy(desc(guides.publishedAt)).limit(40);
   return filterVisibleCards(await hydrateCards(rows), viewerId);
 }
 
@@ -674,7 +693,8 @@ export async function searchPlaces(intent: SearchIntent, viewerId?: string | nul
   }
   if (intent.city) conds.push(or(like(places.city, `%${intent.city}%`), like(guides.city, `%${intent.city}%`), like(places.address, `%${intent.city}%`))!);
   else if (intent.country) conds.push(or(like(places.country, `%${intent.country}%`), like(guides.country, `%${intent.country}%`))!);
-  if (intent.category) conds.push(eq(places.category, intent.category));
+  // A guessed category only filters when there are no words to match on (see searchGuides).
+  if (intent.category && !intent.keywords.length) conds.push(eq(places.category, intent.category));
   if (intent.keywords.length) {
     const tipMatch = (k: string) => inArray(places.id, db.select({ id: placeTips.placeId }).from(placeTips).where(like(placeTips.body, `%${k}%`)));
     conds.push(

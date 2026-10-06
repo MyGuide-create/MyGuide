@@ -1,6 +1,7 @@
 "use server";
 
 import { and, eq } from "drizzle-orm";
+import { tidyCity } from "@/lib/places/cityName";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "../auth";
@@ -31,7 +32,7 @@ export async function createTrip(_prev: TripState, formData: FormData): Promise<
   await db.insert(trips).values({
     id,
     userId: user.id,
-    city: known?.city ?? rawCity.replace(/\b\w/g, (c) => c.toUpperCase()),
+    city: known?.city ?? tidyCity(rawCity).replace(/\b\w/g, (c) => c.toUpperCase()),
     country: known?.country ?? "",
     startDate: start || null,
     endDate: end || null,

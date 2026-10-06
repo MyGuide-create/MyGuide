@@ -13,7 +13,9 @@ export const dynamic = "force-dynamic";
 export async function generateMetadata({ params }: PageProps<"/g/[slug]">): Promise<Metadata> {
   const { slug } = await params;
   const guide = await getGuideBySlug(slug);
-  if (!guide || guide.visibility !== "public" || !guide.publishedAt) return { title: "Guide" };
+  if (!guide) return { title: "Guide" };
+  // Private guides and drafts: name the tab, but no preview card and keep them out of search engines.
+  if (guide.visibility !== "public" || !guide.publishedAt) return { title: guide.title, robots: { index: false } };
   const base = await origin();
   const [owner, count] = await Promise.all([getUserById(guide.ownerId), countGuidePlaces(guide.id)]);
   const byline = [owner ? `by ${owner.displayName}` : null, `${count} ${count === 1 ? "place" : "places"}`, guide.city].filter(Boolean).join(" · ");

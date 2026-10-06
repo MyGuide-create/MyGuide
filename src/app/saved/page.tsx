@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { AppShell, TopBar } from "@/components/AppShell";
+import { tidyCity } from "@/lib/places/cityName";
 import { PlaceTile } from "@/components/PlaceTile";
 import { SaveButton } from "@/components/SaveButton";
 import { EmptyState, LinkButton } from "@/components/ui";
@@ -27,7 +28,7 @@ export default async function SavedPage({ searchParams }: { searchParams: Promis
   );
   const byCity = new Map<string, typeof saved>();
   for (const s of saved) {
-    const city = s.place.city || s.place.country || "Other places";
+    const city = tidyCity(s.place.city) || s.place.country || "Other places";
     byCity.set(city, [...(byCity.get(city) ?? []), s]);
   }
   return (

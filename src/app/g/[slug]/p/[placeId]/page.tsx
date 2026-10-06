@@ -1,5 +1,7 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { formatCoords, isDroppedPin, mapsUrl } from "@/lib/places/pins";
+import { tidyCity } from "@/lib/places/cityName";
 import { LocationsList } from "@/components/LocationsList";
 import { notFound } from "next/navigation";
 import { AppShell, TopBar } from "@/components/AppShell";
@@ -15,6 +17,9 @@ import { orderPlaces } from "@/lib/places/order";
 import { placeTimeZone } from "@/lib/places/hours";
 import { LinkButton, Tag } from "@/components/ui";
 import { getCurrentUser, toPublicUser } from "@/lib/auth";
+import { getDb } from "@/lib/db";
+import { places } from "@/lib/db/schema";
+import { and, eq } from "drizzle-orm";
 import { canViewGuide, getGuideBySlug, getGuideDetail } from "@/lib/guides";
 import { getPlacesProvider } from "@/lib/places";
 import { displayPhone, telHref } from "@/lib/phone";
@@ -33,6 +38,24 @@ type Props = {
   params: Promise<{ slug: string; placeId: string }>;
   searchParams: Promise<{ key?: string }>;
 };
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { slug, placeId } = await params;
+  const guide = await getGuideBySlug(slug);
+  if (!guide) return { title: "Place" };
+  const db = await getDb();
+  const place = await db.query.places.findFirst({ where: and(eq(places.id, placeId), eq(places.guideId, guide.id)) });
+  if (!place) return { title: guide.title };
+  const title = `${place.name} · ${guide.title}`;
+  if (guide.visibility !== "public" || !guide.publishedAt) return { title, robots: { index: false } };
+  const description = (place.note.trim() || `In ${guide.title} on MyGuide`).slice(0, 200);
+  const image = place.photoMediaId ? `/api/media/${place.photoMediaId}` : place.photoUrl ?? undefined;
+  return {
+    title,
+    description,
+    openGraph: { type: "article", siteName: "MyGuide", title: place.name, description, ...(image ? { images: [{ url: image, alt: place.name }] } : {}) },
+  };
+}
 
 export default async function PlaceDetailPage({ params, searchParams }: Props) {
   const { slug, placeId } = await params;
@@ -77,7 +100,7 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
   const keyQuery = key ? `?key=${key}` : "";
   const placeHref = (id: string) => `/g/${slug}/p/${id}${keyQuery}`;
   const canReuse = !detail.viewerCanEdit && isReusable(guide);
-  const targets = canReuse && user ? await reuseTargets(user.id, place.city || guide.city) : null;
+  const targets = canReuse && user ? await reuseTargets(user.id, tidyCity(guide.city || place.city)) : null;
   const noteAuthor = place.noteAuthorId && place.noteAuthorId !== detail.owner.id ? detail.noteAuthors[place.noteAuthorId] : null;
 
   return (
