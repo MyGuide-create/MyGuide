@@ -235,6 +235,7 @@ export async function setExternalCover(guideId: string, choice: CoverChoice): Pr
 /** Remove any cover photo and go back to the generated title card. */
 export async function clearCover(guideId: string): Promise<void> {
   const { guide } = await requireOwner(guideId);
+  if (guide.publishedAt) throw new Error("Published guides need a cover photo — pick a new one instead.");
   const db = await getDb();
   await db
     .update(guides)
@@ -245,6 +246,7 @@ export async function clearCover(guideId: string): Promise<void> {
 
 export async function publishGuide(guideId: string, visibility: "public" | "private"): Promise<void> {
   const { guide } = await requireTrueOwner(guideId);
+  if (!guide.coverMediaId && !guide.coverUrl) throw new Error("Add a cover photo before publishing.");
   const db = await getDb();
   await db
     .update(guides)

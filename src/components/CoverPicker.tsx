@@ -27,7 +27,7 @@ export function CoverPicker({
   onClose,
   onChange,
 }: {
-  guide: { id: string; title: string; city: string; country: string; coverMediaId?: string | null; coverUrl?: string | null };
+  guide: { id: string; title: string; city: string; country: string; coverMediaId?: string | null; coverUrl?: string | null; publishedAt?: Date | null };
   onClose: () => void;
   onChange: (fields: CoverFields) => void;
 }) {
@@ -90,7 +90,8 @@ export function CoverPicker({
         </div>
       )}
 
-      {hasCover && (
+      {/* Published guides must keep a cover; they can only swap it. */}
+      {hasCover && !guide.publishedAt && (
         <div className="mt-5 text-center">
           <Button variant="ghost" size="sm" disabled={!!busy} onClick={() => apply("clear", async () => { await clearCover(guide.id); return EMPTY; })}>
             Remove photo, use the title card

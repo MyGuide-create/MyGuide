@@ -5,6 +5,7 @@ import { toPublicUser, type PublicUser } from "./auth";
 import type { SearchIntent } from "./ai";
 import { hiddenUserIds } from "./blocks";
 import { coverCityLabel } from "./coverCity";
+import { feedScore, rankFeed, type GuideStats } from "./feedRank";
 
 export interface PlaceCommentView {
   comment: PlaceComment;
@@ -113,7 +114,76 @@ async function hydrateCards(rows: Guide[]): Promise<GuideCard[]> {
   }));
 }
 
-/** Public feed, newest first. `scope: following` limits to creators the viewer follows. */
+/** How many recent guides the feed ranks from. Plenty for the pilot; move to a stored score if it grows. */
+const FEED_POOL = 300;
+
+/** Per-guide numbers the feed ranking needs (see feedRank.ts). */
+async function feedStats(rows: Guide[]): Promise<Map<string, GuideStats>> {
+  const db = await getDb();
+  const ids = rows.map((g) => g.id);
+  const out = new Map<string, GuideStats>();
+  for (const g of rows) {
+    out.set(g.id, {
+      places: 0, described: 0, withTips: 0, withOwnPhoto: 0,
+      hasIntro: g.description.trim().length >= 40,
+      saves: 0, forks: 0,
+      publishedAt: g.publishedAt, updatedAt: g.updatedAt,
+    });
+  }
+  if (!ids.length) return out;
+  const [placeRows, tipRows, photoRows, saveRows, forkRows] = await Promise.all([
+    db
+      .select({
+        guideId: places.guideId,
+        n: sql<number>`count(*)`,
+        described: sql<number>`sum(case when length(trim(${places.note})) >= 40 then 1 else 0 end)`,
+        ownPhoto: sql<number>`sum(case when ${places.photoMediaId} is not null then 1 else 0 end)`,
+      })
+      .from(places)
+      .where(inArray(places.guideId, ids))
+      .groupBy(places.guideId),
+    db
+      .select({ guideId: places.guideId, n: sql<number>`count(distinct ${placeTips.placeId})` })
+      .from(placeTips)
+      .innerJoin(places, eq(placeTips.placeId, places.id))
+      .where(inArray(places.guideId, ids))
+      .groupBy(places.guideId),
+    // Places with an uploaded gallery photo but no main photo of their own (avoids double counting).
+    db
+      .select({ guideId: places.guideId, n: sql<number>`count(distinct ${placePhotos.placeId})` })
+      .from(placePhotos)
+      .innerJoin(places, eq(placePhotos.placeId, places.id))
+      .where(and(inArray(places.guideId, ids), sql`${places.photoMediaId} is null`))
+      .groupBy(places.guideId),
+    db
+      .select({ guideId: savedGuides.guideId, n: sql<number>`count(*)` })
+      .from(savedGuides)
+      .where(inArray(savedGuides.guideId, ids))
+      .groupBy(savedGuides.guideId),
+    db
+      .select({ guideId: guides.forkedFromGuideId, n: sql<number>`count(*)` })
+      .from(guides)
+      .where(inArray(guides.forkedFromGuideId, ids))
+      .groupBy(guides.forkedFromGuideId),
+  ]);
+  for (const r of placeRows) {
+    const s = out.get(r.guideId)!;
+    s.places = Number(r.n);
+    s.described = Number(r.described ?? 0);
+    s.withOwnPhoto += Number(r.ownPhoto ?? 0);
+  }
+  for (const r of tipRows) out.get(r.guideId)!.withTips = Number(r.n);
+  for (const r of photoRows) out.get(r.guideId)!.withOwnPhoto += Number(r.n);
+  for (const r of saveRows) out.get(r.guideId)!.saves = Number(r.n);
+  for (const r of forkRows) if (r.guideId && out.has(r.guideId)) out.get(r.guideId)!.forks = Number(r.n);
+  return out;
+}
+
+/**
+ * Public feed, best first: guides with lots of places, descriptions and tips rank higher, with a
+ * slow freshness fade so new guides still get seen (feedRank.ts). `scope: following` limits to
+ * creators the viewer follows.
+ */
 export async function listFeed(opts: { viewerId?: string | null; scope?: "public" | "following"; city?: string; limit?: number }) {
   const db = await getDb();
   const conds: SQL[] = [publicPublished()!];
@@ -125,12 +195,15 @@ export async function listFeed(opts: { viewerId?: string | null; scope?: "public
     if (!ids.length) return [];
     conds.push(inArray(guides.ownerId, ids));
   }
-  const rows = await db
+  const pool = await db
     .select()
     .from(guides)
     .where(and(...conds))
-    .orderBy(desc(guides.publishedAt))
-    .limit(opts.limit ?? 40);
+    .orderBy(desc(guides.updatedAt))
+    .limit(FEED_POOL);
+  const stats = await feedStats(pool);
+  const now = Date.now();
+  const rows = rankFeed(pool, (g) => feedScore(stats.get(g.id)!, now), (g) => g.ownerId).slice(0, opts.limit ?? 40);
   return filterVisibleCards(await hydrateCards(rows), opts.viewerId);
 }
 

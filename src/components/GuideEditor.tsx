@@ -34,6 +34,9 @@ export function GuideEditor({ detail, justForked, justCreated, viewerId, wishFor
   const [adding, setAdding] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
   const [coverOpen, setCoverOpen] = useState(false);
+  /** Opened the cover picker from the publish sheet: go back to publishing once a cover is set. */
+  const [publishAfterCover, setPublishAfterCover] = useState(false);
+  const [publishError, setPublishError] = useState<string | null>(null);
   /** Pin-drop sheet: a new spot with no Google listing, or re-pinning an existing place. */
   const [pinFor, setPinFor] = useState<{ mode: "add"; name: string } | { mode: "move"; place: Place } | null>(null);
   const firstPinned = places.find((p) => p.lat != null && p.lng != null);
@@ -46,6 +49,7 @@ export function GuideEditor({ detail, justForked, justCreated, viewerId, wishFor
   const [pending, start] = useTransition();
   const owner = detail.owner;
   const isDraft = !guide.publishedAt;
+  const hasCover = !!(guide.coverMediaId || guide.coverUrl);
   /** Saves still in flight, so "Save draft" can wait for the last edit before leaving. */
   const inflight = useRef(new Set<Promise<void>>());
   const [leaving, setLeaving] = useState(false);
@@ -132,10 +136,22 @@ export function GuideEditor({ detail, justForked, justCreated, viewerId, wishFor
 
   const publish = (visibility: "public" | "private") =>
     start(async () => {
-      await publishGuide(guide.id, visibility);
+      setPublishError(null);
+      try {
+        await publishGuide(guide.id, visibility);
+      } catch (e) {
+        setPublishError(e instanceof Error ? e.message : "Couldn't publish. Try again.");
+        return;
+      }
       setPublishOpen(false);
       router.push(`/g/${guide.slug}`);
     });
+
+  const coverFromPublish = () => {
+    setPublishOpen(false);
+    setPublishAfterCover(true);
+    setCoverOpen(true);
+  };
 
   const destroy = () => {
     if (!confirm("Delete this guide and all its places? This can't be undone.")) return;
@@ -181,9 +197,18 @@ export function GuideEditor({ detail, justForked, justCreated, viewerId, wishFor
       {coverOpen && (
         <CoverPicker
           guide={guide}
-          onClose={() => setCoverOpen(false)}
-          onChange={(fields) => setGuide((g) => ({ ...g, ...fields }))}
+          onClose={() => {
+            setCoverOpen(false);
+            setPublishAfterCover(false);
+          }}
+          onChange={(fields) => {
+            setGuide((g) => ({ ...g, ...fields }));
+            if (publishAfterCover && (fields.coverMediaId || fields.coverUrl)) setPublishOpen(true);
+          }}
         />
+      )}
+      {isDraft && !hasCover && (
+        <p className="mx-5 mt-2 text-[12.5px] text-ink-muted">A cover photo is needed before you can publish.</p>
       )}
 
       {/* Meta */}
@@ -368,20 +393,28 @@ export function GuideEditor({ detail, justForked, justCreated, viewerId, wishFor
               Either way, it&apos;s shared with {namesSentence(wishFor, 2)} and they get a notification — even a private guide.
             </p>
           )}
+          {!hasCover && (
+            <div className="mt-2.5 rounded-xl bg-terracotta-tint/70 px-3 py-2.5 text-[12.5px] leading-snug flex items-center gap-3">
+              <span className="flex-1">Add a cover photo first — it&apos;s what people see in the feed.</span>
+              <Button size="sm" onClick={coverFromPublish} className="shrink-0">
+                <CameraIcon size={14} /> Add cover
+              </Button>
+            </div>
+          )}
           {isDraft && undescribed > 0 && (
             <p className="mt-2.5 rounded-xl bg-ochre-soft/60 px-3 py-2 text-[12.5px] leading-snug">
               {undescribed === places.length ? "None of your places have" : `${undescribed} of ${places.length} places don\u2019t have`} a description yet. You can publish anyway, or add them first.
             </p>
           )}
           <div className="mt-4 flex flex-col gap-2.5">
-            <button type="button" disabled={pending} onClick={() => publish("public")} className={cx("text-left rounded-2xl border px-4 py-3.5 flex gap-3 items-start", guide.visibility === "public" && !isDraft ? "border-terracotta bg-terracotta-tint" : "border-line bg-paper")}>
+            <button type="button" disabled={pending || !hasCover} onClick={() => publish("public")} className={cx("text-left rounded-2xl border px-4 py-3.5 flex gap-3 items-start disabled:opacity-50", guide.visibility === "public" && !isDraft ? "border-terracotta bg-terracotta-tint" : "border-line bg-paper")}>
               <GlobeIcon size={20} className="mt-0.5 text-terracotta shrink-0" />
               <span>
                 <span className="block text-[15px] font-medium">Public</span>
                 <span className="block text-[12.5px] text-ink-muted">In the feed and searchable by anyone. Your followers will see it on your profile.</span>
               </span>
             </button>
-            <button type="button" disabled={pending} onClick={() => publish("private")} className={cx("text-left rounded-2xl border px-4 py-3.5 flex gap-3 items-start", guide.visibility === "private" && !isDraft ? "border-terracotta bg-terracotta-tint" : "border-line bg-paper")}>
+            <button type="button" disabled={pending || !hasCover} onClick={() => publish("private")} className={cx("text-left rounded-2xl border px-4 py-3.5 flex gap-3 items-start disabled:opacity-50", guide.visibility === "private" && !isDraft ? "border-terracotta bg-terracotta-tint" : "border-line bg-paper")}>
               <LockIcon size={20} className="mt-0.5 text-terracotta shrink-0" />
               <span>
                 <span className="block text-[15px] font-medium">Private</span>
@@ -394,6 +427,7 @@ export function GuideEditor({ detail, justForked, justCreated, viewerId, wishFor
               Move back to drafts
             </button>
           )}
+          {publishError && <p className="mt-3 text-[13px] text-danger bg-danger-tint rounded-xl px-3 py-2">{publishError}</p>}
           {pending && <p className="mt-3 text-[12.5px] text-ink-muted inline-flex items-center gap-1"><Spinner /> Saving…</p>}
         </Sheet>
       )}
