@@ -472,19 +472,20 @@ export interface PersonHit {
  * Skips the viewer and anyone blocked either way.
  */
 /**
- * "People to follow": creators with published guides the viewer doesn't follow yet (or hasn't
- * requested), people who already follow the viewer first, then most guides. Also returns how many
+ * "People to follow": everyone the viewer doesn't follow yet (or hasn't requested). People who
+ * already follow the viewer come first, then creators with the most published guides, then the
+ * newest members (so new pilot friends show up before they've published). Also returns how many
  * people the viewer follows, so Home can decide whether to show the nudge.
  */
-export async function peopleToFollow(viewerId?: string | null, limit = 5): Promise<{ hits: PersonHit[]; followingCount: number }> {
+export async function peopleToFollow(viewerId?: string | null, limit = 8): Promise<{ hits: PersonHit[]; followingCount: number }> {
   const db = await getDb();
   const rows = await db
     .select({ u: users, n: sql<number>`count(${guides.id})` })
     .from(users)
-    .innerJoin(guides, and(eq(guides.ownerId, users.id), publicPublished()))
+    .leftJoin(guides, and(eq(guides.ownerId, users.id), publicPublished()))
     .groupBy(users.id)
-    .orderBy(desc(sql`count(${guides.id})`))
-    .limit(100);
+    .orderBy(desc(sql`count(${guides.id})`), desc(users.createdAt))
+    .limit(300);
   const hidden = await hiddenUserIds(viewerId);
   let followed = new Set<string>();
   let followers = new Set<string>();
@@ -498,7 +499,12 @@ export async function peopleToFollow(viewerId?: string | null, limit = 5): Promi
   }
   const hits = rows
     .filter((r) => r.u.id !== viewerId && !hidden.has(r.u.id) && !followed.has(r.u.id))
-    .sort((a, b) => Number(followers.has(b.u.id)) - Number(followers.has(a.u.id)) || Number(b.n) - Number(a.n))
+    .sort(
+      (a, b) =>
+        Number(followers.has(b.u.id)) - Number(followers.has(a.u.id)) ||
+        Number(b.n) - Number(a.n) ||
+        b.u.createdAt.getTime() - a.u.createdAt.getTime(),
+    )
     .slice(0, limit)
     .map<PersonHit>((r) => ({ user: toPublicUser(r.u), guideCount: Number(r.n), viewerStatus: "none", followsViewer: followers.has(r.u.id) }));
   return { hits, followingCount: followed.size };

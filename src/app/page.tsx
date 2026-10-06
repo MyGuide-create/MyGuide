@@ -17,7 +17,7 @@ export default async function HomePage({ searchParams }: PageProps<"/">) {
     listFeed({ viewerId: user?.id, scope, city }),
     listFeedCities(),
     // Only the Following tab nudges, and only until you follow a few people.
-    user && scope === "following" ? peopleToFollow(user.id, 5) : Promise.resolve(null),
+    user && scope === "following" ? peopleToFollow(user.id, 6) : Promise.resolve(null),
   ]);
 
   const showNudge = !!suggested && suggested.followingCount < 3 && suggested.hits.length > 0;

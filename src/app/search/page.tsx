@@ -57,7 +57,7 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
   const cities = q ? [] : await listFeedCities();
   const examples = q ? [] : await buildExamples(cities, !!user);
   const wanted = q ? [] : (await listAllWishes(user?.id)).slice(0, 3);
-  const suggested = q ? null : await peopleToFollow(user?.id, 5);
+  const suggested = q ? null : await peopleToFollow(user?.id, 8);
 
   return (
     <AppShell>
