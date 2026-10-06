@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { PlaceTip } from "@/lib/db/schema";
 import { addPlaceTip, removePlaceTip, updatePlaceTip } from "@/lib/actions/guides";
 import { CheckIcon, EditIcon, SparkleIcon, TrashIcon, XIcon } from "./Icons";
@@ -15,14 +15,18 @@ export function TipsEditor({
   placeId,
   initial,
   variant = "form",
+  onCountChange,
 }: {
   guideId: string;
   placeId: string;
   initial: PlaceTip[];
   /** "form" (default): bare label above an add box, for the guide editor. "card": terracotta callout with heading, for the place page. */
   variant?: "form" | "card";
+  /** Told how many tips the place has whenever that changes (the editor uses it for publish hints). */
+  onCountChange?: (n: number) => void;
 }) {
   const [tips, setTips] = useState(initial);
+  useEffect(() => { onCountChange?.(tips.length); }, [tips.length, onCountChange]);
   const [draft, setDraft] = useState("");
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);

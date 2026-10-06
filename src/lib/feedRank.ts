@@ -25,6 +25,11 @@ export interface GuideStats {
   updatedAt: Date;
 }
 
+/** A place counts as described once its description is at least this long. */
+export const DESCRIBED_MIN_CHARS = 40;
+/** Shares (descriptions, tips, photos) count in full from this many places up. */
+export const FULL_SIZE_PLACES = 5;
+
 const DAY = 86_400_000;
 const HALF_LIFE_DAYS = 21;
 const FRESHNESS_FLOOR = 0.35;
@@ -34,7 +39,7 @@ export function qualityScore(s: GuideStats): number {
   const n = s.places;
   if (!n) return 0;
   const placePts = 25 * Math.min(1, Math.log(1 + n) / Math.log(1 + 12));
-  const size = Math.min(1, n / 5);
+  const size = Math.min(1, n / FULL_SIZE_PLACES);
   const descPts = 30 * (s.described / n) * size;
   const tipPts = 20 * (s.withTips / n) * size;
   const polishPts = (s.hasIntro ? 4 : 0) + 6 * (s.withOwnPhoto / n) * size;
@@ -55,6 +60,23 @@ export function freshness(s: Pick<GuideStats, "publishedAt" | "updatedAt">, now 
 
 export function feedScore(s: GuideStats, now = Date.now()): number {
   return qualityScore(s) * freshness(s, now);
+}
+
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+/**
+ * What would most help a guide rank higher, as short creator-facing suggestions (best first).
+ * Empty when the guide is already in good shape.
+ */
+export function visibilityHints(s: { places: number; described: number; withTips: number; hasIntro: boolean }): string[] {
+  const n = s.places;
+  const out: string[] = [];
+  if (n < FULL_SIZE_PLACES) out.push(`Add ${plural(FULL_SIZE_PLACES - n, "more place")} — guides with at least ${FULL_SIZE_PLACES} places rank higher.`);
+  const missing = n - s.described;
+  if (missing > 0) out.push(missing === n ? "Write a description for each place — what it is and what makes it special." : `Write a description for ${plural(missing, "more place")} (a sentence or two each).`);
+  if (n && s.withTips / n < 0.5) out.push(s.withTips === 0 ? "Add expert tips — what to order, when to go, where to sit." : `Add expert tips to a few more places — only ${s.withTips} of ${n} have one.`);
+  if (!s.hasIntro) out.push("Write a short intro: what this guide is for and who it's for.");
+  return out;
 }
 
 /** Sort by score, then avoid two guides from the same creator back to back where possible. */

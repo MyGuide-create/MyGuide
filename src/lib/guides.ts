@@ -5,7 +5,7 @@ import { toPublicUser, type PublicUser } from "./auth";
 import type { SearchIntent } from "./ai";
 import { hiddenUserIds } from "./blocks";
 import { coverCityLabel } from "./coverCity";
-import { feedScore, rankFeed, type GuideStats } from "./feedRank";
+import { DESCRIBED_MIN_CHARS, feedScore, rankFeed, type GuideStats } from "./feedRank";
 
 export interface PlaceCommentView {
   comment: PlaceComment;
@@ -125,7 +125,7 @@ async function feedStats(rows: Guide[]): Promise<Map<string, GuideStats>> {
   for (const g of rows) {
     out.set(g.id, {
       places: 0, described: 0, withTips: 0, withOwnPhoto: 0,
-      hasIntro: g.description.trim().length >= 40,
+      hasIntro: g.description.trim().length >= DESCRIBED_MIN_CHARS,
       saves: 0, forks: 0,
       publishedAt: g.publishedAt, updatedAt: g.updatedAt,
     });
@@ -136,7 +136,7 @@ async function feedStats(rows: Guide[]): Promise<Map<string, GuideStats>> {
       .select({
         guideId: places.guideId,
         n: sql<number>`count(*)`,
-        described: sql<number>`sum(case when length(trim(${places.note})) >= 40 then 1 else 0 end)`,
+        described: sql<number>`sum(case when length(trim(${places.note})) >= ${DESCRIBED_MIN_CHARS} then 1 else 0 end)`,
         ownPhoto: sql<number>`sum(case when ${places.photoMediaId} is not null then 1 else 0 end)`,
       })
       .from(places)

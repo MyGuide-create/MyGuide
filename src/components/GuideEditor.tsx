@@ -7,6 +7,7 @@ import type { GuideDetail } from "@/lib/guides";
 import type { Place, PlaceLocation, PlaceTip } from "@/lib/db/schema";
 import { addPlace, deleteGuide, markGuideVerified, publishGuide, removePlace, unpublishGuide, addPinnedPlace, setPlacePin, reorderPlaces, replacePlace, updateGuideMeta, updatePlace } from "@/lib/actions/guides";
 import { CATEGORIES } from "@/lib/places/categories";
+import { DESCRIBED_MIN_CHARS, visibilityHints } from "@/lib/feedRank";
 import type { PlaceSuggestion } from "@/lib/places/types";
 import { CoverPicker } from "./CoverPicker";
 import { CityPill, GuideCover } from "./GuideCover";
@@ -32,7 +33,13 @@ export function GuideEditor({ detail, justForked, justCreated, viewerId, wishFor
   const [guide, setGuide] = useState(detail.guide);
   const [places, setPlaces] = useState<Place[]>(detail.places);
   const [adding, setAdding] = useState(false);
-  const [publishOpen, setPublishOpen] = useState(false);
+  /** Publish flow: cover photo (if missing) → visibility tips (if any) → public/private. */
+  const [publishStep, setPublishStep] = useState<null | "cover" | "tips" | "visibility">(null);
+  /** Live tip count per place, so the publish tips know about tips added in this session. */
+  const [tipCounts, setTipCounts] = useState<Record<string, number>>(() =>
+    Object.fromEntries(Object.entries(detail.placeTips).map(([id, ts]) => [id, ts.length])),
+  );
+  const onTipCount = useCallback((placeId: string, n: number) => setTipCounts((c) => (c[placeId] === n ? c : { ...c, [placeId]: n })), []);
   const [coverOpen, setCoverOpen] = useState(false);
   /** Opened the cover picker from the publish sheet: go back to publishing once a cover is set. */
   const [publishAfterCover, setPublishAfterCover] = useState(false);
@@ -83,11 +90,10 @@ export function GuideEditor({ detail, justForked, justCreated, viewerId, wishFor
     start(async () => {
       await unpublishGuide(guide.id);
       setGuide((g) => ({ ...g, publishedAt: null }));
-      setPublishOpen(false);
+      setPublishStep(null);
     });
   };
 
-  const undescribed = places.filter((p) => !p.note.trim()).length;
   /** What's typed in the City box right now, so the cover pill previews before it saves. */
   const [cityDraft, setCityDraft] = useState<string | null>(null);
   const placeCities = places.map((p) => p.city);
@@ -143,12 +149,26 @@ export function GuideEditor({ detail, justForked, justCreated, viewerId, wishFor
         setPublishError(e instanceof Error ? e.message : "Couldn't publish. Try again.");
         return;
       }
-      setPublishOpen(false);
+      setPublishStep(null);
       router.push(`/g/${guide.slug}`);
     });
 
+  const hints = visibilityHints({
+    places: places.length,
+    described: places.filter((p) => p.note.trim().length >= DESCRIBED_MIN_CHARS).length,
+    withTips: places.filter((p) => (tipCounts[p.id] ?? 0) > 0).length,
+    hasIntro: guide.description.trim().length >= DESCRIBED_MIN_CHARS,
+  });
+  const stepAfterCover = (): "tips" | "visibility" => (isDraft && hints.length ? "tips" : "visibility");
+  const startPublish = () => {
+    setPublishError(null);
+    if (!isDraft) setPublishStep("visibility");
+    else if (!hasCover) setPublishStep("cover");
+    else setPublishStep(stepAfterCover());
+  };
+
   const coverFromPublish = () => {
-    setPublishOpen(false);
+    setPublishStep(null);
     setPublishAfterCover(true);
     setCoverOpen(true);
   };
@@ -203,7 +223,7 @@ export function GuideEditor({ detail, justForked, justCreated, viewerId, wishFor
           }}
           onChange={(fields) => {
             setGuide((g) => ({ ...g, ...fields }));
-            if (publishAfterCover && (fields.coverMediaId || fields.coverUrl)) setPublishOpen(true);
+            if (publishAfterCover && (fields.coverMediaId || fields.coverUrl)) setPublishStep(stepAfterCover());
           }}
         />
       )}
@@ -341,6 +361,7 @@ export function GuideEditor({ detail, justForked, justCreated, viewerId, wishFor
               guideSlug={guide.slug}
               cityHint={guide.city}
               tips={detail.placeTips[p.id] ?? []}
+              onTipCount={onTipCount}
               noteAuthor={p.noteAuthorId && p.noteAuthorId !== owner.id ? detail.noteAuthors[p.noteAuthorId] : null}
               onMove={(d) => move(i, d)}
               onRemove={() => remove(p)}
@@ -373,7 +394,7 @@ export function GuideEditor({ detail, justForked, justCreated, viewerId, wishFor
                   {leaving ? <Spinner /> : null} Save draft
                 </Button>
               )}
-              <Button onClick={() => setPublishOpen(true)} disabled={places.length === 0} className="px-3.5!">
+              <Button onClick={startPublish} disabled={places.length === 0} className="px-3.5!">
                 {isDraft ? "Publish" : guide.visibility === "public" ? "Published · Public" : "Published · Private"}
               </Button>
             </>
@@ -383,8 +404,47 @@ export function GuideEditor({ detail, justForked, justCreated, viewerId, wishFor
         </div>
       </div>
 
-      {publishOpen && (
-        <Sheet title={isDraft ? "Publish your guide" : "Who can see this guide?"} onClose={() => setPublishOpen(false)}>
+      {publishStep === "cover" && (
+        <Sheet title="Add a cover photo" onClose={() => setPublishStep(null)}>
+          <p className="text-[13.5px] text-ink-muted leading-relaxed">
+            Every guide needs a cover before it&apos;s published — it&apos;s the first thing people see in the feed. Search for one, use a photo from your places, or upload your own.
+          </p>
+          <div className="mt-4 flex flex-col gap-2.5">
+            <Button onClick={coverFromPublish}>
+              <CameraIcon size={16} /> Add cover photo
+            </Button>
+            <Button variant="ghost" onClick={() => { setPublishStep(null); saveDraft(); }} disabled={leaving}>
+              Save as draft for now
+            </Button>
+          </div>
+        </Sheet>
+      )}
+
+      {publishStep === "tips" && (
+        <Sheet title="Help more people find it" onClose={() => setPublishStep(null)}>
+          <p className="text-[13.5px] text-ink-muted leading-relaxed">
+            Guides with more places, descriptions and expert tips show up higher in everyone&apos;s feed. A few things would help this one:
+          </p>
+          <ul className="mt-3 flex flex-col gap-2">
+            {hints.map((h) => (
+              <li key={h} className="rounded-xl bg-ochre-soft/50 px-3 py-2 text-[13px] leading-snug flex gap-2">
+                <SparkleIcon size={14} className="mt-0.5 shrink-0 text-terracotta" />
+                <span>{h}</span>
+              </li>
+            ))}
+          </ul>
+          <div className="mt-4 flex flex-col gap-2.5">
+            <Button onClick={() => setPublishStep(null)}>Keep editing</Button>
+            <Button variant="outline" onClick={() => setPublishStep("visibility")}>Publish anyway</Button>
+            <Button variant="ghost" onClick={() => { setPublishStep(null); saveDraft(); }} disabled={leaving}>
+              {leaving ? <Spinner /> : null} Save as draft
+            </Button>
+          </div>
+        </Sheet>
+      )}
+
+      {publishStep === "visibility" && (
+        <Sheet title={isDraft ? "Publish your guide" : "Who can see this guide?"} onClose={() => setPublishStep(null)}>
           <p className="text-[13.5px] text-ink-muted leading-relaxed">
             {isDraft ? "Not ready yet? Close this and tap Save draft — nobody sees it until you publish." : "You can keep editing after publishing. Nothing is ever locked."}
           </p>
@@ -400,11 +460,6 @@ export function GuideEditor({ detail, justForked, justCreated, viewerId, wishFor
                 <CameraIcon size={14} /> Add cover
               </Button>
             </div>
-          )}
-          {isDraft && undescribed > 0 && (
-            <p className="mt-2.5 rounded-xl bg-ochre-soft/60 px-3 py-2 text-[12.5px] leading-snug">
-              {undescribed === places.length ? "None of your places have" : `${undescribed} of ${places.length} places don\u2019t have`} a description yet. You can publish anyway, or add them first.
-            </p>
           )}
           <div className="mt-4 flex flex-col gap-2.5">
             <button type="button" disabled={pending || !hasCover} onClick={() => publish("public")} className={cx("text-left rounded-2xl border px-4 py-3.5 flex gap-3 items-start disabled:opacity-50", guide.visibility === "public" && !isDraft ? "border-terracotta bg-terracotta-tint" : "border-line bg-paper")}>
@@ -443,6 +498,7 @@ function EditablePlace({
   guideSlug,
   cityHint,
   tips,
+  onTipCount,
   noteAuthor,
   onMove,
   onRemove,
@@ -461,6 +517,7 @@ function EditablePlace({
   guideSlug: string;
   cityHint: string;
   tips: PlaceTip[];
+  onTipCount: (placeId: string, n: number) => void;
   noteAuthor: { username: string } | null | undefined;
   onMove: (dir: -1 | 1) => void;
   onRemove: () => void;
@@ -576,7 +633,7 @@ function EditablePlace({
       <div className="mt-3 pt-3 border-t border-line/70">
         <p className="text-[11px] font-medium uppercase tracking-[0.06em] text-ink-faint mb-2 inline-flex items-center gap-1"><SparkleIcon size={12} /> Optional extras · shown on the place page</p>
         <div className="flex flex-col gap-3">
-          <TipsEditor guideId={guideId} placeId={place.id} initial={tips} />
+          <TipsEditor guideId={guideId} placeId={place.id} initial={tips} onCountChange={(n) => onTipCount(place.id, n)} />
           <PlaceLinksEditor place={place} onPatch={onPatch} />
         </div>
       </div>
