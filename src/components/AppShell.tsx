@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import type { PublicUser } from "@/lib/auth";
 import { getCurrentUser } from "@/lib/auth";
 import { unreadNotificationCount } from "@/lib/guides";
+import { VisitPing } from "./VisitPing";
 import { BottomNav } from "./BottomNav";
 import { ChevronLeft } from "./Icons";
 import { Avatar, cx } from "./ui";
@@ -28,6 +29,7 @@ export async function AppShell({
         {children}
       </div>
       {nav && <BottomNav signedIn={!!user} username={user?.username ?? null} unread={unread} />}
+      {user && <VisitPing userId={user.id} />}
     </div>
   );
 }

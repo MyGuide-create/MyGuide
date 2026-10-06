@@ -6,7 +6,7 @@ import { isAdmin } from "@/lib/admin";
 import { requireUser, toPublicUser } from "@/lib/auth";
 import { pilotStats } from "@/lib/stats";
 import { timeAgo } from "@/lib/utils";
-import { adminUsers, type AdminUserFilter } from "@/lib/adminUsers";
+import { adminUsers, retention, type AdminUserFilter, type RetentionSummary } from "@/lib/adminUsers";
 import { Avatar, cx } from "@/components/ui";
 import { ResetPasswordButton } from "@/components/ResetPasswordButton";
 
@@ -42,11 +42,12 @@ function TabLink({ href, active, children }: { href: string; active: boolean; ch
 const METHOD_LABEL = { email: "Email", google: "Google", apple: "Apple" } as const;
 
 async function UsersTab({ filter }: { filter: AdminUserFilter }) {
-  const { summary, rows } = await adminUsers(filter);
+  const { summary, retention: ret, rows } = await adminUsers(filter);
   const filters: Array<{ key: AdminUserFilter; label: string }> = [
     { key: "all", label: "All" },
     { key: "new", label: "New (7 days)" },
     { key: "never", label: "Never posted" },
+    { key: "gone", label: "Didn’t come back" },
   ];
   return (
     <div className="px-4 pt-4 pb-10 flex flex-col gap-4">
@@ -56,6 +57,7 @@ async function UsersTab({ filter }: { filter: AdminUserFilter }) {
         <Tile label="This week" value={summary.newThisWeek} hint="Last 7 days" />
         <Tile label="Published a guide" value={summary.publishers} />
       </div>
+      <RetentionTiles r={ret} />
       <div className="flex gap-2 overflow-x-auto no-scrollbar">
         {filters.map((f) => (
           <Link
@@ -88,6 +90,13 @@ async function UsersTab({ filter }: { filter: AdminUserFilter }) {
                       @{r.user.username} · {method}{linked ? ` (+ ${linked})` : ""}
                     </span>
                     <span className="block text-[12px] text-ink-muted tabular-nums">
+                      {r.lastSeenAt ? `Seen ${timeAgo(r.lastSeenAt)}` : "Not seen since sign-up"} · {r.daysActive} {r.daysActive === 1 ? "day" : "days"} active
+                      {" · "}
+                      <b className={cx("font-semibold", r.cameBack ? "text-sage" : "text-ink-faint")}>{r.cameBack ? "came back" : "not back yet"}</b>
+                      {r.homeScreen ? " · home-screen app" : ""}
+                      {r.alertsOn ? " · alerts on" : ""}
+                    </span>
+                    <span className="block text-[12px] text-ink-muted tabular-nums">
                       <b className={cx("font-semibold", r.guidesPublished ? "text-ink" : "text-ink-faint")}>{r.guidesPublished}</b> {r.guidesPublished === 1 ? "guide" : "guides"} published · {r.followers} {r.followers === 1 ? "follower" : "followers"} · {r.following} following
                     </span>
                   </span>
@@ -110,8 +119,27 @@ async function UsersTab({ filter }: { filter: AdminUserFilter }) {
   );
 }
 
+const pct = (n: number, of: number) => (of ? `${Math.round((n / of) * 100)}%` : "–");
+
+/** "Coming back" numbers, shared by the Users and Pilot stats tabs. */
+function RetentionTiles({ r }: { r: RetentionSummary }) {
+  return (
+    <section>
+      <h2 className="px-1 text-[12px] font-medium uppercase tracking-[0.08em] text-ink-muted mb-2">Coming back</h2>
+      <div className="grid grid-cols-3 gap-2">
+        <Tile label="Came back" value={pct(r.cameBack, r.cameBackOf)} hint="Opened it again on a later day than they signed up" note={`${r.cameBack} of ${r.cameBackOf}`} />
+        <Tile label="Back after a week" value={pct(r.weekLater, r.weekLaterOf)} hint="Used it 7 or more days after joining (of people who joined 7+ days ago)" note={`${r.weekLater} of ${r.weekLaterOf}`} />
+        <Tile label="Active this week" value={r.active7d} hint="Opened it in the last 7 days" />
+        <Tile label="Home-screen app" value={r.homeScreen} hint="Opened it from the home screen" />
+        <Tile label="Alerts on" value={r.alertsOn} hint="Push notifications allowed" />
+      </div>
+      <p className="px-1 mt-1.5 text-[11px] text-ink-faint">Counted from 6 Oct 2026; earlier days only show if they opened a guide or place.</p>
+    </section>
+  );
+}
+
 async function StatsTab() {
-  const s = await pilotStats();
+  const [s, ret] = await Promise.all([pilotStats(), retention()]);
   const maxViews = Math.max(1, ...s.weekly.map((w) => w.views));
   return (
       <div className="px-4 pt-4 pb-10 flex flex-col gap-6">
@@ -126,6 +154,8 @@ async function StatsTab() {
             <Tile label="Shares" value={s.shares7d} />
           </div>
         </section>
+
+        <RetentionTiles r={ret.summary} />
 
         <section>
           <h2 className="px-1 text-[12px] font-medium uppercase tracking-[0.08em] text-ink-muted mb-2">All time</h2>
@@ -213,11 +243,12 @@ async function StatsTab() {
   );
 }
 
-function Tile({ label, value, hint }: { label: string; value: number; hint?: string }) {
+function Tile({ label, value, hint, note }: { label: string; value: number | string; hint?: string; note?: string }) {
   return (
     <div className="rounded-2xl border border-line bg-paper px-3 py-2.5" title={hint}>
       <div className="font-display text-[26px] leading-none tabular-nums">{value}</div>
       <div className="mt-1 text-[11px] text-ink-muted leading-tight">{label}</div>
+      {note && <div className="mt-0.5 text-[10.5px] text-ink-faint leading-tight tabular-nums">{note}</div>}
     </div>
   );
 }

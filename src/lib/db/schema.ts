@@ -37,6 +37,8 @@ export const users = sqliteTable("users", {
   website: text("website"),
   /** Set once the new-user welcome (people to follow) has been seen. */
   onboardedAt: integer("onboarded_at", { mode: "timestamp_ms" }),
+  /** Last time the app was opened while signed in (updated at most every ~30 min). */
+  lastSeenAt: integer("last_seen_at", { mode: "timestamp_ms" }),
   createdAt: integer("created_at", { mode: "timestamp_ms" })
     .notNull()
     .default(sql`(unixepoch() * 1000)`),
@@ -436,6 +438,24 @@ export const pushSubscriptions = sqliteTable(
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   },
   (t) => [index("push_subscriptions_user_idx").on(t.userId)],
+);
+
+/**
+ * One row per signed-in person per day they opened the app (day = calendar day in the pilot's
+ * time zone, "YYYY-MM-DD"). Powers "came back" / retention on /admin. standalone = opened from the
+ * home-screen app at least once that day.
+ */
+export const userVisits = sqliteTable(
+  "user_visits",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    day: text("day").notNull(),
+    standalone: integer("standalone", { mode: "boolean" }).notNull().default(false),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.day] }), index("user_visits_day_idx").on(t.day)],
 );
 
 /** "I'm going to …" — a planned trip that gathers guides and favourites for a city. */
