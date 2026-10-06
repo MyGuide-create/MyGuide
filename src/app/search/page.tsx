@@ -5,7 +5,7 @@ import { SearchBar } from "@/components/SearchBar";
 import { EmptyState, LinkButton, Tag } from "@/components/ui";
 import { interpretSearch } from "@/lib/ai";
 import { getCurrentUser, toPublicUser } from "@/lib/auth";
-import { listFeedCities, searchGuides, searchPeople, searchPlaces, suggestedCreators, topPlaceCategories } from "@/lib/guides";
+import { listFeedCities, peopleToFollow, searchGuides, searchPeople, searchPlaces, suggestedCreators, topPlaceCategories } from "@/lib/guides";
 import { PersonRow } from "@/components/PersonRow";
 import { WishForCityButton } from "@/components/WishList";
 import { SparkleIcon } from "@/components/Icons";
@@ -57,6 +57,7 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
   const cities = q ? [] : await listFeedCities();
   const examples = q ? [] : await buildExamples(cities, !!user);
   const wanted = q ? [] : (await listAllWishes(user?.id)).slice(0, 3);
+  const suggested = q ? null : await peopleToFollow(user?.id, 5);
 
   return (
     <AppShell>
@@ -97,6 +98,14 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
                 ))}
               </div>
             </div>
+          )}
+          {suggested && suggested.hits.length > 0 && (
+            <section className="pb-6">
+              <h2 className="text-[12px] font-medium uppercase tracking-[0.08em] text-ink-muted mb-2">People to follow</h2>
+              <ul className="flex flex-col gap-2 -mx-1">
+                {suggested.hits.map((h) => <PersonRow key={h.user.id} hit={h} signedIn={!!user} next="/search" />)}
+              </ul>
+            </section>
           )}
         </div>
       )}

@@ -3,7 +3,8 @@ import { AppShell, Wordmark } from "@/components/AppShell";
 import { GuideCard } from "@/components/GuideCard";
 import { Avatar, EmptyState, LinkButton, cx } from "@/components/ui";
 import { getCurrentUser } from "@/lib/auth";
-import { listFeed, listFeedCities, suggestedCreators } from "@/lib/guides";
+import { listFeed, listFeedCities, peopleToFollow } from "@/lib/guides";
+import { PersonRow } from "@/components/PersonRow";
 
 export const dynamic = "force-dynamic";
 
@@ -12,11 +13,14 @@ export default async function HomePage({ searchParams }: PageProps<"/">) {
   const scope = sp.scope === "following" ? "following" : "public";
   const city = typeof sp.city === "string" ? sp.city : undefined;
   const user = await getCurrentUser();
-  const [feed, cities, creators] = await Promise.all([
+  const [feed, cities, suggested] = await Promise.all([
     listFeed({ viewerId: user?.id, scope, city }),
     listFeedCities(),
-    suggestedCreators(user?.id, 8),
+    // Only the Following tab nudges, and only until you follow a few people.
+    user && scope === "following" ? peopleToFollow(user.id, 5) : Promise.resolve(null),
   ]);
+
+  const showNudge = !!suggested && suggested.followingCount < 3 && suggested.hits.length > 0;
 
   const tab = (s: "public" | "following", label: string) => (
     <Link
@@ -75,7 +79,16 @@ export default async function HomePage({ searchParams }: PageProps<"/">) {
       )}
 
       <main className="px-4 pb-6 flex flex-col gap-4">
-        {feed.length === 0 && scope === "following" && (
+        {showNudge && suggested && (
+          <section className="rounded-2xl bg-cream-deep/40 p-3">
+            <h2 className="font-display text-[20px] px-1">People to follow</h2>
+            <p className="px-1 mt-0.5 mb-2.5 text-[12.5px] text-ink-muted">Follow a few creators and their guides show up here.</p>
+            <ul className="flex flex-col gap-2">
+              {suggested.hits.map((h) => <PersonRow key={h.user.id} hit={h} signedIn next="/?scope=following" />)}
+            </ul>
+          </section>
+        )}
+        {feed.length === 0 && scope === "following" && !showNudge && (
           <EmptyState
             title={user ? "Nothing from your people yet" : "Log in to see your people"}
             body={user ? "Follow a few creators and their public guides will show up here." : "Following shows guides from creators you follow."}
@@ -88,21 +101,6 @@ export default async function HomePage({ searchParams }: PageProps<"/">) {
         {feed.map((g) => (
           <GuideCard key={g.guide.id} data={g} />
         ))}
-
-        {creators.length > 0 && (
-          <section className="mt-2">
-            <h2 className="font-display text-[22px] mb-3">People to follow</h2>
-            <div className="flex gap-3 overflow-x-auto no-scrollbar -mx-4 px-4 pb-1">
-              {creators.map((c) => (
-                <Link key={c.id} href={`/u/${c.username}`} className="shrink-0 w-[120px] rounded-2xl bg-paper border border-line/80 p-3 flex flex-col items-center text-center">
-                  <Avatar user={c} size={44} />
-                  <div className="mt-2 text-[13px] font-medium truncate w-full">{c.displayName}</div>
-                  <div className="text-[11px] text-ink-muted">{c.guideCount} guide{c.guideCount === 1 ? "" : "s"}</div>
-                </Link>
-              ))}
-            </div>
-          </section>
-        )}
 
         {sp.deleted === "1" && <p className="rounded-2xl bg-sage-tint px-4 py-3 text-[13px]">Your account has been deleted. Thanks for trying MyGuide.</p>}
 

@@ -471,6 +471,39 @@ export interface PersonHit {
  * Exact username first, then names/usernames that start with it, then by guides published.
  * Skips the viewer and anyone blocked either way.
  */
+/**
+ * "People to follow": creators with published guides the viewer doesn't follow yet (or hasn't
+ * requested), people who already follow the viewer first, then most guides. Also returns how many
+ * people the viewer follows, so Home can decide whether to show the nudge.
+ */
+export async function peopleToFollow(viewerId?: string | null, limit = 5): Promise<{ hits: PersonHit[]; followingCount: number }> {
+  const db = await getDb();
+  const rows = await db
+    .select({ u: users, n: sql<number>`count(${guides.id})` })
+    .from(users)
+    .innerJoin(guides, and(eq(guides.ownerId, users.id), publicPublished()))
+    .groupBy(users.id)
+    .orderBy(desc(sql`count(${guides.id})`))
+    .limit(100);
+  const hidden = await hiddenUserIds(viewerId);
+  let followed = new Set<string>();
+  let followers = new Set<string>();
+  if (viewerId) {
+    const [out, back] = await Promise.all([
+      db.select({ id: follows.followingId }).from(follows).where(eq(follows.followerId, viewerId)),
+      db.select({ id: follows.followerId }).from(follows).where(and(eq(follows.followingId, viewerId), eq(follows.status, "accepted"))),
+    ]);
+    followed = new Set(out.map((f) => f.id));
+    followers = new Set(back.map((f) => f.id));
+  }
+  const hits = rows
+    .filter((r) => r.u.id !== viewerId && !hidden.has(r.u.id) && !followed.has(r.u.id))
+    .sort((a, b) => Number(followers.has(b.u.id)) - Number(followers.has(a.u.id)) || Number(b.n) - Number(a.n))
+    .slice(0, limit)
+    .map<PersonHit>((r) => ({ user: toPublicUser(r.u), guideCount: Number(r.n), viewerStatus: "none", followsViewer: followers.has(r.u.id) }));
+  return { hits, followingCount: followed.size };
+}
+
 export async function searchPeople(q: string, viewerId?: string | null, limit = 3): Promise<{ hits: PersonHit[]; total: number }> {
   const clean = q.replace(/^@/, "").trim().toLowerCase();
   if (clean.length < 2) return { hits: [], total: 0 };
