@@ -94,34 +94,20 @@ export async function notifyPlacesAdded(guide: Guide, placeId: string, actorId: 
 }
 
 /**
- * While the pilot is small, everyone hears when someone new joins. Above this many members,
- * only admins do (and, once invite links exist, the person who invited them).
- */
-export function joinAlertCap(): number {
-  const n = Number(process.env.JOIN_ALERTS_MAX_USERS);
-  return Number.isFinite(n) && n >= 0 ? n : 50;
-}
-
-/**
- * "Lina K. just joined MyGuide" — to admins (ADMIN_USERNAMES) always, and to every existing member
- * while there are at most joinAlertCap() members. Never to anyone who has blocked the new person
- * (or whom they've blocked). Call once, right after the account is created.
+ * "Lina K. just joined MyGuide" — to admins (ADMIN_USERNAMES) only. Other members hear about a new
+ * person only when that person follows them (a normal "new_follower" alert from follow.ts).
+ * Never to anyone who has blocked the new person (or whom they've blocked). Call once, right after
+ * the account is created.
  */
 export async function notifyUserJoined(newUserId: string): Promise<void> {
   try {
-    const db = await getDb();
-    const [{ n }] = await db.select({ n: sql<number>`count(*)` }).from(users);
-    const everyone = Number(n) <= joinAlertCap();
     const admins = adminUsernames();
+    if (!admins.length) return;
+    const db = await getDb();
     const recipients = await db
       .select({ id: users.id })
       .from(users)
-      .where(
-        and(
-          ne(users.id, newUserId),
-          everyone ? undefined : admins.length ? inArray(sql`lower(${users.username})`, admins) : sql`0`,
-        ),
-      );
+      .where(and(ne(users.id, newUserId), inArray(sql`lower(${users.username})`, admins)));
     if (!recipients.length) return;
     const blocked = await db
       .select({ a: blocks.blockerId, b: blocks.blockedId })
