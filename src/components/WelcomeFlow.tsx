@@ -1,8 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useRef, useState, useTransition, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState, useTransition, type ReactNode } from "react";
+import { markOnboarded } from "@/lib/actions/account";
 import { followMany, toggleFollow, type FollowStatus } from "@/lib/actions/social";
+import { installPlatform, type InstallPlatform } from "@/lib/pushClient";
+import { HomeScreenStep, needsHomeScreenStep } from "./HomeScreenStep";
 import { GuideCover } from "./GuideCover";
 import { CameraIcon, HeartIcon, ListIcon, MicIcon } from "./Icons";
 import { UsernameForm } from "./UsernameForm";
@@ -25,8 +29,9 @@ const SLIDES = [
 const bigButton = "h-14 w-full rounded-full text-[17px] font-semibold inline-flex items-center justify-center transition-colors disabled:opacity-60";
 
 /**
- * New-user intro: (username for Google/Apple sign-ups) → three swipeable slides → people to follow.
- * `tour` replays just the slides (from the You page) and never touches onboarding state.
+ * New-user intro: (username for Google/Apple sign-ups) → three swipeable slides → people to follow
+ * → add to home screen + alerts (phones only; skipped when already installed with alerts on).
+ * `tour` replays the slides and the home-screen step (from the You page) and never touches onboarding state.
  */
 export function WelcomeFlow({
   firstName,
@@ -37,6 +42,7 @@ export function WelcomeFlow({
   people,
   samples,
   finish,
+  pushPublicKey,
 }: {
   firstName: string;
   askUsername: boolean;
@@ -47,8 +53,28 @@ export function WelcomeFlow({
   samples: WelcomeSample[];
   /** Marks onboarding done and redirects to `next` (bound server action). */
   finish: () => Promise<void>;
+  pushPublicKey: string | null;
 }) {
-  const [stage, setStage] = useState<"username" | "slides" | "follow">(askUsername && !tour ? "username" : "slides");
+  const router = useRouter();
+  const [stage, setStage] = useState<"username" | "slides" | "follow" | "home">(askUsername && !tour ? "username" : "slides");
+  const [platform, setPlatform] = useState<InstallPlatform>("desktop");
+  const [showHome, setShowHome] = useState(false);
+  useEffect(() => {
+    const p = installPlatform();
+    needsHomeScreenStep(p, pushPublicKey)
+      .then((show) => {
+        setPlatform(p);
+        setShowHome(show);
+      })
+      .catch(() => {});
+  }, [pushPublicKey]);
+
+  // After following: phones get the home-screen step (onboarding is saved first, since iPhone users leave Safari for it).
+  const afterFollow = async () => {
+    if (!showHome) return finish();
+    await markOnboarded().catch(() => {});
+    setStage("home");
+  };
   const [index, setIndex] = useState(0);
   const scroller = useRef<HTMLDivElement>(null);
 
@@ -77,7 +103,9 @@ export function WelcomeFlow({
     );
   }
 
-  if (stage === "follow") return <FollowStep people={people} finish={finish} />;
+  if (stage === "follow") return <FollowStep people={people} finish={afterFollow} />;
+  if (stage === "home")
+    return <HomeScreenStep platform={platform} publicKey={pushPublicKey} onDone={tour ? () => router.push(exitHref) : finish} />;
 
   return (
     <Screen>
@@ -117,11 +145,11 @@ export function WelcomeFlow({
           <span key={s.title} className={cx("h-2 rounded-full transition-all", i === index ? "w-6 bg-terracotta" : "w-2 bg-cream-line")} />
         ))}
       </div>
-      {last && tour ? (
+      {last && tour && !showHome ? (
         <Link href={exitHref} className={cx(bigButton, "mt-6 bg-terracotta text-white hover:bg-terracotta-deep")}>Done</Link>
       ) : (
-        <button type="button" onClick={() => (last ? setStage("follow") : goTo(index + 1))} className={cx(bigButton, "mt-6 bg-terracotta text-white hover:bg-terracotta-deep")}>
-          {last ? "Find people to follow" : "Next"}
+        <button type="button" onClick={() => (last ? setStage(tour ? "home" : "follow") : goTo(index + 1))} className={cx(bigButton, "mt-6 bg-terracotta text-white hover:bg-terracotta-deep")}>
+          {last ? (tour ? "Next" : "Find people to follow") : "Next"}
         </button>
       )}
     </Screen>

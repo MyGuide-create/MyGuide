@@ -7,6 +7,7 @@ import { getDb } from "@/lib/db";
 import { follows } from "@/lib/db/schema";
 import type { FollowStatus } from "@/lib/follow";
 import { listFeed, suggestedCreators } from "@/lib/guides";
+import { pushPublicKey } from "@/lib/push";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Welcome" };
@@ -52,6 +53,7 @@ export default async function WelcomePage({ searchParams }: { searchParams: Prom
         people={people}
         samples={samples}
         finish={finishOnboarding.bind(null, next)}
+        pushPublicKey={pushPublicKey()}
       />
     </AppShell>
   );

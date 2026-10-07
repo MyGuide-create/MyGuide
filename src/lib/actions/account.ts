@@ -155,6 +155,14 @@ export async function sendFeedback(message: string, page?: string): Promise<{ ok
   return { ok: true };
 }
 
+/** Mark the welcome as done without leaving it (before the home-screen step, which sends iPhone users out of Safari). */
+export async function markOnboarded(): Promise<void> {
+  const user = await getCurrentUser();
+  if (!user) return;
+  const db = await getDb();
+  await db.update(users).set({ onboardedAt: new Date() }).where(eq(users.id, user.id));
+}
+
 /** Mark the new-user welcome as done. */
 export async function finishOnboarding(next?: string): Promise<void> {
   const user = await getCurrentUser();

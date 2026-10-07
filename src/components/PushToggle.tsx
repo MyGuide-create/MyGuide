@@ -3,15 +3,9 @@
 import { useEffect, useState } from "react";
 import { BellIcon } from "./Icons";
 import { Button, Spinner } from "./ui";
+import { pushState, subscribePush, unsubscribePush, type PushState } from "@/lib/pushClient";
 
-type State = "loading" | "unsupported" | "ios-install" | "denied" | "off" | "on";
-
-function urlBase64ToUint8Array(base64: string): Uint8Array {
-  const padding = "=".repeat((4 - (base64.length % 4)) % 4);
-  const b64 = (base64 + padding).replace(/-/g, "+").replace(/_/g, "/");
-  const raw = atob(b64);
-  return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
-}
+type State = "loading" | PushState;
 
 /** "Get alerts on your phone" — turns Web Push on or off for this device. */
 export function PushToggle({ publicKey, compact }: { publicKey: string | null; compact?: boolean }) {
@@ -19,29 +13,14 @@ export function PushToggle({ publicKey, compact }: { publicKey: string | null; c
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    (async () => {
-      const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
-      const standalone = window.matchMedia("(display-mode: standalone)").matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
-      if (!publicKey || !("serviceWorker" in navigator)) return setState("unsupported");
-      if (!("PushManager" in window)) return setState(isIOS && !standalone ? "ios-install" : "unsupported");
-      if (Notification.permission === "denied") return setState("denied");
-      const reg = await navigator.serviceWorker.getRegistration();
-      const sub = await reg?.pushManager.getSubscription();
-      setState(sub ? "on" : "off");
-    })().catch(() => setState("unsupported"));
+    pushState(publicKey).then(setState).catch(() => setState("unsupported"));
   }, [publicKey]);
 
   const turnOn = async () => {
     if (!publicKey) return;
     setBusy(true);
     try {
-      const perm = await Notification.requestPermission();
-      if (perm !== "granted") return setState(perm === "denied" ? "denied" : "off");
-      const reg = (await navigator.serviceWorker.getRegistration()) ?? (await navigator.serviceWorker.register("/sw.js"));
-      await navigator.serviceWorker.ready;
-      const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(publicKey) as BufferSource });
-      await fetch("/api/push", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(sub.toJSON()) });
-      setState("on");
+      setState(await subscribePush(publicKey));
     } catch {
       setState("off");
     } finally {
@@ -52,12 +31,7 @@ export function PushToggle({ publicKey, compact }: { publicKey: string | null; c
   const turnOff = async () => {
     setBusy(true);
     try {
-      const reg = await navigator.serviceWorker.getRegistration();
-      const sub = await reg?.pushManager.getSubscription();
-      if (sub) {
-        await fetch("/api/push", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ endpoint: sub.endpoint }) });
-        await sub.unsubscribe();
-      }
+      await unsubscribePush();
       setState("off");
     } finally {
       setBusy(false);
