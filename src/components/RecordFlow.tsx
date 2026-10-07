@@ -40,7 +40,6 @@ export function RecordFlow({ guides }: { guides: GuideOption[] }) {
   const [locate, setLocate] = useState<LocateState>("locating");
   const [nearby, setNearby] = useState<NearbyResult[]>([]);
   const [pickedIdx, setPickedIdx] = useState(0);
-  const [manual, setManual] = useState(false);
   const [selected, setSelected] = useState<{ providerId?: string; name: string; pin?: { lat: number; lng: number; category?: string } } | null>(null);
   /** Where the person is (used once to suggest places, and to start a dropped pin). */
   const [here, setHere] = useState<{ lat: number; lng: number } | null>(null);
@@ -78,7 +77,6 @@ export function RecordFlow({ guides }: { guides: GuideOption[] }) {
     if (!("geolocation" in navigator)) {
       queueMicrotask(() => {
         setLocate("denied");
-        setManual(true);
       });
       return;
     }
@@ -97,16 +95,13 @@ export function RecordFlow({ guides }: { guides: GuideOption[] }) {
             setLocate("found");
           } else {
             setLocate("empty");
-            setManual(true);
           }
         } catch {
           setLocate("empty");
-          setManual(true);
         }
       },
       () => {
         setLocate("denied");
-        setManual(true);
       },
       { enableHighAccuracy: true, timeout: 8000 },
     );
@@ -170,12 +165,24 @@ export function RecordFlow({ guides }: { guides: GuideOption[] }) {
             </p>
           </div>
 
+          <div className="px-5 pt-4">
+            {locate === "denied" && <p className="mb-2 text-[12px] text-ink-muted">We couldn&apos;t get your location, so search for the place instead.</p>}
+            {locate === "empty" && <p className="mb-2 text-[12px] text-ink-muted">Nothing nearby matched — search for the place instead.</p>}
+            <PlaceSearch onPick={pickManual} placeholder="Search for the place you're at…" autoFocus={locate === "denied" || locate === "empty"} />
+            {locate !== "locating" && (
+              <button type="button" onClick={() => setPinning(true)} className="mt-2.5 inline-flex items-center gap-1.5 text-[12.5px] font-medium text-terracotta-deep">
+                <PinIcon size={15} /> Not listed? Pin this exact spot
+              </button>
+            )}
+          </div>
+
           {locate === "locating" && (
             <div className="flex justify-center py-8"><Spinner /></div>
           )}
 
-          {locate === "found" && !manual && (
-            <div className="flex flex-col gap-2.5 px-5 pt-4">
+          {locate === "found" && (
+            <div className="flex flex-col gap-2.5 px-5 pt-5">
+              <p className="mb-1 text-[11px] font-medium uppercase tracking-[0.08em] text-ink-faint">Near you</p>
               {nearby.map((r, i) => (
                 <button
                   type="button"
@@ -200,26 +207,8 @@ export function RecordFlow({ guides }: { guides: GuideOption[] }) {
             </div>
           )}
 
-          {manual && (
-            <div className="px-5 pt-4">
-              {locate === "denied" && <p className="mb-2 text-[12px] text-ink-muted">We couldn&apos;t get your location, so search for the place instead.</p>}
-              {locate === "empty" && <p className="mb-2 text-[12px] text-ink-muted">Nothing nearby matched — search for the place instead.</p>}
-              <PlaceSearch onPick={pickManual} placeholder="Search for the place you're at…" autoFocus />
-            </div>
-          )}
-
           <div className="mt-auto px-5 pb-7 pt-4 flex flex-col items-center gap-3">
-            {locate === "found" && !manual && (
-              <>
-                <Button className="w-full" onClick={confirmPicked}>Yes, that&apos;s it</Button>
-                <button type="button" onClick={() => setManual(true)} className="text-[12.5px] text-ink-muted underline">Not seeing it? Search manually</button>
-              </>
-            )}
-            {locate !== "locating" && (
-              <button type="button" onClick={() => setPinning(true)} className="inline-flex items-center gap-1.5 text-[12.5px] font-medium text-terracotta-deep">
-                <PinIcon size={15} /> Not listed? Pin this exact spot
-              </button>
-            )}
+            {locate === "found" && <Button className="w-full" onClick={confirmPicked}>Yes, that&apos;s it</Button>}
             {locate !== "locating" && (
               <p className="text-[10.5px] text-ink-faint text-center">Your location is used once, to confirm — it isn&apos;t stored.</p>
             )}
