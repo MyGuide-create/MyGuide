@@ -24,6 +24,13 @@ function PasswordInput(props: InputHTMLAttributes<HTMLInputElement>) {
   );
 }
 
+/** Terracotta star after required sign-up fields. */
+const Req = () => (
+  <span className="text-terracotta" aria-hidden>
+    {" "}*
+  </span>
+);
+
 function ProviderButtons({ providers, mode, next }: { providers: Array<"google" | "apple">; mode: "login" | "signup"; next?: string }) {
   if (!providers.length) return null;
   const href = (p: string) => `/api/auth/${p}?mode=${mode}${next ? `&next=${encodeURIComponent(next)}` : ""}`;
@@ -57,25 +64,26 @@ export function AuthForm({ mode, next, why, providers = [], notice }: { mode: "l
       {mode === "signup" && (
         <>
           <div>
-            <Label>Display name</Label>
-            <Input name="displayName" autoComplete="name" placeholder="Yara Haddad" required />
+            <Label>Your name<Req /></Label>
+            <Input name="displayName" autoComplete="name" required />
           </div>
           <div>
-            <Label>Username</Label>
+            <Label>Username<Req /></Label>
             <div className="relative">
               <span className="absolute left-4 top-1/2 -translate-y-1/2 text-ink-faint">@</span>
-              <Input name="username" autoComplete="username" placeholder="yara" required className="pl-8" pattern="[A-Za-z0-9_.]{3,24}" title="3–24 letters, numbers, dots or underscores" />
+              <Input name="username" autoComplete="username" required className="pl-8" pattern="[A-Za-z0-9_.]{3,24}" title="3–24 letters, numbers, dots or underscores" />
             </div>
           </div>
         </>
       )}
       <div>
-        <Label>{mode === "login" ? "Email or username" : "Email"}</Label>
-        <Input name="email" type={mode === "login" ? "text" : "email"} autoComplete={mode === "login" ? "username" : "email"} placeholder="you@example.com" required />
+        <Label>{mode === "login" ? "Email or username" : <>Email<Req /></>}</Label>
+        <Input name="email" type={mode === "login" ? "text" : "email"} autoComplete={mode === "login" ? "username" : "email"} required />
       </div>
       <div>
-        <Label>Password</Label>
-        <PasswordInput name="password" autoComplete={mode === "login" ? "current-password" : "new-password"} placeholder={mode === "signup" ? "At least 8 characters" : "Your password"} required minLength={mode === "signup" ? 8 : undefined} />
+        <Label>Password{mode === "signup" && <Req />}</Label>
+        <PasswordInput name="password" autoComplete={mode === "login" ? "current-password" : "new-password"} required minLength={mode === "signup" ? 8 : undefined} />
+        {mode === "signup" && <p className="mt-1.5 text-[12.5px] text-ink-muted">At least 8 characters.</p>}
         {mode === "login" && (
           <div className="mt-1.5 text-right">
             <button type="button" onClick={() => setForgot((v) => !v)} className="text-[12.5px] text-ink-muted hover:text-terracotta">Forgot password?</button>
@@ -89,8 +97,8 @@ export function AuthForm({ mode, next, why, providers = [], notice }: { mode: "l
       </div>
       {mode === "signup" && (
         <div>
-          <Label>Confirm password</Label>
-          <PasswordInput name="confirmPassword" autoComplete="new-password" placeholder="Type it again" required minLength={8} />
+          <Label>Confirm password<Req /></Label>
+          <PasswordInput name="confirmPassword" autoComplete="new-password" required minLength={8} />
         </div>
       )}
       {state.error && <p className="text-[13px] text-danger bg-danger-tint rounded-xl px-3 py-2">{state.error}</p>}
