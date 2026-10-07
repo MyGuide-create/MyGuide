@@ -18,6 +18,7 @@ import { coverCityLabel } from "@/lib/coverCity";
 import { GuideMap } from "./GuideMap";
 import { CheckIcon, EditIcon, ForkIcon, ListIcon, LockIcon, MapIcon, ShareIcon } from "./Icons";
 import { PlaceRow } from "./PlaceRow";
+import type { GoogleRating } from "@/lib/places/ratingFormat";
 import { ShareSheet } from "./ShareSheet";
 import { ReportButton } from "./ReportButton";
 import { SaveGuideButton } from "./SaveGuideButton";
@@ -29,6 +30,7 @@ export function GuideView({ detail, viewerId, viewer, shareUrl, shareKey }: { de
   const [category, setCategory] = useState<string | null>(null);
   const [sharing, setSharing] = useState(false);
   const [flags, setFlags] = useState<Record<string, string>>({});
+  const [ratings, setRatings] = useState<Record<string, GoogleRating>>({});
   const [forking, startFork] = useTransition();
   const [forkError, setForkError] = useState<string | null>(null);
   const router = useRouter();
@@ -61,6 +63,17 @@ export function GuideView({ detail, viewerId, viewer, shareUrl, shareKey }: { de
       })
       .catch(() => {});
   }, [detail.viewerCanEdit, guide.id]);
+
+  // Google ratings: loaded after the page so a slow lookup never holds it up.
+  useEffect(() => {
+    const qs = new URLSearchParams({ guideId: guide.id, ...(shareKey ? { key: shareKey } : {}) });
+    fetch(`/api/places/ratings?${qs}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { ratings?: Record<string, GoogleRating> } | null) => {
+        if (d?.ratings) setRatings(d.ratings);
+      })
+      .catch(() => {});
+  }, [guide.id, shareKey]);
 
   const fork = () => {
     setForkError(null);
@@ -212,10 +225,11 @@ export function GuideView({ detail, viewerId, viewer, shareUrl, shareKey }: { de
                 </h2>
               )}
               {g.places.map((p) => (
-                <PlaceRow key={p.id} place={p} index={numberOf.get(p.id)} ownerId={guide.ownerId} guideSlug={guide.slug} noteAuthor={p.noteAuthorId ? noteAuthors[p.noteAuthorId] : null} flagged={flags[p.id]} comments={detail.placeComments[p.id] ?? []} currentUser={viewer} tips={detail.placeTips[p.id]} saved={saved.has(p.id)} shareKey={shareKey} social={detail.placeSocial[p.id]} friends={detail.friendsWhoLike[p.id]} branchCount={detail.placeLocations[p.id]?.length ?? 0} expanded />
+                <PlaceRow key={p.id} place={p} index={numberOf.get(p.id)} ownerId={guide.ownerId} guideSlug={guide.slug} noteAuthor={p.noteAuthorId ? noteAuthors[p.noteAuthorId] : null} flagged={flags[p.id]} comments={detail.placeComments[p.id] ?? []} currentUser={viewer} tips={detail.placeTips[p.id]} saved={saved.has(p.id)} shareKey={shareKey} social={detail.placeSocial[p.id]} friends={detail.friendsWhoLike[p.id]} branchCount={detail.placeLocations[p.id]?.length ?? 0} rating={ratings[p.id]} expanded />
               ))}
             </section>
           ))}
+          {visible.some((p) => ratings[p.id]) && <p className="text-[10.5px] text-ink-faint">★ ratings and $ price levels from Google Maps</p>}
         </div>
       )}
 

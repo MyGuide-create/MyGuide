@@ -22,6 +22,8 @@ import { places } from "@/lib/db/schema";
 import { and, eq } from "drizzle-orm";
 import { canViewGuide, getGuideBySlug, getGuideDetail } from "@/lib/guides";
 import { getPlacesProvider } from "@/lib/places";
+import { getGoogleRatings } from "@/lib/places/ratings";
+import { GoogleRatingLine } from "@/components/GoogleRating";
 import { displayPhone, telHref } from "@/lib/phone";
 import { trackAttrs } from "@/lib/track";
 import { ReactionButtons } from "@/components/ReactionButtons";
@@ -89,6 +91,7 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
     gallerySource = "google";
   }
 
+  const googleRating = place.googlePlaceId ? (await getGoogleRatings([place.googlePlaceId]))[place.googlePlaceId] ?? null : null;
   const tips = detail.placeTips[place.id] ?? [];
   const branches = detail.placeLocations[place.id] ?? [];
   const hours = place.hoursJson ? (JSON.parse(place.hoursJson) as string[]) : [];
@@ -147,6 +150,7 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
           ) : (
             place.address && <p className="mt-1 text-[13px] text-ink-muted">{place.address}</p>
           )}
+          {googleRating && <GoogleRatingLine rating={googleRating} href={mapsHref} />}
           {(detail.friendsWhoLike[place.id]?.length ?? 0) > 0 && (
             <p className="mt-2 text-[12.5px] text-sage font-medium">
               ♥ {namesSentence(detail.friendsWhoLike[place.id].map((u) => u.displayName.split(" ")[0]))} {detail.friendsWhoLike[place.id].length === 1 ? "likes" : "like"} this — people you follow

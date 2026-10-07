@@ -13,6 +13,8 @@ import { PlaceTile } from "./PlaceTile";
 import { trackAttrs } from "@/lib/track";
 import { namesSentence } from "@/lib/utils";
 import { cx } from "./ui";
+import { GoogleRatingInline } from "./GoogleRating";
+import type { GoogleRating } from "@/lib/places/ratingFormat";
 
 export function PlaceRow({
   place,
@@ -30,7 +32,10 @@ export function PlaceRow({
   social,
   friends,
   branchCount = 0,
+  rating,
 }: {
+  /** Google's rating for this place, when loaded. */
+  rating?: GoogleRating | null;
   place: Place;
   /** Other branches besides this one ("3 locations"). */
   branchCount?: number;
@@ -70,6 +75,7 @@ export function PlaceRow({
         </div>
         <div className="mt-0.5 text-[11.5px] text-ink-muted flex items-center gap-1 truncate">
           <span className="rounded-full bg-cream-deep px-1.5 py-[1px] text-[10.5px] font-medium text-ink-muted shrink-0">{place.category}</span>
+          {rating && <GoogleRatingInline rating={rating} className="shrink-0 ml-0.5" />}
           {branchCount > 0 ? (
             <span className="truncate text-terracotta-deep font-medium">· {branchCount + 1} locations</span>
           ) : (
