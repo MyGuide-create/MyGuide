@@ -212,6 +212,22 @@ async function StatsTab() {
         )}
 
         <section>
+          <h2 className="px-1 text-[12px] font-medium uppercase tracking-[0.08em] text-ink-muted mb-2">Errors people hit ({s.errors.length})</h2>
+          <p className="px-1 -mt-1 mb-2 text-[11.5px] text-ink-faint">Unexpected problems shown as “Something went wrong…”, newest first. Our own messages (“That place isn’t in this guide”) aren’t listed.</p>
+          {s.errors.length === 0 ? <p className="px-1 text-[12.5px] text-ink-faint">None yet.</p> : (
+            <ul className="flex flex-col gap-2">
+              {s.errors.map((e) => (
+                <li key={e.id} className="rounded-2xl bg-ochre-soft/40 border border-line/70 px-3.5 py-2.5">
+                  <p className="text-[13px] font-medium">{e.context}</p>
+                  <p className="mt-0.5 text-[11.5px] text-ink-muted break-words">{e.message}</p>
+                  <p className="mt-1 text-[11px] text-ink-faint">{e.who ?? "Signed out"} · {timeAgo(e.at)}{e.page ? ` · ${e.page}` : ""}</p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section>
           <h2 className="px-1 text-[12px] font-medium uppercase tracking-[0.08em] text-ink-muted mb-2">Feedback ({s.feedback.length})</h2>
           {s.feedback.length === 0 ? <p className="px-1 text-[12.5px] text-ink-faint">None yet.</p> : (
             <ul className="flex flex-col gap-2">

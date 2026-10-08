@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { errorText } from "@/lib/errorText";
 import { resizeImage, uploadMedia } from "@/hooks/useRecorder";
 import { CameraIcon } from "./Icons";
 import { Spinner, cx } from "./ui";
@@ -28,7 +29,7 @@ export function PhotoPicker({ onUploaded, label = "Add photo", className, childr
             const up = await uploadMedia(blob, "photo.jpg");
             await onUploaded(up.id);
           } catch (err) {
-            setError(err instanceof Error ? err.message : "Upload failed");
+            setError(errorText(err, "That photo didn't upload."));
           } finally {
             setBusy(false);
           }

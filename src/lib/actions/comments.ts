@@ -1,5 +1,6 @@
 "use server";
 
+import { UserError } from "../userError";
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -16,15 +17,15 @@ export async function addPlaceComment(placeId: string, body: string): Promise<vo
   const user = await getCurrentUser();
   if (!user) redirect("/login");
   const text = body.trim().slice(0, 500);
-  if (!text) throw new Error("Say something first.");
+  if (!text) throw new UserError("Say something first.", "invalid");
 
   const db = await getDb();
   const place = await db.query.places.findFirst({ where: eq(places.id, placeId) });
-  if (!place) throw new Error("That place no longer exists.");
+  if (!place) throw new UserError("That place no longer exists.", "gone");
   const guide = await getGuideById(place.guideId);
-  if (!guide) throw new Error("That guide no longer exists.");
-  if (!(await canViewGuide(guide, user.id))) throw new Error("You don't have access to this guide.");
-  if ((await hiddenUserIds(user.id)).has(guide.ownerId)) throw new Error("You can't comment on this guide.");
+  if (!guide) throw new UserError("That guide no longer exists.", "gone");
+  if (!(await canViewGuide(guide, user.id))) throw new UserError("You don't have access to this guide.", "forbidden");
+  if ((await hiddenUserIds(user.id)).has(guide.ownerId)) throw new UserError("You can't comment on this guide.", "forbidden");
 
   await db.insert(placeComments).values({ id: newId(), placeId, authorId: user.id, body: text, createdAt: new Date() });
 
@@ -47,10 +48,10 @@ export async function editPlaceComment(commentId: string, body: string): Promise
   const user = await getCurrentUser();
   if (!user) redirect("/login");
   const text = body.trim().slice(0, 500);
-  if (!text) throw new Error("Say something first.");
+  if (!text) throw new UserError("Say something first.", "invalid");
   const db = await getDb();
   const comment = await db.query.placeComments.findFirst({ where: eq(placeComments.id, commentId) });
-  if (!comment || comment.authorId !== user.id) throw new Error("You can only edit your own comments.");
+  if (!comment || comment.authorId !== user.id) throw new UserError("You can only edit your own comments.", "forbidden");
   await db.update(placeComments).set({ body: text, editedAt: new Date() }).where(eq(placeComments.id, commentId));
   const place = await db.query.places.findFirst({ where: eq(places.id, comment.placeId) });
   if (place) {

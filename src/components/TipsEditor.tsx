@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { errorText } from "@/lib/errorText";
 import type { PlaceTip } from "@/lib/db/schema";
 import { addPlaceTip, removePlaceTip, updatePlaceTip } from "@/lib/actions/guides";
 import { CheckIcon, EditIcon, SparkleIcon, TrashIcon, XIcon } from "./Icons";
@@ -43,7 +44,7 @@ export function TipsEditor({
       setTips((ts) => [...ts, tip]);
       setDraft("");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn't add that tip.");
+      setError(errorText(e, "Couldn't add that tip."));
     } finally {
       setAdding(false);
     }
@@ -64,7 +65,7 @@ export function TipsEditor({
       await updatePlaceTip(guideId, id, body);
     } catch (e) {
       setTips(prev);
-      setError(e instanceof Error ? e.message : "Couldn't save that tip.");
+      setError(errorText(e, "Couldn't save that tip."));
     }
   };
 
@@ -75,7 +76,7 @@ export function TipsEditor({
       await removePlaceTip(guideId, id);
     } catch (e) {
       setTips(prev);
-      setError(e instanceof Error ? e.message : "Couldn't remove that tip.");
+      setError(errorText(e, "Couldn't remove that tip."));
     }
   };
 

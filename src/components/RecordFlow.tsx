@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { errorText } from "@/lib/errorText";
 import { useEffect, useState, useTransition } from "react";
 import { saveRecordedPlace } from "@/lib/actions/record";
 import { PhotoPicker } from "./PhotoPicker";
@@ -135,7 +136,7 @@ export function RecordFlow({ guides }: { guides: GuideOption[] }) {
         });
         router.push(editing ? `/g/${guideSlug}/edit?justCreated=1` : `/g/${guideSlug}`);
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Couldn't save that place.");
+        setError(errorText(e, "Couldn't save that place."));
       }
     });
   };

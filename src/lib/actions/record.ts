@@ -1,5 +1,6 @@
 "use server";
 
+import { UserError } from "../userError";
 import { and, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -73,7 +74,7 @@ export async function saveRecordedPlace(input: RecordPlaceInput): Promise<{ guid
 
   let resolved: PlaceResult | null = null;
   if (input.pin) {
-    if (!validPin(input.pin.lat, input.pin.lng)) throw new Error("That pin isn't on the map.");
+    if (!validPin(input.pin.lat, input.pin.lng)) throw new UserError("That pin isn't on the map.", "invalid");
     const where = await reverseGeocode(input.pin.lat, input.pin.lng);
     resolved = {
       providerId: "",
@@ -105,7 +106,7 @@ export async function saveRecordedPlace(input: RecordPlaceInput): Promise<{ guid
   let editing = false;
   if (input.guideId) {
     const g = await getGuideById(input.guideId);
-    if (!g || g.ownerId !== user.id) throw new Error("You can only add to your own guides.");
+    if (!g || g.ownerId !== user.id) throw new UserError("You can only add to your own guides.", "forbidden");
     guide = g;
   } else if (input.newGuideTitle?.trim()) {
     const known = findCity(resolved?.city || input.cityHint);

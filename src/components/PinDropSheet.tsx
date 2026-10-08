@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { errorText } from "@/lib/errorText";
 import { APIProvider, ControlPosition, Map, useMap } from "@vis.gl/react-google-maps";
 import { CATEGORIES } from "@/lib/places/categories";
 import { findCity } from "@/lib/places/cities";
@@ -105,7 +106,7 @@ export function PinDropSheet({
     try {
       await onSave({ name: name.trim(), lat: center.lat, lng: center.lng, category });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn't save that pin.");
+      setError(errorText(e, "Couldn't save that pin."));
       setSaving(false);
     }
   };

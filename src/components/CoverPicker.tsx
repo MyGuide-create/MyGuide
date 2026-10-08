@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { errorText } from "@/lib/errorText";
 import type { PlaceCoverOption } from "@/app/api/covers/places/route";
 import { clearCover, setExternalCover, updateGuideMeta, type CoverChoice } from "@/lib/actions/guides";
 import type { UnsplashPhoto } from "@/lib/covers/unsplash";
@@ -43,7 +44,7 @@ export function CoverPicker({
       onChange(await fn());
       onClose();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn't set that photo.");
+      setError(errorText(e, "Couldn't set that photo as the cover."));
     } finally {
       setBusy(null);
     }
@@ -80,7 +81,7 @@ export function CoverPicker({
       {error && <p className="mb-3 text-[13px] text-danger bg-danger-tint rounded-xl px-3 py-2">{error}</p>}
 
       {tab === "search" && <SearchTab initial={guide.city || guide.title} busy={busy} onPick={(p) => choose(`u:${p.id}`, { kind: "unsplash", photoId: p.id })} />}
-      {tab === "places" && <PlacesTab guideId={guide.id} busy={busy} onPickMedia={pickMedia} onPickGoogle={(o) => choose(`g:${o.ref}`, { kind: "google", placeId: o.placeId, ref: o.ref })} />}
+      {tab === "places" && <PlacesTab guideId={guide.id} busy={busy} onPickMedia={pickMedia} onPickGoogle={(o) => choose(`g:${o.ref}`, { kind: "google", placeId: o.placeId, ref: o.ref, author: o.author })} />}
       {tab === "mine" && (
         <div className="rounded-2xl border border-dashed border-line px-5 py-8 text-center">
           <p className="text-[13.5px] text-ink-muted mb-4">Take a photo or pick one from your library.</p>

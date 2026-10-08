@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { errorText } from "@/lib/errorText";
 import { usePathname } from "next/navigation";
 import { useState, useTransition } from "react";
 import type { PublicUser } from "@/lib/auth";
@@ -44,7 +45,7 @@ export function PlaceComments({ placeId, initial, currentUser }: { placeId: stri
         await addPlaceComment(placeId, body);
       } catch (e) {
         setRows((r) => r.filter((row) => row.comment.id !== optimistic.comment.id));
-        setError(e instanceof Error ? e.message : "Couldn't post that comment.");
+        setError(errorText(e, "Couldn't post that comment."));
       }
     });
   };
@@ -72,7 +73,7 @@ export function PlaceComments({ placeId, initial, currentUser }: { placeId: stri
         await editPlaceComment(commentId, body);
       } catch (e) {
         setRows(prevRows);
-        setError(e instanceof Error ? e.message : "Couldn't save that edit.");
+        setError(errorText(e, "Couldn't save that edit."));
       }
     });
   };

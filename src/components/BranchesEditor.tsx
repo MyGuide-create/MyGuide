@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { errorText } from "@/lib/errorText";
 import type { Place, PlaceLocation } from "@/lib/db/schema";
 import { addBranches, findBranches, removeBranch, type BranchSuggestion } from "@/lib/actions/guides";
 import { CheckIcon, PinIcon, TrashIcon } from "./Icons";
@@ -48,7 +49,7 @@ export function BranchesEditor({
       setSuggestions(auto && !found.length ? null : found);
       setTicked(new Set(found.filter((f) => !f.existingPlaceId).map((f) => f.providerId)));
     } catch (e) {
-      if (!auto) setError(e instanceof Error ? e.message : "Couldn't look for branches.");
+      if (!auto) setError(errorText(e, "Couldn't look for branches."));
     } finally {
       setFinding(false);
     }
@@ -71,7 +72,7 @@ export function BranchesEditor({
       if (r.mergedPlaceIds.length) onMerged(r.mergedPlaceIds, r.note);
       return true;
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn't add that branch.");
+      setError(errorText(e, "Couldn't add that branch."));
       return false;
     } finally {
       setSaving(false);

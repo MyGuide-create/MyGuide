@@ -1,6 +1,6 @@
 import { and, desc, eq, gt, inArray, sql } from "drizzle-orm";
 import { getDb } from "./db";
-import { events, feedback, follows, guides, placeReactions, places, reports, savedGuides, savedPlaces, users } from "./db/schema";
+import { events, feedback, follows, guides, placeReactions, places, reports, savedGuides, savedPlaces, users, appErrors } from "./db/schema";
 import { TAP_TYPES } from "./track";
 
 export interface GuideStats {
@@ -111,6 +111,8 @@ export interface PilotStats {
   weekly: Array<{ week: string; views: number; visitors: number; signups: number }>;
   topGuides: Array<{ slug: string; title: string; views: number }>;
   feedback: Array<{ id: string; message: string; page: string | null; who: string | null; at: Date }>;
+  /** Unexpected errors people hit (newest first). */
+  errors: Array<{ id: string; context: string; message: string; page: string | null; who: string | null; at: Date }>;
   reports: Array<{ id: string; targetType: string; targetId: string; reason: string; details: string | null; who: string | null; at: Date }>;
 }
 
@@ -163,6 +165,7 @@ export async function pilotStats(): Promise<PilotStats> {
     .filter((t) => t.g)
     .map((t) => ({ slug: t.g!.slug, title: t.g!.title, views: t.views }));
 
+  const errRows = await db.select({ e: appErrors, u: users }).from(appErrors).leftJoin(users, eq(users.id, appErrors.userId)).orderBy(desc(appErrors.createdAt)).limit(30);
   const fb = await db.select({ f: feedback, u: users }).from(feedback).leftJoin(users, eq(users.id, feedback.userId)).orderBy(desc(feedback.createdAt)).limit(30);
   const rp = await db.select({ r: reports, u: users }).from(reports).leftJoin(users, eq(users.id, reports.reporterId)).orderBy(desc(reports.createdAt)).limit(30);
 
@@ -182,6 +185,7 @@ export async function pilotStats(): Promise<PilotStats> {
     shares7d: s7,
     weekly,
     topGuides,
+    errors: errRows.map((x) => ({ id: x.e.id, context: x.e.context, message: x.e.message, page: x.e.page, who: x.u ? `@${x.u.username}` : null, at: x.e.createdAt })),
     feedback: fb.map((x) => ({ id: x.f.id, message: x.f.message, page: x.f.page, who: x.u ? `@${x.u.username}` : null, at: x.f.createdAt })),
     reports: rp.map((x) => ({ id: x.r.id, targetType: x.r.targetType, targetId: x.r.targetId, reason: x.r.reason, details: x.r.details, who: x.u ? `@${x.u.username}` : null, at: x.r.createdAt })),
   };

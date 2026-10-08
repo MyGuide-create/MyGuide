@@ -1,5 +1,6 @@
 "use server";
 
+import { UserError } from "../userError";
 import { and, eq, sql } from "drizzle-orm";
 import { tidyCity } from "@/lib/places/cityName";
 import { revalidatePath } from "next/cache";
@@ -24,19 +25,19 @@ import { normaliseInstagram, normaliseReserve, normaliseWebsite, normaliseWhatsa
 /** Owner or invited co-editor. Use for editing places, notes, tips and guide details. */
 async function requireOwner(guideId: string): Promise<{ guide: Guide; userId: string }> {
   const user = await getCurrentUser();
-  if (!user) throw new Error("Please log in.");
+  if (!user) throw new UserError("Please log in.", "auth");
   const guide = await getGuideById(guideId);
-  if (!guide) throw new Error("That guide no longer exists.");
-  if (guide.ownerId !== user.id && !(await isCollaborator(guide.id, user.id))) throw new Error("You can only edit your own guides.");
+  if (!guide) throw new UserError("That guide no longer exists.", "gone");
+  if (guide.ownerId !== user.id && !(await isCollaborator(guide.id, user.id))) throw new UserError("You can only edit your own guides.", "forbidden");
   return { guide, userId: user.id };
 }
 
 /** The guide's owner only: publishing, deleting, sharing and managing co-editors. */
 async function requireTrueOwner(guideId: string): Promise<{ guide: Guide; userId: string }> {
   const user = await getCurrentUser();
-  if (!user) throw new Error("Please log in.");
+  if (!user) throw new UserError("Please log in.", "auth");
   const guide = await getGuideById(guideId);
-  if (!guide || guide.ownerId !== user.id) throw new Error("Only the guide's creator can do that.");
+  if (!guide || guide.ownerId !== user.id) throw new UserError("Only the guide's creator can do that.", "forbidden");
   return { guide, userId: user.id };
 }
 
@@ -210,7 +211,7 @@ export async function updateGuideMeta(
 
 export type CoverChoice =
   | { kind: "unsplash"; photoId: string }
-  | { kind: "google"; placeId: string; ref: string };
+  | { kind: "google"; placeId: string; ref: string; author?: string };
 
 export interface CoverResult {
   coverMediaId: null;
@@ -227,14 +228,20 @@ export async function setExternalCover(guideId: string, choice: CoverChoice): Pr
   let result: CoverResult;
   if (choice.kind === "unsplash") {
     const photo = await claimUnsplashPhoto(choice.photoId);
-    if (!photo) throw new Error("That photo isn't available any more. Try another one.");
+    if (!photo) throw new UserError("That photo isn't available any more. Try another one.", "google");
     result = { coverMediaId: null, coverUrl: photo.url, coverSource: "unsplash", coverCredit: photo.author, coverCreditUrl: photo.authorUrl };
   } else {
     const place = await db.query.places.findFirst({ where: and(eq(places.id, choice.placeId), eq(places.guideId, guide.id)) });
-    if (!place?.googlePlaceId) throw new Error("That place isn't in this guide.");
-    const photos = await getPlacePhotos(place.googlePlaceId, 10);
-    const photo = photos.find((p) => p.ref === choice.ref);
-    if (!photo) throw new Error("That photo isn't available any more. Try another one.");
+    if (!place?.googlePlaceId) throw new UserError("That place isn't in this guide.", "invalid");
+    // Google hands out a different photo name on every lookup, so an exact match against a fresh list
+    // almost never works (that was the "From places" cover error). Check the photo belongs to this place instead.
+    if (!choice.ref.startsWith(`places/${place.googlePlaceId}/photos/`)) throw new UserError("That photo isn't from one of your places. Try another one.", "google");
+    const fresh = await getPlacePhotos(place.googlePlaceId, 10).catch(() => []);
+    const photo = fresh.find((p) => p.ref === choice.ref) ?? {
+      ref: choice.ref,
+      author: (choice.author ?? "").trim().slice(0, 120) || "Google Maps contributor",
+      authorUrl: null,
+    };
     result = {
       coverMediaId: null,
       coverUrl: `/api/places/photo?ref=${encodeURIComponent(photo.ref)}&w=1600`,
@@ -251,7 +258,7 @@ export async function setExternalCover(guideId: string, choice: CoverChoice): Pr
 /** Remove any cover photo and go back to the generated title card. */
 export async function clearCover(guideId: string): Promise<void> {
   const { guide } = await requireOwner(guideId);
-  if (guide.publishedAt) throw new Error("Published guides need a cover photo — pick a new one instead.");
+  if (guide.publishedAt) throw new UserError("Published guides need a cover photo — pick a new one instead.", "invalid");
   const db = await getDb();
   await db
     .update(guides)
@@ -262,7 +269,7 @@ export async function clearCover(guideId: string): Promise<void> {
 
 export async function publishGuide(guideId: string, visibility: "public" | "private"): Promise<void> {
   const { guide } = await requireTrueOwner(guideId);
-  if (!guide.coverMediaId && !guide.coverUrl) throw new Error("Add a cover photo before publishing.");
+  if (!guide.coverMediaId && !guide.coverUrl) throw new UserError("Add a cover photo before publishing.", "invalid");
   const db = await getDb();
   await db
     .update(guides)
@@ -307,8 +314,8 @@ export async function deleteGuide(guideId: string): Promise<void> {
 export async function addPinnedPlace(guideId: string, input: { name: string; lat: number; lng: number; category?: string }): Promise<Place> {
   const { guide, userId } = await requireOwner(guideId);
   const name = input.name.trim().slice(0, 120);
-  if (!name) throw new Error("Give the spot a name.");
-  if (!validPin(input.lat, input.lng)) throw new Error("That pin isn't on the map.");
+  if (!name) throw new UserError("Give the spot a name.", "invalid");
+  if (!validPin(input.lat, input.lng)) throw new UserError("That pin isn't on the map.", "invalid");
   const db = await getDb();
   const where = await reverseGeocode(input.lat, input.lng);
   const [{ min }] = await db.select({ min: sql<number>`coalesce(min(${places.position}), 1)` }).from(places).where(eq(places.guideId, guideId));
@@ -335,7 +342,7 @@ export async function addPinnedPlace(guideId: string, input: { name: string; lat
 /** Turn an existing place into a dropped pin (e.g. it couldn't be matched, or Google has it in the wrong spot). */
 export async function setPlacePin(guideId: string, placeId: string, input: { lat: number; lng: number }): Promise<Place> {
   const { guide } = await requireOwner(guideId);
-  if (!validPin(input.lat, input.lng)) throw new Error("That pin isn't on the map.");
+  if (!validPin(input.lat, input.lng)) throw new UserError("That pin isn't on the map.", "invalid");
   const db = await getDb();
   const where = await reverseGeocode(input.lat, input.lng);
   await db
@@ -363,7 +370,7 @@ export async function setPlacePin(guideId: string, placeId: string, input: { lat
 async function getPlaceInGuide(guideId: string, placeId: string): Promise<Place> {
   const db = await getDb();
   const p = await db.query.places.findFirst({ where: and(eq(places.id, placeId), eq(places.guideId, guideId)) });
-  if (!p) throw new Error("That place isn't in this guide any more.");
+  if (!p) throw new UserError("That place isn't in this guide any more.", "gone");
   return p;
 }
 
@@ -421,7 +428,7 @@ export async function addBranches(
   let note = place.note;
 
   if (input.pin) {
-    if (!validPin(input.pin.lat, input.pin.lng)) throw new Error("That pin isn't on the map.");
+    if (!validPin(input.pin.lat, input.pin.lng)) throw new UserError("That pin isn't on the map.", "invalid");
     const where = await reverseGeocode(input.pin.lat, input.pin.lng);
     rows.push({ id: newId(), placeId, name: input.pin.name.trim().slice(0, 120) || place.name, address: where?.area ?? "", lat: input.pin.lat, lng: input.pin.lng, googlePlaceId: null, position: position++, createdAt: now });
   }
@@ -574,7 +581,7 @@ export async function updatePlace(
   if (patch.website !== undefined || patch.instagram !== undefined || patch.whatsapp !== undefined || patch.reserveUrl !== undefined) {
     const current = await db.query.places.findFirst({ where: and(eq(places.id, placeId), eq(places.guideId, guideId)), columns: { country: true } });
     const take = (r: Normalised): string | null => {
-      if (!r.ok) throw new Error(r.error);
+      if (!r.ok) throw new UserError(r.error);
       return r.value;
     };
     if (patch.website !== undefined) set.website = take(normaliseWebsite(patch.website));
@@ -592,14 +599,14 @@ export async function updatePlace(
 async function requirePlaceInGuide(guideId: string, placeId: string): Promise<void> {
   const db = await getDb();
   const place = await db.query.places.findFirst({ where: and(eq(places.id, placeId), eq(places.guideId, guideId)) });
-  if (!place) throw new Error("That place isn't in this guide.");
+  if (!place) throw new UserError("That place isn't in this guide.", "invalid");
 }
 
 /** A tip's place must belong to the given guide — throws otherwise (guards against a tipId from another guide). */
 async function requireTipInGuide(guideId: string, tipId: string): Promise<PlaceTip> {
   const db = await getDb();
   const tip = await db.query.placeTips.findFirst({ where: eq(placeTips.id, tipId) });
-  if (!tip) throw new Error("That tip no longer exists.");
+  if (!tip) throw new UserError("That tip no longer exists.", "gone");
   await requirePlaceInGuide(guideId, tip.placeId);
   return tip;
 }
@@ -608,7 +615,7 @@ async function requireTipInGuide(guideId: string, tipId: string): Promise<PlaceT
 export async function addPlaceTip(guideId: string, placeId: string, body: string): Promise<PlaceTip> {
   const { guide } = await requireOwner(guideId);
   const text = body.trim();
-  if (!text) throw new Error("Tip can't be empty.");
+  if (!text) throw new UserError("Tip can't be empty.", "invalid");
   await requirePlaceInGuide(guideId, placeId);
   const db = await getDb();
   const [{ max }] = await db.select({ max: sql<number>`coalesce(max(${placeTips.position}), -1)` }).from(placeTips).where(eq(placeTips.placeId, placeId));
@@ -622,7 +629,7 @@ export async function addPlaceTip(guideId: string, placeId: string, body: string
 export async function updatePlaceTip(guideId: string, tipId: string, body: string): Promise<void> {
   const { guide } = await requireOwner(guideId);
   const text = body.trim();
-  if (!text) throw new Error("Tip can't be empty.");
+  if (!text) throw new UserError("Tip can't be empty.", "invalid");
   await requireTipInGuide(guideId, tipId);
   const db = await getDb();
   await db.update(placeTips).set({ body: text }).where(eq(placeTips.id, tipId));
@@ -663,9 +670,9 @@ export async function forkGuide(guideId: string, shareKey?: string | null): Prom
   if (!user) redirect("/login");
   const db = await getDb();
   const source = await getGuideById(guideId);
-  if (!source) throw new Error("Guide not found.");
-  if (!(await canViewGuide(source, user.id, shareKey))) throw new Error("You don't have access to this guide.");
-  if (source.ownerId === user.id) throw new Error("This is already your guide.");
+  if (!source) throw new UserError("Guide not found.", "gone");
+  if (!(await canViewGuide(source, user.id, shareKey))) throw new UserError("You don't have access to this guide.", "forbidden");
+  if (source.ownerId === user.id) throw new UserError("This is already your guide.", "forbidden");
 
   const sourcePlaces = await db.select().from(places).where(eq(places.guideId, guideId)).orderBy(places.position);
   const id = newId();
@@ -757,11 +764,11 @@ export async function addCollaborator(guideId: string, username: string): Promis
 
 export async function removeCollaborator(guideId: string, collaboratorId: string): Promise<void> {
   const user = await getCurrentUser();
-  if (!user) throw new Error("Please log in.");
+  if (!user) throw new UserError("Please log in.", "auth");
   const guide = await getGuideById(guideId);
   if (!guide) return;
   // The owner can remove anyone; a co-editor can remove themselves ("Leave").
-  if (guide.ownerId !== user.id && collaboratorId !== user.id) throw new Error("Only the guide's creator can do that.");
+  if (guide.ownerId !== user.id && collaboratorId !== user.id) throw new UserError("Only the guide's creator can do that.", "forbidden");
   const db = await getDb();
   await db.delete(guideCollaborators).where(and(eq(guideCollaborators.guideId, guideId), eq(guideCollaborators.userId, collaboratorId)));
   revalidateGuide(guide.slug);

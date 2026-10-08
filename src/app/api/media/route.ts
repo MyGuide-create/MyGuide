@@ -12,11 +12,11 @@ export async function POST(req: Request) {
   if (!user) return NextResponse.json({ error: "Please log in." }, { status: 401 });
   const form = await req.formData();
   const file = form.get("file");
-  if (!(file instanceof File)) return NextResponse.json({ error: "No file." }, { status: 400 });
-  if (file.size > MAX_BYTES) return NextResponse.json({ error: "File is too large (max 6 MB)." }, { status: 413 });
+  if (!(file instanceof File)) return NextResponse.json({ error: "No photo came through — try picking it again." }, { status: 400 });
+  if (file.size > MAX_BYTES) return NextResponse.json({ error: "That photo is too big — photos up to 6 MB work. Try a smaller one." }, { status: 413 });
   const mime = file.type || "application/octet-stream";
   const kind = mime.startsWith("image/") ? "image" : mime.startsWith("audio/") || mime.startsWith("video/") ? "audio" : null;
-  if (!kind) return NextResponse.json({ error: "Unsupported file type." }, { status: 415 });
+  if (!kind) return NextResponse.json({ error: "That kind of file can’t be added here — use a photo (JPG, PNG or HEIC)." }, { status: 415 });
   const duration = Number(form.get("duration") ?? "") || null;
   const id = newId();
   const db = await getDb();

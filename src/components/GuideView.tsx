@@ -1,6 +1,7 @@
 "use client";
 
 import { mapsUrl } from "@/lib/places/pins";
+import { errorText } from "@/lib/errorText";
 
 import Link from "next/link";
 import { useEffect, useState, useTransition } from "react";
@@ -83,7 +84,7 @@ export function GuideView({ detail, viewerId, viewer, shareUrl, shareKey }: { de
         const slug = await forkGuide(guide.id, shareKey);
         router.push(`/g/${slug}/edit?forked=1`);
       } catch (e) {
-        setForkError(e instanceof Error ? e.message : "Couldn't fork this guide.");
+        setForkError(errorText(e, "Couldn't copy this guide."));
       }
     });
   };

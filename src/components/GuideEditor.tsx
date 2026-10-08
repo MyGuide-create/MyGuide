@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { errorText } from "@/lib/errorText";
 import { useRouter } from "next/navigation";
 import { useCallback, useRef, useState, useTransition } from "react";
 import type { GuideDetail } from "@/lib/guides";
@@ -75,7 +76,7 @@ export function GuideEditor({ detail, justForked, justCreated, viewerId, wishFor
       try {
         await fn();
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Something went wrong.");
+        setError(errorText(e, "Couldn't save that change."));
       } finally {
         setSaving(null);
       }
@@ -120,7 +121,7 @@ export function GuideEditor({ detail, justForked, justCreated, viewerId, wishFor
       setJustAddedId(p.id);
       if (!guide.city && p.city) setGuide((g) => ({ ...g, city: p.city, country: p.country }));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn't add that place.");
+      setError(errorText(e, "Couldn't add that place."));
     } finally {
       setAdding(false);
     }
@@ -153,7 +154,7 @@ export function GuideEditor({ detail, justForked, justCreated, viewerId, wishFor
       try {
         await publishGuide(guide.id, visibility);
       } catch (e) {
-        setPublishError(e instanceof Error ? e.message : "Couldn't publish. Try again.");
+        setPublishError(errorText(e, "Couldn't publish the guide."));
         return;
       }
       setPublishStep(null);

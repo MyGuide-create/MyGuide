@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { UserError } from "@/lib/userError";
 
 const noopSubscribe = () => () => {};
 const recorderSupported = () => typeof navigator !== "undefined" && !!navigator.mediaDevices?.getUserMedia && typeof MediaRecorder !== "undefined";
@@ -85,7 +86,8 @@ export async function uploadMedia(file: Blob, name: string, duration?: number): 
   fd.append("file", new File([file], name, { type: file.type }));
   if (duration) fd.append("duration", String(Math.round(duration * 10) / 10));
   const res = await fetch("/api/media", { method: "POST", body: fd });
-  if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error ?? "Upload failed");
+  if (res.status === 401) throw new UserError("Please log in.", "auth");
+  if (!res.ok) throw new UserError((await res.json().catch(() => ({})))?.error ?? "That photo didn't upload. Try a smaller one, or check your connection.", "upload");
   return res.json();
 }
 

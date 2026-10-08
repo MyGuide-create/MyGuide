@@ -435,6 +435,22 @@ export const feedback = sqliteTable("feedback", {
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 });
 
+/** Unexpected errors people hit in the app (reported by the browser; shown on Admin). */
+export const appErrors = sqliteTable(
+  "app_errors",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").references(() => users.id, { onDelete: "set null" }),
+    /** What they were doing ("Couldn't set the cover photo"). */
+    context: text("context").notNull(),
+    message: text("message").notNull(),
+    digest: text("digest"),
+    page: text("page"),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [index("app_errors_created_idx").on(t.createdAt)],
+);
+
 /** Web Push subscriptions (one per browser/device). */
 export const pushSubscriptions = sqliteTable(
   "push_subscriptions",

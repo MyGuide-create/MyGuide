@@ -1,6 +1,8 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { UserError } from "@/lib/userError";
+import { errorText } from "@/lib/errorText";
 import { useState } from "react";
 import { createGuide } from "@/lib/actions/guides";
 import type { ParsedPlacesResponse } from "@/app/api/ai/parse-places/route";
@@ -74,7 +76,7 @@ export function VoiceCreate({ forWish, initialCity, startWithImport }: { forWish
         if (err.code === "maps_list" && err.listUrls?.length) {
           return await importMapsLists(err.listUrls, { from, fallbackTitle: err.listTitle, extraText: err.rest });
         }
-        throw new Error(err.error ?? "Couldn't structure that.");
+        throw new UserError(err.error ?? "Couldn't read that list — try pasting it again, one place per line.");
       }
       const data = (await res.json()) as ParsedPlacesResponse;
       setFromList(false);
@@ -85,7 +87,7 @@ export function VoiceCreate({ forWish, initialCity, startWithImport }: { forWish
       setCity((c) => c.trim() || data.city);
       setStage("review");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn't structure that.");
+      setError(errorText(e, "Couldn't read that list."));
       setStage(from);
     }
   };
@@ -197,7 +199,7 @@ export function VoiceCreate({ forWish, initialCity, startWithImport }: { forWish
       });
       router.push(`/g/${slug}/edit?created=1`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn't create the guide.");
+      setError(errorText(e, "Couldn't create the guide."));
       setCreating(false);
     }
   };
@@ -217,7 +219,7 @@ export function VoiceCreate({ forWish, initialCity, startWithImport }: { forWish
       });
       router.push(`/g/${slug}/edit?start=1`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn't create the guide.");
+      setError(errorText(e, "Couldn't create the guide."));
       setCreating(false);
     }
   };
