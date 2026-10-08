@@ -154,7 +154,7 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
             {intent.keywords.slice(0, 3).map((k) => <Tag key={k}>“{k}”</Tag>)}
           </div>
           {intent.scope === "following" && !user && (
-            <EmptyState title="Log in to search your people" body="“By people I'm following” needs to know who you follow." action={<LinkButton href={`/login?next=${encodeURIComponent(`/search?q=${q}`)}`} size="sm">Log in</LinkButton>} />
+            <EmptyState title="Sign up to search your people" body="“By people I'm following” needs to know who you follow." action={<LinkButton href={`/signup?why=following&next=${encodeURIComponent(`/search?q=${q}`)}`} size="sm">Sign up</LinkButton>} />
           )}
           {!placeSearch && peopleSection}
           {placeHits.length > 0 && (
@@ -184,7 +184,7 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
               action={
                 intent.city ? (
                   <span className="flex flex-col items-center gap-2.5">
-                    {user ? <WishForCityButton city={intent.city} /> : <LinkButton href={`/login?next=${encodeURIComponent(`/search?q=${q}`)}`} size="sm">Log in to wish for a {intent.city} guide</LinkButton>}
+                    {user ? <WishForCityButton city={intent.city} /> : <LinkButton href={`/signup?next=${encodeURIComponent(`/search?q=${q}`)}`} size="sm">Sign up to wish for a {intent.city} guide</LinkButton>}
                     <Link href={`/wishes?city=${encodeURIComponent(intent.city)}`} className="text-[12.5px] font-medium text-terracotta">Who else wants one →</Link>
                   </span>
                 ) : (

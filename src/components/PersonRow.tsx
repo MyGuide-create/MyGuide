@@ -22,7 +22,7 @@ export function PersonRow({ hit, signedIn, next }: { hit: PersonHit; signedIn: b
         {signedIn ? (
           <FollowButton userId={user.id} initial={hit.viewerStatus} next={next.split("?")[0]} followsYou={hit.followsViewer} />
         ) : (
-          <LinkButton href={`/login?next=${encodeURIComponent(next)}`} size="sm" variant="outline">Follow</LinkButton>
+          <LinkButton href={`/signup?why=follow&next=${encodeURIComponent(next)}`} size="sm" variant="outline">Follow</LinkButton>
         )}
       </div>
     </li>

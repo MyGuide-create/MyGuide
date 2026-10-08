@@ -35,7 +35,7 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
 
   const startQs = new URLSearchParams({ city, ...(country ? { country } : {}), ...(lat && lng ? { lat, lng } : {}) }).toString();
   const startHref = user ? `/create?${startQs}` : `/signup?next=${encodeURIComponent(`/create?${startQs}`)}&why=create`;
-  const tripHref = user ? `/trips?city=${encodeURIComponent(city)}` : `/login?next=${encodeURIComponent(`/trips?city=${city}`)}`;
+  const tripHref = user ? `/trips?city=${encodeURIComponent(city)}` : `/signup?next=${encodeURIComponent(`/trips?city=${city}`)}`;
 
   return (
     <AppShell>
@@ -68,8 +68,8 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
                 {user ? (
                   <WishForCityButton city={city} />
                 ) : (
-                  <Link href={`/login?next=${encodeURIComponent(`/city?${new URLSearchParams(sp as Record<string, string>).toString()}`)}`} className="text-[13px] font-medium text-terracotta">
-                    <SparkleIcon size={13} className="inline -mt-0.5" /> Log in to wish for a {city} guide
+                  <Link href={`/signup?next=${encodeURIComponent(`/city?${new URLSearchParams(sp as Record<string, string>).toString()}`)}`} className="text-[13px] font-medium text-terracotta">
+                    <SparkleIcon size={13} className="inline -mt-0.5" /> Sign up to wish for a {city} guide
                   </Link>
                 )}
               </span>

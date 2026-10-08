@@ -7,10 +7,10 @@ const REASONS: Record<AuthReason, string> = {
   follow: "Create a free account to follow creators and see their new guides.",
   fork: "Create a free account to copy this guide — keep the places you like and add your own.",
   create: "Create a free account to make your first guide.",
-  record: "Create a free account to record places as you go.",
-  notifications: "Log in to see guides people have shared with you.",
+  record: "Create a free account to add places as you go.",
+  notifications: "Sign up or log in to see guides people have shared with you.",
   comment: "Create a free account to comment on places.",
-  following: "Log in to see guides from people you follow.",
+  following: "Sign up or log in to see guides from people you follow.",
   save: "Create a free account to keep favourite places in your own shortlist.",
 };
 

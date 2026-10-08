@@ -43,7 +43,10 @@ export default async function HomePage({ searchParams }: PageProps<"/">) {
           {user ? (
             <Link href="/me" aria-label="Your profile"><Avatar user={user} size={34} /></Link>
           ) : (
-            <LinkButton href="/login" size="sm" variant="outline">Log in</LinkButton>
+            <span className="flex items-center gap-3">
+              <Link href="/login" className="text-[14px] font-medium text-ink-muted hover:text-ink">Log in</Link>
+              <LinkButton href="/signup" size="sm">Sign up</LinkButton>
+            </span>
           )}
         </div>
         <h1 className="mt-5 font-display text-[34px] leading-[1.05]">
@@ -96,9 +99,9 @@ export default async function HomePage({ searchParams }: PageProps<"/">) {
         )}
         {feed.length === 0 && scope === "following" && !showNudge && (
           <EmptyState
-            title={user ? "Nothing from your people yet" : "Log in to see your people"}
+            title={user ? "Nothing from your people yet" : "Sign up to see your people"}
             body={user ? "Follow a few creators and their public guides will show up here." : "Following shows guides from creators you follow."}
-            action={user ? undefined : <LinkButton href="/login?next=%2F%3Fscope%3Dfollowing&why=following" size="sm">Log in</LinkButton>}
+            action={user ? undefined : <LinkButton href="/signup?next=%2F%3Fscope%3Dfollowing&why=following" size="sm">Sign up</LinkButton>}
           />
         )}
         {feed.length === 0 && scope === "public" && (

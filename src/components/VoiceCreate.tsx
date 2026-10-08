@@ -45,9 +45,9 @@ export interface ForWish {
 /** A real-sounding example beats "What's this guide for?" (Raad's suggestion). */
 const TITLE_EXAMPLE = "Weekend away with the boys";
 
-export function VoiceCreate({ forWish, initialCity }: { forWish?: ForWish | null; initialCity?: PickedCity | null }) {
+export function VoiceCreate({ forWish, initialCity, startWithImport }: { forWish?: ForWish | null; initialCity?: PickedCity | null; /** Open straight on "Import your places" (+ → Import a Google Maps list). */ startWithImport?: boolean }) {
   const router = useRouter();
-  const [stage, setStage] = useState<Stage>("typed");
+  const [stage, setStage] = useState<Stage>(startWithImport ? "paste" : "typed");
   const [picked, setPicked] = useState<PickedCity | null>(initialCity ?? null);
   const example = TITLE_EXAMPLE;
   const [pastedList, setPastedList] = useState("");
@@ -254,10 +254,10 @@ export function VoiceCreate({ forWish, initialCity }: { forWish?: ForWish | null
           >
             <span className="w-12 h-12 rounded-2xl bg-sage text-white flex items-center justify-center shrink-0"><ListIcon size={22} /></span>
             <span className="min-w-0">
-              <span className="block font-semibold text-[16px]">Import a list</span>
-              <span className="block mt-0.5 text-[13px] text-ink-muted leading-snug">Turn places you&apos;ve already saved into a guide in seconds.</span>
+              <span className="block font-semibold text-[16px]">Import a Google Maps list</span>
+              <span className="block mt-0.5 text-[13px] text-ink-muted leading-snug">Turn a saved list into a guide in seconds — or bring places in from:</span>
               <span className="mt-2 flex flex-wrap gap-1.5">
-                {["Google Maps lists", "Screenshots", "WhatsApp", "Notes"].map((t) => (
+                {["Screenshots", "WhatsApp", "Notes"].map((t) => (
                   <span key={t} className="rounded-full bg-sage-tint px-2.5 py-0.5 text-[11.5px] font-medium text-sage">{t}</span>
                 ))}
               </span>
@@ -275,10 +275,9 @@ export function VoiceCreate({ forWish, initialCity }: { forWish?: ForWish | null
         <div>
           <h1 className="font-display text-[34px] leading-[1.05]">Import your places.</h1>
           <p className="mt-2 text-[13.5px] text-ink-muted leading-relaxed">
-            Bring in places you&apos;ve already saved — screenshots of a Google Maps list, links, a WhatsApp message, your Notes. We&apos;ll find each place and build the guide.
+            Paste a Google Maps saved list&apos;s link and we&apos;ll bring in every place. Screenshots, links, a WhatsApp message or your Notes work too.
           </p>
         </div>
-        <ScreenshotImport onPlaces={(lines) => setPastedList((v) => [v.trim(), ...lines].filter(Boolean).join("\n"))} />
         {(() => {
           const found = findMapsListLink(listLink);
           const singlePlace = !found && hasMapsLink(listLink);
@@ -288,7 +287,7 @@ export function VoiceCreate({ forWish, initialCity }: { forWish?: ForWish | null
               <div>
                 <div className="text-[14px] font-semibold">Google Maps — a whole saved list</div>
                 <p className="mt-0.5 text-[12px] text-ink-muted leading-snug">
-                  Paste the list&apos;s link and we&apos;ll bring in every place, with your notes. Or use Add screenshots above, or the paste box below for copied list text or a Takeout CSV.
+                  Paste the list&apos;s link and we&apos;ll bring in every place, with your notes. Or add screenshots below, or paste copied list text or a Takeout CSV.
                 </p>
               </div>
               <div>
@@ -321,6 +320,7 @@ export function VoiceCreate({ forWish, initialCity }: { forWish?: ForWish | null
             </div>
           );
         })()}
+        <ScreenshotImport onPlaces={(lines) => setPastedList((v) => [v.trim(), ...lines].filter(Boolean).join("\n"))} />
         <div className="flex items-center gap-3 text-[12px] font-medium uppercase tracking-[0.08em] text-ink-faint">
           <span className="h-px flex-1 bg-line" /> Or paste text or links <span className="h-px flex-1 bg-line" />
         </div>

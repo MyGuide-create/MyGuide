@@ -13,7 +13,7 @@ export const metadata = { title: "Create a guide" };
 export default async function CreatePage({ searchParams }: PageProps<"/create">) {
   const sp = await searchParams;
   const wishParam = typeof sp.wish === "string" ? sp.wish : "";
-  const keep = new URLSearchParams(Object.entries(sp).filter((e): e is [string, string] => typeof e[1] === "string" && ["wish", "city", "country", "lat", "lng"].includes(e[0]))).toString();
+  const keep = new URLSearchParams(Object.entries(sp).filter((e): e is [string, string] => typeof e[1] === "string" && ["wish", "city", "country", "lat", "lng", "import"].includes(e[0]))).toString();
   const user = await requireUser(`/create${keep ? `?${keep}` : ""}`);
   // "Make this guide" from someone's wish list: who it's for, sent to them when published.
   const wanted = wishParam ? await wishesForMaking(wishParam.split(","), user.id) : [];
@@ -36,7 +36,7 @@ export default async function CreatePage({ searchParams }: PageProps<"/create">)
           </span>
         </div>
       )}
-      <VoiceCreate forWish={forWish} initialCity={initialCity} />
+      <VoiceCreate forWish={forWish} initialCity={initialCity} startWithImport={sp.import === "1"} />
     </AppShell>
   );
 }

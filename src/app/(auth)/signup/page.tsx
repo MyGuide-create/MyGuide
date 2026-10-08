@@ -4,7 +4,7 @@ import { AppShell, Wordmark } from "@/components/AppShell";
 import { AuthForm } from "@/components/AuthForm";
 import { XIcon } from "@/components/Icons";
 import { getCurrentUser } from "@/lib/auth";
-import { closeHref, parseReason, reasonText, safeNext } from "@/lib/authContext";
+import { closeHref, parseReason, reasonText, safeNext, authHref } from "@/lib/authContext";
 import { enabledProviders } from "@/lib/oauth";
 
 export const dynamic = "force-dynamic";
@@ -26,7 +26,10 @@ export default async function SignupPage({ searchParams }: { searchParams: Promi
         <p className="mt-2 text-[14px] text-ink-muted">
           {reasonText(why) ?? "Follow people whose taste you trust, save their favourite places, and make guides of your own."}
         </p>
-        <div className="mt-8">
+        <p className="mt-3 text-[13.5px] text-ink-muted">
+          Already have an account? <Link href={authHref("login", next, why)} className="font-semibold text-terracotta">Log in</Link>
+        </p>
+        <div className="mt-6">
           <AuthForm mode="signup" next={next} why={why} providers={enabledProviders()} notice={sp.oauth === "failed" ? "That didn\u2019t work \u2014 please try again, or use your email." : sp.oauth === "unavailable" ? "That sign-in option isn\u2019t available right now." : null} />
         </div>
       </div>

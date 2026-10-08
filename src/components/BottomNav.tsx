@@ -3,14 +3,14 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { BellIcon, HomeIcon, ListIcon, PinIcon, PlusIcon, SearchIcon, UserIcon, XIcon } from "./Icons";
+import { BellIcon, HomeIcon, ListIcon, MapIcon, PinIcon, PlusIcon, SearchIcon, UserIcon, XIcon } from "./Icons";
 import { cx } from "./ui";
 
 export function BottomNav({ signedIn, username, unread }: { signedIn: boolean; username: string | null; unread: number }) {
   const path = usePathname();
   const [creating, setCreating] = useState(false);
   const is = (p: string) => (p === "/" ? path === "/" : path.startsWith(p));
-  const youHref = username ? `/u/${username}` : "/login";
+  const youHref = username ? `/u/${username}` : "/signup";
   const youActive = (username && (is(`/u/${username}`) || is("/me") || is("/saved"))) || false;
   const item = "flex flex-col items-center justify-center gap-0.5 w-16 h-12 rounded-2xl transition-colors";
   const label = "text-[10px] leading-none font-medium";
@@ -37,6 +37,13 @@ export function BottomNav({ signedIn, username, unread }: { signedIn: boolean; u
                 <span className="min-w-0">
                   <span className="block font-semibold text-[14.5px]">Create a guide</span>
                   <span className="block text-[12px] text-ink-muted">Add the places you love in a city, or paste a list you already have.</span>
+                </span>
+              </Link>
+              <Link href="/create?import=1" onClick={() => setCreating(false)} className="flex items-center gap-3 rounded-2xl border border-line bg-paper px-4 py-3.5 hover:border-terracotta-soft">
+                <span className="w-10 h-10 rounded-full bg-ochre text-ink flex items-center justify-center shrink-0"><MapIcon size={19} /></span>
+                <span className="min-w-0">
+                  <span className="block font-semibold text-[14.5px]">Import a Google Maps list</span>
+                  <span className="block text-[12px] text-ink-muted">Paste a saved list&apos;s link — every place comes in.</span>
                 </span>
               </Link>
               <Link href="/record" onClick={() => setCreating(false)} className="flex items-center gap-3 rounded-2xl border border-line bg-paper px-4 py-3.5 hover:border-terracotta-soft">
@@ -81,7 +88,7 @@ export function BottomNav({ signedIn, username, unread }: { signedIn: boolean; u
               <PlusIcon size={26} />
             </Link>
           )}
-          <Link href={signedIn ? "/notifications" : "/login?next=/notifications&why=notifications"} onClick={signedIn ? toTopIfHere("/notifications") : undefined} aria-label="Activity" className={cx(item, "relative", is("/notifications") ? "text-ink" : "text-ink-muted")}>
+          <Link href={signedIn ? "/notifications" : "/signup?next=/notifications&why=notifications"} onClick={signedIn ? toTopIfHere("/notifications") : undefined} aria-label="Activity" className={cx(item, "relative", is("/notifications") ? "text-ink" : "text-ink-muted")}>
             <BellIcon size={22} />
             <span className={label}>Activity</span>
             {unread > 0 && (
@@ -92,7 +99,7 @@ export function BottomNav({ signedIn, username, unread }: { signedIn: boolean; u
           </Link>
           <Link href={youHref} onClick={toTopIfHere(youHref)} aria-label="You" className={cx(item, youActive ? "text-ink" : "text-ink-muted")}>
             <UserIcon size={22} />
-            <span className={label}>{signedIn ? "You" : "Log in"}</span>
+            <span className={label}>{signedIn ? "You" : "Sign up"}</span>
           </Link>
         </div>
       </nav>

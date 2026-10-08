@@ -132,7 +132,7 @@ export function WishList({ wishes, own, ownerName, ownerUsername, signedIn }: { 
                     {signedIn ? (
                       <LinkButton href={`/create?wish=${w.wish.id}`} size="sm">Make this guide</LinkButton>
                     ) : (
-                      <LinkButton href={`/login?next=${encodeURIComponent(`/u/${ownerUsername}#wishes`)}`} size="sm">Make this guide</LinkButton>
+                      <LinkButton href={`/signup?why=create&next=${encodeURIComponent(`/u/${ownerUsername}#wishes`)}`} size="sm">Make this guide</LinkButton>
                     )}
                     <SendGuideButton wishId={w.wish.id} guides={w.viewerGuides} sent={w.viewerSent} wisherName={first} />
                   </div>

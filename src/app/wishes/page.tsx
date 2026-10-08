@@ -40,7 +40,7 @@ export default async function WishesPage({ searchParams }: { searchParams: Promi
             </div>
           </details>
         ) : (
-          <LinkButton href="/login?next=/wishes" size="sm" variant="outline" className="self-start">Log in to add your own wishes</LinkButton>
+          <LinkButton href="/signup?next=/wishes" size="sm" variant="outline" className="self-start">Sign up to add your own wishes</LinkButton>
         )}
 
         {cityFilter && (
@@ -94,7 +94,7 @@ export default async function WishesPage({ searchParams }: { searchParams: Promi
               </ul>
               {others.length > 0 && (
                 <div className="px-4 py-3 border-t border-line/70 bg-cream/40">
-                  <LinkButton href={user ? `/create?wish=${makeFor}` : `/login?next=${encodeURIComponent("/wishes")}`} size="sm" className="w-full">
+                  <LinkButton href={user ? `/create?wish=${makeFor}` : `/signup?why=create&next=${encodeURIComponent("/wishes")}`} size="sm" className="w-full">
                     Make a {c.city} guide for {forWhom}
                   </LinkButton>
                 </div>

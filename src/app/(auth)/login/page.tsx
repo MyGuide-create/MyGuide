@@ -4,7 +4,7 @@ import { AppShell, Wordmark } from "@/components/AppShell";
 import { AuthForm } from "@/components/AuthForm";
 import { XIcon } from "@/components/Icons";
 import { getCurrentUser } from "@/lib/auth";
-import { closeHref, parseReason, reasonText, safeNext } from "@/lib/authContext";
+import { authHref, closeHref, parseReason, reasonText, safeNext } from "@/lib/authContext";
 import { enabledProviders } from "@/lib/oauth";
 import { DEMO_PASSWORD } from "@/lib/seed";
 
@@ -25,9 +25,17 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           <XIcon size={20} />
         </Link>
         <Wordmark />
-        <h1 className="mt-6 font-display text-[36px] leading-[1.02]">{next ? "Log in to continue." : "Welcome back."}</h1>
-        <p className="mt-2 text-[14px] text-ink-muted">{reason ?? "Your guides and your people are where you left them."}</p>
-        <div className="mt-8">
+        <h1 className="mt-6 font-display text-[36px] leading-[1.02]">Log in</h1>
+        {reason && <p className="mt-2 text-[14px] text-ink-muted">{reason}</p>}
+        {/* New people often land here first (every "Log in" link) — make the way to sign up obvious, above the form. */}
+        <Link
+          href={authHref("signup", next, why)}
+          className="mt-5 flex items-center justify-between gap-3 rounded-2xl border border-terracotta-soft bg-terracotta-tint/60 px-4 py-3 hover:border-terracotta"
+        >
+          <span className="text-[14px] leading-snug"><b className="font-semibold">New to MyGuide?</b> Create a free account</span>
+          <span className="shrink-0 text-[14px] font-semibold text-terracotta-deep">Sign up →</span>
+        </Link>
+        <div className="mt-6">
           <AuthForm mode="login" next={next} why={why} providers={enabledProviders()} notice={sp.oauth === "failed" ? "That didn\u2019t work \u2014 please try again, or use your email." : sp.oauth === "unavailable" ? "That sign-in option isn\u2019t available right now." : null} />
         </div>
         {showDemo && (

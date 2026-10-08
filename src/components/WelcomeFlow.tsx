@@ -8,7 +8,7 @@ import { followMany, toggleFollow, type FollowStatus } from "@/lib/actions/socia
 import { installPlatform, type InstallPlatform } from "@/lib/pushClient";
 import { HomeScreenStep, needsHomeScreenStep } from "./HomeScreenStep";
 import { GuideCover } from "./GuideCover";
-import { CameraIcon, HeartIcon, ListIcon, PinIcon } from "./Icons";
+import { CameraIcon, HeartIcon, MapIcon, PinIcon } from "./Icons";
 import { Logo } from "./Logo";
 import { UsernameForm } from "./UsernameForm";
 import { Avatar, Spinner, cx } from "./ui";
@@ -24,7 +24,7 @@ export type WelcomeSample = {
 const SLIDES = [
   { title: "Guides from people you trust", body: "Follow friends and see the places they actually love — not ads or top-10 lists." },
   { title: "Save places you like", body: "Tap ♥ on any place and it’s kept for your next trip." },
-  { title: "Share your own in seconds", body: "Start from the list you already send friends." },
+  { title: "Share your own in seconds", body: "Bring in your Google Maps saved lists, screenshots or WhatsApp recommendations." },
 ];
 
 type Stage = "username" | "slides" | "follow" | "home";
@@ -257,7 +257,7 @@ function SaveArt() {
 
 function ShareArt() {
   const tiles = [
-    { icon: <ListIcon size={30} />, title: "Paste a list", tone: "bg-sage text-white" },
+    { icon: <MapIcon size={30} />, title: "Google Maps lists", tone: "bg-sage text-white" },
     { icon: <CameraIcon size={30} />, title: "Screenshots", tone: "bg-ochre text-ink" },
     { icon: <PinIcon size={30} />, title: "Add a place", tone: "bg-terracotta text-white" },
   ];
