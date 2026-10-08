@@ -2,7 +2,7 @@ import Link from "next/link";
 import { AppShell, TopBar } from "@/components/AppShell";
 import { GuideCard } from "@/components/GuideCard";
 import { PlusIcon, SparkleIcon } from "@/components/Icons";
-import { WishForCityButton } from "@/components/WishList";
+import { AskForGuideButton } from "@/components/AskForGuide";
 import { EmptyState, LinkButton } from "@/components/ui";
 import { getCurrentUser, toPublicUser } from "@/lib/auth";
 import { listFeed } from "@/lib/guides";
@@ -32,6 +32,7 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
   const seen = new Set(mine.map((g) => g.guide.id));
   const others = everyone.filter((g) => !seen.has(g.guide.id));
   const total = mine.length + others.length;
+  const askCity = { city, country, lat: lat ? Number(lat) : null, lng: lng ? Number(lng) : null };
 
   const startQs = new URLSearchParams({ city, ...(country ? { country } : {}), ...(lat && lng ? { lat, lng } : {}) }).toString();
   const startHref = user ? `/create?${startQs}` : `/signup?next=${encodeURIComponent(`/create?${startQs}`)}&why=create`;
@@ -59,17 +60,17 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
         {city && total === 0 && (
           <EmptyState
             title={`No guides for ${city} yet`}
-            body={`Going soon? Start one now and add places when you get there — or put ${city} on your wish list so friends who know it can make you one.`}
+            body={`Know someone who's been? Ask them to make you one — on MyGuide or by WhatsApp. Or start your own and add places when you get there.`}
             action={
               <span className="flex flex-col items-center gap-3">
                 <LinkButton href={startHref}>
                   <PlusIcon size={15} /> Start a guide for {city}
                 </LinkButton>
                 {user ? (
-                  <WishForCityButton city={city} />
+                  <AskForGuideButton city={askCity} label="Ask a friend who knows it" variant="outline" size="md" />
                 ) : (
                   <Link href={`/signup?next=${encodeURIComponent(`/city?${new URLSearchParams(sp as Record<string, string>).toString()}`)}`} className="text-[13px] font-medium text-terracotta">
-                    <SparkleIcon size={13} className="inline -mt-0.5" /> Sign up to wish for a {city} guide
+                    <SparkleIcon size={13} className="inline -mt-0.5" /> Sign up to ask a friend for a {city} guide
                   </Link>
                 )}
               </span>
@@ -77,6 +78,12 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
           />
         )}
 
+        {city && total > 0 && user && (
+          <div className="rounded-2xl bg-terracotta-tint/50 px-4 py-3 flex items-center justify-between gap-3">
+            <span className="text-[13px] leading-snug">Know someone who&apos;s been to {city}?</span>
+            <AskForGuideButton city={askCity} label="Ask them" variant="primary" />
+          </div>
+        )}
         {mine.length > 0 && (
           <section className="flex flex-col gap-3">
             <h2 className="px-1 text-[12px] font-medium uppercase tracking-[0.08em] text-ink-muted">From people you follow</h2>

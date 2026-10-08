@@ -274,12 +274,14 @@ export const notifications = sqliteTable(
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    /** "guide_shared" | "new_follower" | "follow_request" | "follow_accepted" | "place_comment" | "guide_published" | "places_added" | "guide_used" | "collab_invite" | "user_joined" | "wish_granted" */
+    /** "guide_shared" | "new_follower" | "follow_request" | "follow_accepted" | "place_comment" | "guide_published" | "places_added" | "guide_used" | "collab_invite" | "user_joined" | "wish_granted" | "guide_request" | "request_joined" | "request_declined" */
     type: text("type").notNull(),
     actorId: text("actor_id").references(() => users.id, { onDelete: "cascade" }),
     guideId: text("guide_id").references(() => guides.id, { onDelete: "cascade" }),
     /** Soft reference to a place, for deep-linking a place_comment notification — not a hard FK, matching forkedFromGuideId's pattern. */
     placeId: text("place_id"),
+    /** Soft reference to a guide request ("Hisham asked you for a Tashkent guide"). */
+    requestId: text("request_id"),
     readAt: integer("read_at", { mode: "timestamp_ms" }),
     /** How many things this notification covers (e.g. places added in one batch). */
     count: integer("count").notNull().default(1),
@@ -548,6 +550,44 @@ export const wishGrants = sqliteTable(
   },
   (t) => [primaryKey({ columns: [t.wishId, t.guideId] }), index("wish_grants_guide_idx").on(t.guideId)],
 );
+
+/**
+ * "Ask a friend for a guide": someone asks a person who knows a city to make them a guide.
+ * In the app (recipientId set when sent) or as a WhatsApp/share link (token; recipientId set when someone opens it signed in).
+ * Linked to the asker's wish for that city, so the finished guide is sent through the wish list (wishGrants).
+ */
+export const guideRequests = sqliteTable(
+  "guide_requests",
+  {
+    id: text("id").primaryKey(),
+    /** Secret for the /ask/<token> link. */
+    token: text("token").notNull().unique(),
+    requesterId: text("requester_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    recipientId: text("recipient_id").references(() => users.id, { onDelete: "cascade" }),
+    wishId: text("wish_id").references(() => guideWishes.id, { onDelete: "set null" }),
+    city: text("city").notNull(),
+    country: text("country").notNull().default(""),
+    lat: real("lat"),
+    lng: real("lng"),
+    note: text("note").notNull().default(""),
+    /** "app" | "link" */
+    channel: text("channel").notNull(),
+    /** "sent" | "opened" | "making" | "declined" | "done" */
+    status: text("status").notNull().default("sent"),
+    guideId: text("guide_id").references(() => guides.id, { onDelete: "set null" }),
+    openedAt: integer("opened_at", { mode: "timestamp_ms" }),
+    respondedAt: integer("responded_at", { mode: "timestamp_ms" }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [
+    index("guide_requests_requester_idx").on(t.requesterId, t.createdAt),
+    index("guide_requests_recipient_idx").on(t.recipientId, t.status),
+    index("guide_requests_guide_idx").on(t.guideId),
+  ],
+);
+export type GuideRequest = typeof guideRequests.$inferSelect;
 
 export type GuideWish = typeof guideWishes.$inferSelect;
 export type WishGrant = typeof wishGrants.$inferSelect;

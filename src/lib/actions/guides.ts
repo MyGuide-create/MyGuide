@@ -7,7 +7,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "../auth";
 import { getDb } from "../db";
-import { guideCollaborators, guideShares, guides, media, notifications, placeComments, placeLocations, placePhotos, placeTips, places, users, wishGrants, type Guide, type Place, type PlaceLocation, type PlaceTip } from "../db/schema";
+import { guideCollaborators, guideRequests, guideShares, guides, media, notifications, placeComments, placeLocations, placePhotos, placeTips, places, users, wishGrants, type Guide, type Place, type PlaceLocation, type PlaceTip } from "../db/schema";
 import { canViewGuide, getGuideById, isCollaborator } from "../guides";
 import { notifyGuidePublished, notifyPlacesAdded } from "../notify";
 import { sendWishGrants, wishesForMaking } from "../wishes";
@@ -78,7 +78,7 @@ export interface DraftPlaceInput {
 const CREATE_CONCURRENCY = 6;
 
 /** Create a guide (optionally with already-resolved places) and go to the editor. */
-export async function createGuide(input: { title: string; city?: string; country?: string; lat?: number | null; lng?: number | null; places?: DraftPlaceInput[]; wishIds?: string[] }): Promise<string> {
+export async function createGuide(input: { title: string; city?: string; country?: string; lat?: number | null; lng?: number | null; places?: DraftPlaceInput[]; wishIds?: string[]; /** Made for an "Ask a friend" request. */ askId?: string }): Promise<string> {
   const user = await getCurrentUser();
   if (!user) redirect("/login?next=/create");
   const db = await getDb();
@@ -135,6 +135,14 @@ export async function createGuide(input: { title: string; city?: string; country
   const derivedCity = rows.find((r) => r.city);
   if (!known && !input.country?.trim() && derivedCity) {
     await db.update(guides).set({ city: derivedCity.city, country: derivedCity.country }).where(eq(guides.id, id));
+  }
+  // Made for an ask: the ask now points at this guide ("working on it"), and its wish gets the guide on publish.
+  if (input.askId) {
+    const ask = await db.query.guideRequests.findFirst({ where: eq(guideRequests.id, input.askId) });
+    if (ask && ask.recipientId === user.id) {
+      await db.update(guideRequests).set({ guideId: id, status: "making" }).where(eq(guideRequests.id, ask.id));
+      if (ask.wishId && !(input.wishIds ?? []).includes(ask.wishId)) input.wishIds = [...(input.wishIds ?? []), ask.wishId];
+    }
   }
   // Made from someone's wish list: remember who it's for; it's sent to them when published.
   if (input.wishIds?.length) {

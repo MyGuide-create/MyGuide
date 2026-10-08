@@ -1,6 +1,6 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "./db";
-import { follows, guides, notifications, places, users } from "./db/schema";
+import { follows, guideRequests, guides, notifications, places, users } from "./db/schema";
 import { sendPush, type PushMessage } from "./push";
 
 type NewNotification = typeof notifications.$inferInsert;
@@ -14,6 +14,9 @@ export async function addNotifications(rows: NewNotification[]): Promise<void> {
     const actorIds = [...new Set(rows.map((r) => r.actorId).filter((x): x is string => !!x))];
     const guideIds = [...new Set(rows.map((r) => r.guideId).filter((x): x is string => !!x))];
     const placeIds = [...new Set(rows.map((r) => r.placeId).filter((x): x is string => !!x))];
+    const requestIds = [...new Set(rows.map((r) => r.requestId).filter((x): x is string => !!x))];
+    const reqRows = requestIds.length ? await db.select().from(guideRequests).where(inArray(guideRequests.id, requestIds)) : [];
+    const request = new Map(reqRows.map((q) => [q.id, q]));
     const [actors, gs, ps] = await Promise.all([
       actorIds.length ? db.select().from(users).where(inArray(users.id, actorIds)) : [],
       guideIds.length ? db.select().from(guides).where(inArray(guides.id, guideIds)) : [],
@@ -27,6 +30,7 @@ export async function addNotifications(rows: NewNotification[]): Promise<void> {
         const a = r.actorId ? actor.get(r.actorId) : undefined;
         const g = r.guideId ? guide.get(r.guideId) : undefined;
         const p = r.placeId ? place.get(r.placeId) : undefined;
+        const q = r.requestId ? request.get(r.requestId) : undefined;
         const who = a?.displayName ?? "Someone";
         const n = r.count ?? 1;
         let title = "MyGuide";
@@ -92,6 +96,21 @@ export async function addNotifications(rows: NewNotification[]): Promise<void> {
               body = "Follow them to see their guides when they post.";
               extra = { actions: [{ action: "follow-back", title: "Follow" }], followUserId: a.id };
             }
+            break;
+          case "guide_request":
+            title = `${who} asked you for a ${q?.city ?? ""} guide`.replace("a  guide", "a guide");
+            body = q?.note || "You know it — tap to make them a guide or send one you've made.";
+            if (q) url = `/ask/${q.token}`;
+            break;
+          case "request_joined":
+            title = `${shortName(who)} joined MyGuide from your ask`;
+            body = q ? `You now follow each other. They can make your ${q.city} guide.` : "You now follow each other.";
+            if (a) url = `/u/${a.username}`;
+            break;
+          case "request_declined":
+            title = `${shortName(who)} can't help with ${q?.city ?? "that city"}`;
+            body = "Ask someone else who knows it?";
+            url = "/wishes";
             break;
           case "collab_invite":
             title = `${who} invited you to edit a guide`;

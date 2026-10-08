@@ -47,7 +47,21 @@ export interface ForWish {
 /** A real-sounding example beats "What's this guide for?" (Raad's suggestion). */
 const TITLE_EXAMPLE = "Weekend away with the boys";
 
-export function VoiceCreate({ forWish, initialCity, startWithImport }: { forWish?: ForWish | null; initialCity?: PickedCity | null; /** Open straight on "Import your places" (+ → Import a Google Maps list). */ startWithImport?: boolean }) {
+export function VoiceCreate({
+  forWish,
+  initialCity,
+  startWithImport,
+  askId,
+  initialTitle,
+}: {
+  forWish?: ForWish | null;
+  initialCity?: PickedCity | null;
+  /** Open straight on "Import your places" (+ → Import a Google Maps list). */
+  startWithImport?: boolean;
+  /** Making a guide for an "Ask a friend" request. */
+  askId?: string;
+  initialTitle?: string;
+}) {
   const router = useRouter();
   const [stage, setStage] = useState<Stage>(startWithImport ? "paste" : "typed");
   const [picked, setPicked] = useState<PickedCity | null>(initialCity ?? null);
@@ -55,7 +69,7 @@ export function VoiceCreate({ forWish, initialCity, startWithImport }: { forWish
   const [pastedList, setPastedList] = useState("");
   const [result, setResult] = useState<ParsedPlacesResponse | null>(null);
   const [draft, setDraft] = useState<DraftPlace[]>([]);
-  const [title, setTitle] = useState("");
+  const [title, setTitle] = useState(initialTitle ?? "");
   const [city, setCity] = useState(forWish?.city ?? "");
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
@@ -189,6 +203,7 @@ export function VoiceCreate({ forWish, initialCity, startWithImport }: { forWish
         city: city || result?.city,
         country: result?.country,
         wishIds: forWish?.ids,
+        askId,
         places: kept.map((p) => ({
           name: p.resolved?.name ?? p.name,
           providerId: p.resolved?.providerId ?? null,
@@ -216,6 +231,7 @@ export function VoiceCreate({ forWish, initialCity, startWithImport }: { forWish
         lat: picked && Number.isFinite(picked.lat) ? picked.lat : null,
         lng: picked && Number.isFinite(picked.lng) ? picked.lng : null,
         wishIds: forWish?.ids,
+        askId,
       });
       router.push(`/g/${slug}/edit?start=1`);
     } catch (e) {

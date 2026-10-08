@@ -1,4 +1,5 @@
 import { and, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import { asksForWishes, markAsksDone, type AskView } from "./requests";
 import { getDb } from "./db";
 import { follows, guideShares, guideWishes, guides, users, wishGrants, type Guide, type GuideWish } from "./db/schema";
 import { toPublicUser, type PublicUser } from "./auth";
@@ -22,6 +23,8 @@ export interface WishView {
   viewerGuides: Array<{ id: string; slug: string; title: string }>;
   /** Viewer's guides already sent for this wish. */
   viewerSent: string[];
+  /** Your own wishes only: who you asked for this city and where each ask stands. */
+  asks?: AskView[];
 }
 
 const sameCity = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
@@ -83,8 +86,14 @@ export async function listWishesFor(owner: { id: string; profileVisibility: stri
   if (!(await canSeeWishesOf(owner, viewerId))) return null;
   const db = await getDb();
   const wishList = await db.select().from(guideWishes).where(eq(guideWishes.userId, owner.id)).orderBy(desc(guideWishes.createdAt));
-  const [granted, mine, sent] = await Promise.all([grantedFor(wishList, viewerId), owner.id === viewerId ? Promise.resolve([]) : viewerCityGuides(viewerId), viewerSentFor(wishList.map((w) => w.id), viewerId)]);
+  const [granted, mine, sent, asks] = await Promise.all([
+    grantedFor(wishList, viewerId),
+    owner.id === viewerId ? Promise.resolve([]) : viewerCityGuides(viewerId),
+    viewerSentFor(wishList.map((w) => w.id), viewerId),
+    owner.id === viewerId ? asksForWishes(wishList.map((w) => w.id)) : Promise.resolve({} as Record<string, AskView[]>),
+  ]);
   return wishList.map((w) => ({
+    asks: asks[w.id] ?? [],
     wish: w,
     granted: granted.get(w.id) ?? [],
     viewerGuides: mine.filter((g) => sameCity(g.city, w.city)).map((g) => ({ id: g.id, slug: g.slug, title: g.title })),
@@ -167,6 +176,8 @@ export async function pendingWishPeople(guideId: string): Promise<PublicUser[]> 
  */
 export async function sendWishGrants(guide: Guide): Promise<number> {
   if (!guide.publishedAt) return 0;
+  // Asks answered with this guide ("Ask a friend for a guide") are done once it's out.
+  await markAsksDone(guide.id);
   const db = await getDb();
   const pending = await db
     .select({ wishId: wishGrants.wishId, wisherId: guideWishes.userId })

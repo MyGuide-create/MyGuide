@@ -6,7 +6,8 @@ import { FollowButton } from "@/components/FollowButton";
 import { GuideCard } from "@/components/GuideCard";
 import { HeartIcon, LockIcon } from "@/components/Icons";
 import { Avatar, EmptyState, LinkButton } from "@/components/ui";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser, toPublicUser } from "@/lib/auth";
+import { AskForGuideButton } from "@/components/AskForGuide";
 import { getFollowStats, getUserByUsername, listGuidesByOwner } from "@/lib/guides";
 import { hiddenUserIds, viewerBlocked } from "@/lib/blocks";
 import { BlockButton } from "@/components/BlockButton";
@@ -81,6 +82,13 @@ export default async function ProfilePage({ params, searchParams }: PageProps<"/
                 <FollowButton userId={profile.id} initial={stats.viewerRequested ? "pending" : stats.viewerFollows} next={`/u/${profile.username}`} size="md" followsYou={stats.followsViewer} />
                 {stats.followsViewer && <span className="text-[12px] font-medium text-ink-muted rounded-full bg-cream-deep px-2.5 py-1">Follows you</span>}
               </div>
+            )
+          )}
+          {!own && !hiddenFromMe && (
+            viewer ? (
+              <AskForGuideButton person={toPublicUser(profile)} className="mt-2.5" />
+            ) : (
+              <LinkButton href={`/signup?next=${encodeURIComponent(`/u/${profile.username}`)}`} size="sm" variant="outline" className="mt-2.5">Ask {profile.displayName.split(" ")[0]} for a guide</LinkButton>
             )
           )}
         </div>

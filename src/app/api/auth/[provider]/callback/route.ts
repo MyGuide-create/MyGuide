@@ -52,7 +52,8 @@ async function finish(req: Request, provider: string, fields: { code: string | n
     const { user, isNew } = await userForProvider(provider, profile);
     if (isNew) after(() => notifyUserJoined(user.id));
     const next = pending.next || "/";
-    const dest = isNew ? `/welcome?new=1${next !== "/" ? `&next=${encodeURIComponent(next)}` : ""}` : next;
+    // Came from a friend's "make me a guide" link: straight back to it, no intro.
+    const dest = isNew && !next.startsWith("/ask/") ? `/welcome?new=1${next !== "/" ? `&next=${encodeURIComponent(next)}` : ""}` : next;
     const res = NextResponse.redirect(new URL(dest, origin), 303);
     await setSessionOn(res, user.id);
     res.cookies.set(OAUTH_COOKIE, "", { ...oauthCookieOptions(), maxAge: 0 });

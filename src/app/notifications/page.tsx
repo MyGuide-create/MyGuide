@@ -7,7 +7,8 @@ import { Avatar, Button, EmptyState, LinkButton } from "@/components/ui";
 import { respondToFollowRequest } from "@/lib/actions/social";
 import { requireUser, toPublicUser } from "@/lib/auth";
 import { getDb } from "@/lib/db";
-import { follows, guides, notifications, places, users } from "@/lib/db/schema";
+import { follows, guideRequests, guides, notifications, places, users } from "@/lib/db/schema";
+import { pendingAsksFor } from "@/lib/requests";
 import { listSharedWithUser } from "@/lib/guides";
 import { timeAgo } from "@/lib/utils";
 import { PushToggle } from "@/components/PushToggle";
@@ -41,6 +42,12 @@ export default async function NotificationsPage() {
   const guideMap = new Map(guideRows.map((g) => [g.id, g]));
   const placeMap = new Map(placeRows.map((p) => [p.id, p]));
   const shared = await listSharedWithUser(user.id);
+  const requestIds = [...new Set(rows.map((r) => r.requestId).filter((x): x is string => !!x))];
+  const [reqRows, asks] = await Promise.all([
+    requestIds.length ? db.select().from(guideRequests).where(inArray(guideRequests.id, requestIds)) : Promise.resolve([]),
+    pendingAsksFor(user.id),
+  ]);
+  const reqMap = new Map(reqRows.map((q) => [q.id, q]));
 
   // Opening the Notification Centre is itself "seeing" them — mark everything read now
   // so the bell badge clears immediately, instead of waiting for a separate action.
@@ -56,6 +63,25 @@ export default async function NotificationsPage() {
       <TopBar title="Activity" avatarUser={toPublicUser(user)} />
       <main className="px-4 pt-3 pb-6 flex flex-col gap-3">
         <PushToggle publicKey={pushPublicKey()} compact />
+        {asks.length > 0 && (
+          <section className="rounded-2xl border border-terracotta-soft bg-terracotta-tint/40 p-3">
+            <h2 className="px-1 font-display text-[20px] inline-flex items-center gap-2"><SparkleIcon size={16} className="text-terracotta" /> Guide requests</h2>
+            <ul className="mt-2 flex flex-col gap-2">
+              {asks.map(({ req: q, requester }) => (
+                <li key={q.id}>
+                  <Link href={`/ask/${q.token}`} className="flex items-center gap-3 rounded-xl bg-paper px-3 py-2.5 hover:bg-cream-deep/40">
+                    <Avatar user={requester} size={34} />
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-[13.5px] leading-snug"><b className="font-semibold">{requester.displayName}</b> wants a <b className="font-semibold">{q.city}</b> guide</span>
+                      {q.note ? <span className="block text-[12px] text-ink-muted italic truncate">“{q.note}”</span> : <span className="block text-[12px] text-ink-muted">{q.status === "making" ? "You’re working on it" : "Tap to make it or send one"}</span>}
+                    </span>
+                    <span className="text-[12.5px] font-semibold text-terracotta shrink-0">{q.status === "making" ? "Continue →" : "Reply →"}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
         {rows.length === 0 && (
           <EmptyState title="Nothing here yet" body="New guides and places from people you follow, guides shared with you, and new followers all land here." action={<LinkButton href="/" size="sm" variant="outline">Browse the feed</LinkButton>} />
         )}
@@ -126,6 +152,22 @@ export default async function NotificationsPage() {
                       {who} used {n.count} {n.count === 1 ? "place" : "places"} from <span className="font-display text-[16px]">“{rawGuide.title}”</span> in their own guide, with your notes credited.
                     </>
                   )}
+                  {n.type === "guide_request" && (
+                    <>
+                      {who} asked you for a <b className="font-semibold">{reqMap.get(n.requestId ?? "")?.city ?? ""}</b> guide.
+                      {reqMap.get(n.requestId ?? "")?.note ? <span className="block text-[12.5px] text-ink-muted italic">“{reqMap.get(n.requestId ?? "")!.note}”</span> : null}
+                    </>
+                  )}
+                  {n.type === "request_joined" && (
+                    <>
+                      {who} joined MyGuide from your {reqMap.get(n.requestId ?? "")?.city ?? ""} ask. You now follow each other.
+                    </>
+                  )}
+                  {n.type === "request_declined" && (
+                    <>
+                      {who} can&apos;t help with {reqMap.get(n.requestId ?? "")?.city ?? "that city"}. <span className="text-ink-muted">Ask someone else from your wish list.</span>
+                    </>
+                  )}
                   {n.type === "collab_invite" && rawGuide && (
                     <>
                       {who} invited you to edit <span className="font-display text-[16px]">“{rawGuide.title}”</span> with them.
@@ -141,10 +183,14 @@ export default async function NotificationsPage() {
                     {n.type === "guide_published" && <PlusIcon size={12} />}
                     {n.type === "places_added" && <PinIcon size={12} />}
                     {n.type === "guide_used" && <ForkIcon size={12} />}
-                    {n.type === "wish_granted" && <SparkleIcon size={12} />}
+                    {(n.type === "wish_granted" || n.type === "guide_request" || n.type === "request_declined") && <SparkleIcon size={12} />}
+                    {n.type === "request_joined" && <UserIcon size={12} />}
                     {timeAgo(n.createdAt)}
                   </span>
                   {n.type === "wish_granted" && rawGuide && <Link href={`/g/${rawGuide.slug}`} className="font-medium text-terracotta">Open your guide →</Link>}
+                  {n.type === "guide_request" && reqMap.get(n.requestId ?? "") && <Link href={`/ask/${reqMap.get(n.requestId ?? "")!.token}`} className="font-medium text-terracotta">Reply →</Link>}
+                  {n.type === "request_joined" && actor && <Link href={`/u/${actor.username}`} className="font-medium text-terracotta">View profile →</Link>}
+                  {n.type === "request_declined" && <Link href={`/u/${user.username}#wishes`} className="font-medium text-terracotta">Your wish list →</Link>}
                   {n.type === "collab_invite" && rawGuide && <Link href={`/g/${rawGuide.slug}/edit`} className="font-medium text-terracotta">Start editing →</Link>}
                   {guide && n.type !== "place_comment" && n.type !== "places_added" && n.type !== "collab_invite" && n.type !== "guide_used" && n.type !== "wish_granted" && <Link href={`/g/${guide.slug}`} className="font-medium text-terracotta">Open guide →</Link>}
                   {guide && n.type === "places_added" && (

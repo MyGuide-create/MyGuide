@@ -1,12 +1,15 @@
 "use client";
 
 import Link from "next/link";
+import { AskForGuideButton } from "./AskForGuide";
+import type { AskView } from "@/lib/requests";
+import { STATUS_LABEL } from "@/lib/requestStatus";
 import { useState, useTransition } from "react";
 import { addWish, removeWish, sendGuideForWish } from "@/lib/actions/wishes";
 import type { WishView } from "@/lib/wishes";
-import { CheckIcon, PinIcon, PlusIcon, SparkleIcon, TrashIcon } from "./Icons";
+import { CheckIcon, PinIcon, PlusIcon, SparkleIcon, TrashIcon, WhatsAppIcon } from "./Icons";
 import { Sheet } from "./ShareSheet";
-import { Button, Input, LinkButton, Spinner, cx } from "./ui";
+import { Avatar, Button, Input, LinkButton, Spinner, cx } from "./ui";
 
 /** "Add a city" form for your own wish list. */
 export function AddWishForm({ onAdded, compact }: { onAdded?: () => void; compact?: boolean }) {
@@ -114,7 +117,7 @@ export function WishList({ wishes, own, ownerName, ownerUsername, signedIn }: { 
       </div>
       <p className="mt-1.5 text-[12.5px] text-ink-muted leading-snug">
         {own
-          ? "Cities you'd love a guide to. Anyone who sees your profile can make one for you — you'll get it the moment they publish."
+          ? "Cities you'd love a guide to. Ask a friend who knows one — on MyGuide or by WhatsApp — and you'll get the guide the moment they publish."
           : `Cities ${first} wants a guide to. Know one? Make it for ${first} — it's sent to them when you publish.`}
       </p>
 
@@ -127,6 +130,10 @@ export function WishList({ wishes, own, ownerName, ownerUsername, signedIn }: { 
                 <div className="text-[15px] font-semibold leading-tight">{w.wish.city}{w.wish.country ? <span className="font-normal text-ink-muted">, {w.wish.country}</span> : null}</div>
                 {w.wish.note && <div className="text-[12.5px] text-ink-muted italic leading-snug">{w.wish.note}</div>}
                 <GrantedLinks granted={w.granted} />
+                {own && <AskStatus asks={w.asks ?? []} />}
+                {own && w.granted.length === 0 && (
+                  <AskForGuideButton city={{ city: w.wish.city, country: w.wish.country }} label={(w.asks ?? []).length ? "Ask someone else" : "Ask a friend"} className="mt-2" />
+                )}
                 {!own && (
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     {signedIn ? (
@@ -164,6 +171,25 @@ export function WishList({ wishes, own, ownerName, ownerUsername, signedIn }: { 
         </div>
       )}
     </section>
+  );
+}
+
+/** Who you asked for this city, and where each ask stands. */
+function AskStatus({ asks }: { asks: AskView[] }) {
+  if (!asks.length) return null;
+  return (
+    <ul className="mt-1.5 flex flex-col gap-1">
+      {asks.map((a) => (
+        <li key={a.id} className="flex items-center gap-2 text-[12.5px]">
+          {a.recipient ? <Avatar user={a.recipient} size={20} /> : <span className="w-5 h-5 rounded-full bg-[#25D366]/15 text-[#128C4B] flex items-center justify-center"><WhatsAppIcon size={11} /></span>}
+          <span className="font-medium truncate">{a.recipient ? a.recipient.displayName.split(" ")[0] : "Link sent"}</span>
+          <span className={a.status === "done" ? "text-sage font-medium" : a.status === "declined" ? "text-ink-faint" : "text-ink-muted"}>
+            · {a.recipient ? STATUS_LABEL[a.status] : "not opened yet"}
+          </span>
+          {a.status === "done" && a.guideSlug && <Link href={`/g/${a.guideSlug}`} className="text-terracotta font-medium">Open</Link>}
+        </li>
+      ))}
+    </ul>
   );
 }
 

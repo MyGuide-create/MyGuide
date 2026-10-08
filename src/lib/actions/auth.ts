@@ -48,6 +48,8 @@ export async function signUp(_prev: AuthState, formData: FormData): Promise<Auth
   await createSession(id);
   // "X just joined MyGuide" — after the response, so sign-up isn't slowed by pushes.
   after(() => notifyUserJoined(id));
+  // Came from a friend's "make me a guide" link: straight back to it — the intro can wait.
+  if (next.startsWith("/ask/")) redirect(next);
   // New people first see a short welcome with people to follow, then continue where they were going.
   redirect(`/welcome${next && next !== "/" ? `?next=${encodeURIComponent(next)}` : ""}`);
 }
