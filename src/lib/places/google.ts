@@ -3,10 +3,13 @@ import { tidyCity } from "./cityName";
 import { sameBrand } from "./branches";
 import { findCity } from "./cities";
 import { haversineMeters } from "./geo";
-import type { PlaceResult, PlaceSuggestion, PlacesProvider } from "./types";
+import type { CityInfo, CitySuggestion, PlaceResult, PlaceSuggestion, PlacesProvider } from "./types";
 import { splitGoogleWebsite } from "../placeLinks";
+import { areaFromComponents, tidyArea, tidyPlaceName } from "./tidy";
 
 const BASE = "https://places.googleapis.com/v1";
+/** Always ask for English: otherwise Google answers in the local language (Arabic street names in Dubai). */
+const LANG = "en";
 const FIELDS = [
   "id",
   "displayName",
@@ -52,8 +55,9 @@ function toResult(p: GooglePlace): PlaceResult {
   const status = p.businessStatus;
   return {
     providerId: p.id,
-    name: p.displayName?.text ?? "Unnamed place",
+    name: tidyPlaceName(p.displayName?.text ?? "Unnamed place"),
     address: p.formattedAddress ?? "",
+    area: areaFromComponents(p.addressComponents, city),
     city,
     country,
     lat: p.location?.latitude ?? 0,
@@ -71,8 +75,18 @@ function toResult(p: GooglePlace): PlaceResult {
 }
 
 async function gfetch<T>(path: string, init: RequestInit & { fieldMask?: string }): Promise<T | null> {
-  const res = await fetch(`${BASE}${path}`, {
+  // English everywhere: GET requests take it in the query string, POST ones in the body.
+  let url = `${BASE}${path}`;
+  let body = init.body;
+  if ((init.method ?? "GET") === "GET") url += `${url.includes("?") ? "&" : "?"}languageCode=${LANG}`;
+  else if (typeof body === "string") {
+    try {
+      body = JSON.stringify({ languageCode: LANG, ...JSON.parse(body) });
+    } catch {}
+  }
+  const res = await fetch(url, {
     ...init,
+    body,
     headers: {
       "Content-Type": "application/json",
       "X-Goog-Api-Key": key(),
@@ -88,8 +102,8 @@ async function gfetch<T>(path: string, init: RequestInit & { fieldMask?: string 
   return (await res.json()) as T;
 }
 
-function locationBias(cityHint?: string) {
-  const c = findCity(cityHint);
+function locationBias(cityHint?: string, near?: { lat: number; lng: number } | null) {
+  const c = near ?? findCity(cityHint);
   if (!c) return undefined;
   return { circle: { center: { latitude: c.lat, longitude: c.lng }, radius: 30000 } };
 }
@@ -97,10 +111,10 @@ function locationBias(cityHint?: string) {
 export const googleProvider: PlacesProvider = {
   name: "google",
 
-  async autocomplete(input, cityHint) {
+  async autocomplete(input, cityHint, near) {
     const data = await gfetch<{ suggestions?: Array<{ placePrediction?: { placeId: string; text?: { text: string }; structuredFormat?: { mainText?: { text: string }; secondaryText?: { text: string } } } }> }>(
       "/places:autocomplete",
-      { method: "POST", body: JSON.stringify({ input, locationBias: locationBias(cityHint) }) },
+      { method: "POST", body: JSON.stringify({ input, locationBias: locationBias(cityHint, near) }) },
     );
     const suggestions = (data?.suggestions ?? [])
       .map((s) => s.placePrediction)
@@ -116,7 +130,7 @@ export const googleProvider: PlacesProvider = {
     const found = await gfetch<{ places?: Array<{ id: string; displayName?: { text: string }; formattedAddress?: string }> }>("/places:searchText", {
       method: "POST",
       fieldMask: "places.id,places.displayName,places.formattedAddress",
-      body: JSON.stringify({ textQuery: input, pageSize: 5, locationBias: locationBias(cityHint) }),
+      body: JSON.stringify({ textQuery: input, pageSize: 5, locationBias: locationBias(cityHint, near) }),
     });
     return (found?.places ?? []).map<PlaceSuggestion>((p) => ({
       providerId: p.id,
@@ -135,6 +149,39 @@ export const googleProvider: PlacesProvider = {
     });
     const p = data?.places?.[0];
     return p ? toResult(p) : null;
+  },
+
+  async cities(input) {
+    // "(regions)" covers cities, towns and regions like Bali; "(cities)" alone would miss those.
+    const data = await gfetch<{ suggestions?: Array<{ placePrediction?: { placeId: string; text?: { text: string }; structuredFormat?: { mainText?: { text: string }; secondaryText?: { text: string } }; types?: string[] } }> }>(
+      "/places:autocomplete",
+      { method: "POST", body: JSON.stringify({ input, includedPrimaryTypes: ["(regions)"] }) },
+    );
+    return (data?.suggestions ?? [])
+      .map((s) => s.placePrediction)
+      .filter((p): p is NonNullable<typeof p> => !!p && !(p.types ?? []).some((t) => t === "postal_code" || t === "street_address"))
+      .slice(0, 6)
+      .map<CitySuggestion>((p) => ({
+        id: p.placeId,
+        mainText: p.structuredFormat?.mainText?.text ?? p.text?.text ?? "",
+        secondaryText: p.structuredFormat?.secondaryText?.text ?? "",
+      }));
+  },
+
+  async city(id) {
+    const p = await gfetch<{ displayName?: { text: string }; addressComponents?: Array<{ longText: string; types?: string[] }>; location?: { latitude: number; longitude: number } }>(
+      `/places/${encodeURIComponent(id)}`,
+      { method: "GET", fieldMask: "id,displayName,addressComponents,location" },
+    );
+    if (!p?.location) return null;
+    const comp = (type: string) => p.addressComponents?.find((c) => c.types?.includes(type))?.longText ?? "";
+    const info: CityInfo = {
+      city: tidyCity(p.displayName?.text || comp("locality") || comp("administrative_area_level_1")),
+      country: comp("country"),
+      lat: p.location.latitude,
+      lng: p.location.longitude,
+    };
+    return info;
   },
 
   async details(providerId) {
@@ -237,10 +284,10 @@ export async function getPlacePhotos(googlePlaceId: string, limit = 4): Promise<
  * Rough "where is this" for a dropped pin (city, country and a short area line).
  * Uses the Geocoding API; returns null if it isn't enabled for the key or finds nothing.
  */
-export async function reverseGeocode(lat: number, lng: number): Promise<{ area: string; city: string; country: string } | null> {
+export async function reverseGeocode(lat: number, lng: number): Promise<{ area: string; hood: string; city: string; country: string } | null> {
   if (!key()) return null;
   try {
-    const res = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${key()}`, { cache: "no-store" });
+    const res = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&language=${LANG}&key=${key()}`, { cache: "no-store" });
     if (!res.ok) return null;
     const data = (await res.json()) as { status: string; results?: { address_components: { long_name: string; types: string[] }[] }[] };
     if (data.status !== "OK" || !data.results?.length) {
@@ -249,11 +296,11 @@ export async function reverseGeocode(lat: number, lng: number): Promise<{ area: 
     }
     const comps = data.results.flatMap((r) => r.address_components);
     const find = (...types: string[]) => comps.find((c) => types.some((t) => c.types.includes(t)))?.long_name ?? "";
-    const near = find("neighborhood", "sublocality", "sublocality_level_1");
+    const near = tidyArea(find("neighborhood", "sublocality", "sublocality_level_1"));
     const city = tidyCity(find("locality", "postal_town") || find("administrative_area_level_2") || find("administrative_area_level_1"));
     const country = find("country");
     const area = [near && near !== city ? near : "", city, country].filter(Boolean).join(", ");
-    return { area, city, country };
+    return { area, hood: near && near !== city ? near : "", city, country };
   } catch (e) {
     console.warn("[places/google] geocode failed", e);
     return null;

@@ -9,7 +9,7 @@ import type { GuideDetail } from "@/lib/guides";
 import type { PublicUser } from "@/lib/auth";
 import { forkGuide } from "@/lib/actions/guides";
 import { orderedCategories } from "@/lib/places/order";
-import { neighbourhood } from "@/lib/places/neighbourhood";
+import { placeArea } from "@/lib/places/neighbourhood";
 import { timeAgo } from "@/lib/utils";
 import { track } from "@/lib/track";
 import { FollowButton } from "./FollowButton";
@@ -182,7 +182,7 @@ export function GuideView({ detail, viewerId, viewer, shareUrl, shareKey }: { de
               note: p.note,
               photoUrl: p.photoUrl,
               photoMediaId: p.photoMediaId,
-              subtitle: neighbourhood(p.address, p.city, p.country),
+              subtitle: placeArea(p),
               href: `/g/${guide.slug}/p/${p.id}${keyQuery}`,
               mapsHref: mapsUrl(p),
             }, ...(detail.placeLocations[p.id] ?? []).map((b) => ({

@@ -13,11 +13,17 @@ export const metadata = { title: "Create a guide" };
 export default async function CreatePage({ searchParams }: PageProps<"/create">) {
   const sp = await searchParams;
   const wishParam = typeof sp.wish === "string" ? sp.wish : "";
-  const user = await requireUser(`/create${wishParam ? `?wish=${encodeURIComponent(wishParam)}` : ""}`);
+  const keep = new URLSearchParams(Object.entries(sp).filter((e): e is [string, string] => typeof e[1] === "string" && ["wish", "city", "country", "lat", "lng"].includes(e[0]))).toString();
+  const user = await requireUser(`/create${keep ? `?${keep}` : ""}`);
   // "Make this guide" from someone's wish list: who it's for, sent to them when published.
   const wanted = wishParam ? await wishesForMaking(wishParam.split(","), user.id) : [];
   const forWish = wanted.length
     ? { ids: wanted.map((w) => w.wish.id), city: wanted[0].wish.city, names: wanted.map((w) => w.user.displayName.split(" ")[0]) }
+    : null;
+  // From a city page ("Start a guide for Tashkent"): the city arrives already picked.
+  const one = (v: unknown) => (typeof v === "string" ? v.trim().slice(0, 80) : "");
+  const initialCity = one(sp.city)
+    ? { city: one(sp.city), country: one(sp.country), lat: Number(one(sp.lat) || NaN), lng: Number(one(sp.lng) || NaN), label: [one(sp.city), one(sp.country)].filter(Boolean).join(", ") }
     : null;
   return (
     <AppShell nav={false}>
@@ -30,7 +36,7 @@ export default async function CreatePage({ searchParams }: PageProps<"/create">)
           </span>
         </div>
       )}
-      <VoiceCreate forWish={forWish} />
+      <VoiceCreate forWish={forWish} initialCity={initialCity} />
     </AppShell>
   );
 }

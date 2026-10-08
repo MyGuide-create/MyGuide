@@ -6,6 +6,8 @@ export interface PlaceResult {
   providerId: string;
   name: string;
   address: string;
+  /** Neighbourhood ("Umm Suqeim"), "" when Google doesn't say. */
+  area?: string;
   city: string;
   country: string;
   lat: number;
@@ -37,9 +39,26 @@ export interface PlaceSuggestion {
   source: "google" | "mock";
 }
 
+/** A city or region from the city picker ("Tashkent" · "Uzbekistan"). */
+export interface CitySuggestion {
+  id: string;
+  mainText: string;
+  secondaryText: string;
+}
+
+export interface CityInfo {
+  city: string;
+  country: string;
+  lat: number;
+  lng: number;
+}
+
 export interface PlacesProvider {
   readonly name: "google" | "mock";
-  autocomplete(input: string, cityHint?: string): Promise<PlaceSuggestion[]>;
+  autocomplete(input: string, cityHint?: string, near?: { lat: number; lng: number } | null): Promise<PlaceSuggestion[]>;
+  /** Cities and regions only, for "Going somewhere?" and a guide's city. */
+  cities(input: string): Promise<CitySuggestion[]>;
+  city(id: string): Promise<CityInfo | null>;
   searchText(query: string, cityHint?: string): Promise<PlaceResult | null>;
   details(providerId: string): Promise<PlaceResult | null>;
   businessStatus(providerId: string): Promise<PlaceResult["businessStatus"]>;

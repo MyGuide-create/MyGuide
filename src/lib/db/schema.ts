@@ -72,6 +72,9 @@ export const guides = sqliteTable(
     title: text("title").notNull(),
     city: text("city").notNull().default(""),
     country: text("country").notNull().default(""),
+    /** Centre of the guide's city/region (from the city picker), for the map and place search before any places are added. */
+    lat: real("lat"),
+    lng: real("lng"),
     description: text("description").notNull().default(""),
     coverMediaId: text("cover_media_id"),
     /** External cover photo (Unsplash hotlink or Google Places photo proxy). Ignored when coverMediaId is set. */
@@ -111,6 +114,8 @@ export const places = sqliteTable(
     position: integer("position").notNull().default(0),
     name: text("name").notNull(),
     address: text("address").notNull().default(""),
+    /** Neighbourhood from Google ("Umm Suqeim", "Canggu"); "" when unknown — then it's guessed from the address. */
+    area: text("area").notNull().default(""),
     city: text("city").notNull().default(""),
     country: text("country").notNull().default(""),
     lat: real("lat"),

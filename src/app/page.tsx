@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { AppShell, Wordmark } from "@/components/AppShell";
+import { GoingSomewhere } from "@/components/GoingSomewhere";
 import { GuideCard } from "@/components/GuideCard";
 import { Avatar, EmptyState, LinkButton, cx } from "@/components/ui";
 import { getCurrentUser } from "@/lib/auth";
@@ -45,18 +46,23 @@ export default async function HomePage({ searchParams }: PageProps<"/">) {
             <LinkButton href="/login" size="sm" variant="outline">Log in</LinkButton>
           )}
         </div>
-        <p className="mt-3 font-display text-[30px] leading-[1.05]">
-          {user ? `Where next, ${user.displayName.split(" ")[0]}?` : "Guides from people whose taste you trust."}
+        <h1 className="mt-5 font-display text-[34px] leading-[1.05]">
+          {user ? `Going somewhere, ${user.displayName.split(" ")[0]}?` : "Going somewhere?"}
+        </h1>
+        <p className="mt-1.5 text-[14.5px] text-ink-muted">
+          {user ? "Find guides from people whose taste you trust." : "Guides from people whose taste you trust."}
         </p>
+        <div className="mt-4">
+          <GoingSomewhere />
+        </div>
         {user && (
-          <Link href="/trips" className="mt-4 flex items-center justify-between rounded-2xl bg-sage-tint/70 px-4 py-2.5 text-[13px]">
-            <span><b className="font-semibold">Going somewhere?</b> Plan a trip and we&apos;ll gather the guides.</span>
-            <span className="text-sage font-medium shrink-0 ml-2">Plan →</span>
+          <Link href="/?scope=following" className="mt-3 inline-flex items-center gap-1.5 px-1 text-[14px] font-medium text-terracotta-deep">
+            See what friends recommend <span aria-hidden>→</span>
           </Link>
         )}
       </header>
 
-      <div className="px-5 flex gap-5 border-b border-line/70">
+      <div className="mt-2 px-5 flex gap-5 border-b border-line/70">
         {tab("public", "Everyone")}
         {tab("following", "Following")}
       </div>

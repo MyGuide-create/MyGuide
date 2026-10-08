@@ -60,8 +60,11 @@ export function GuideMap({
   className,
   showCard = true,
   locate = true,
+  center,
 }: {
   places: MapPlace[];
+  /** Where to look when there are no pins yet (a new guide's city). */
+  center?: { lat: number; lng: number } | null;
   height?: number | string;
   onSelect?: (id: string) => void;
   className?: string;
@@ -84,7 +87,7 @@ export function GuideMap({
   return (
     <div style={{ height }} className={wrapperClass}>
       <APIProvider apiKey={apiKey}>
-        <GuideMapInner places={places} onSelect={onSelect} showCard={showCard} locate={locate} />
+        <GuideMapInner places={places} onSelect={onSelect} showCard={showCard} locate={locate} center={center ?? null} />
       </APIProvider>
     </div>
   );
@@ -92,7 +95,7 @@ export function GuideMap({
 
 type Located = MapPlace & { lat: number; lng: number; pin: number };
 
-function GuideMapInner({ places, onSelect, showCard, locate }: { places: MapPlace[]; onSelect?: (id: string) => void; showCard: boolean; locate: boolean }) {
+function GuideMapInner({ places, onSelect, showCard, locate, center }: { places: MapPlace[]; onSelect?: (id: string) => void; showCard: boolean; locate: boolean; center: { lat: number; lng: number } | null }) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [me, setMe] = useState<{ lat: number; lng: number } | null>(null);
   const [locating, setLocating] = useState<"idle" | "busy" | "denied">("idle");
@@ -104,8 +107,8 @@ function GuideMapInner({ places, onSelect, showCard, locate }: { places: MapPlac
   return (
     <>
       <Map
-        defaultCenter={withCoords[0] ? { lat: withCoords[0].lat, lng: withCoords[0].lng } : { lat: 20, lng: 0 }}
-        defaultZoom={withCoords.length ? 14 : 2}
+        defaultCenter={withCoords[0] ? { lat: withCoords[0].lat, lng: withCoords[0].lng } : center ?? { lat: 20, lng: 0 }}
+        defaultZoom={withCoords.length ? 14 : center ? 11 : 2}
         disableDefaultUI={false}
         zoomControl
         zoomControlOptions={{ position: ControlPosition.RIGHT_BOTTOM }}

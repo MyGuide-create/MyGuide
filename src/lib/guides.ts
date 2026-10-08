@@ -187,7 +187,7 @@ async function feedStats(rows: Guide[]): Promise<Map<string, GuideStats>> {
 export async function listFeed(opts: { viewerId?: string | null; scope?: "public" | "following"; city?: string; limit?: number }) {
   const db = await getDb();
   const conds: SQL[] = [publicPublished()!];
-  if (opts.city) conds.push(eq(guides.city, opts.city));
+  if (opts.city) conds.push(sql`lower(${guides.city}) = ${opts.city.trim().toLowerCase()}`);
   if (opts.scope === "following") {
     if (!opts.viewerId) return [];
     const followed = await db.select({ id: follows.followingId }).from(follows).where(eq(follows.followerId, opts.viewerId));

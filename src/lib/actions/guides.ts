@@ -77,7 +77,7 @@ export interface DraftPlaceInput {
 const CREATE_CONCURRENCY = 6;
 
 /** Create a guide (optionally with already-resolved places) and go to the editor. */
-export async function createGuide(input: { title: string; city?: string; country?: string; places?: DraftPlaceInput[]; wishIds?: string[] }): Promise<string> {
+export async function createGuide(input: { title: string; city?: string; country?: string; lat?: number | null; lng?: number | null; places?: DraftPlaceInput[]; wishIds?: string[] }): Promise<string> {
   const user = await getCurrentUser();
   if (!user) redirect("/login?next=/create");
   const db = await getDb();
@@ -91,8 +91,11 @@ export async function createGuide(input: { title: string; city?: string; country
     ownerId: user.id,
     slug,
     title,
-    city: known?.city ?? tidyCity(input.city),
-    country: known?.country ?? input.country?.trim() ?? "",
+    // A city picked from Google comes with its country and centre; otherwise fall back to the built-in list.
+    city: input.country?.trim() ? tidyCity(input.city) : known?.city ?? tidyCity(input.city),
+    country: input.country?.trim() || known?.country || "",
+    lat: validPin(input.lat ?? NaN, input.lng ?? NaN) ? input.lat : known?.lat ?? null,
+    lng: validPin(input.lat ?? NaN, input.lng ?? NaN) ? input.lng : known?.lng ?? null,
     shareToken: newToken(),
     createdAt: now,
     updatedAt: now,
@@ -107,6 +110,7 @@ export async function createGuide(input: { title: string; city?: string; country
       return {
         ...placeValues(id, position, name, null, user.id),
         address: p.pin.address?.trim().slice(0, 300) || where?.area || "",
+        area: where?.hood ?? "",
         city: where?.city ?? known?.city ?? "",
         country: where?.country ?? known?.country ?? "",
         lat: p.pin.lat,
@@ -128,7 +132,7 @@ export async function createGuide(input: { title: string; city?: string; country
   for (let i = 0; i < rows.length; i += 50) await db.insert(places).values(rows.slice(i, i + 50));
   // If the guide city was unknown, borrow it from the first place (in list order) that has one.
   const derivedCity = rows.find((r) => r.city);
-  if (!known && derivedCity) {
+  if (!known && !input.country?.trim() && derivedCity) {
     await db.update(guides).set({ city: derivedCity.city, country: derivedCity.country }).where(eq(guides.id, id));
   }
   // Made from someone's wish list: remember who it's for; it's sent to them when published.
@@ -147,6 +151,7 @@ function placeValues(guideId: string, position: number, fallbackName: string, r:
     position,
     name: r?.name ?? fallbackName,
     address: r?.address ?? "",
+    area: r?.area ?? "",
     city: r?.city ?? "",
     country: r?.country ?? "",
     lat: r?.lat ?? null,
@@ -167,7 +172,7 @@ function placeValues(guideId: string, position: number, fallbackName: string, r:
 
 export async function updateGuideMeta(
   guideId: string,
-  patch: { title?: string; city?: string; country?: string; description?: string; allowFork?: boolean; coverMediaId?: string | null },
+  patch: { title?: string; city?: string; country?: string; lat?: number | null; lng?: number | null; description?: string; allowFork?: boolean; coverMediaId?: string | null },
 ): Promise<void> {
   const { guide } = await requireOwner(guideId);
   const db = await getDb();
@@ -175,8 +180,18 @@ export async function updateGuideMeta(
   if (patch.title !== undefined) set.title = patch.title.trim() || guide.title;
   if (patch.city !== undefined) {
     const known = findCity(patch.city);
-    set.city = known?.city ?? tidyCity(patch.city);
+    // Picked from Google (country given): keep the name as picked; typed by hand: match the built-in list.
+    set.city = patch.country !== undefined && patch.country.trim() ? tidyCity(patch.city) : known?.city ?? tidyCity(patch.city);
     if (known && patch.country === undefined) set.country = known.country;
+    if (patch.lat === undefined) {
+      set.lat = known?.lat ?? null;
+      set.lng = known?.lng ?? null;
+    }
+  }
+  if (patch.lat !== undefined) {
+    const ok = validPin(patch.lat ?? NaN, patch.lng ?? NaN);
+    set.lat = ok ? patch.lat : null;
+    set.lng = ok ? patch.lng : null;
   }
   if (patch.country !== undefined) set.country = patch.country.trim();
   if (patch.description !== undefined) set.description = patch.description.trim();
@@ -300,6 +315,7 @@ export async function addPinnedPlace(guideId: string, input: { name: string; lat
   const values: typeof places.$inferInsert = {
     ...placeValues(guideId, Number(min) - 1, name, null, userId),
     address: where?.area ?? "",
+    area: where?.hood ?? "",
     city: where?.city ?? guide.city,
     country: where?.country ?? guide.country,
     lat: input.lat,
@@ -331,6 +347,7 @@ export async function setPlacePin(guideId: string, placeId: string, input: { lat
       businessStatus: null,
       hoursJson: null,
       address: where?.area ?? "",
+      area: where?.hood ?? "",
       ...(where?.city ? { city: where.city, country: where.country } : {}),
     })
     .where(and(eq(places.id, placeId), eq(places.guideId, guideId)));
@@ -502,6 +519,7 @@ export async function replacePlace(guideId: string, placeId: string, providerId:
     .set({
       name: resolved.name,
       address: resolved.address,
+      area: resolved.area ?? "",
       city: resolved.city,
       country: resolved.country,
       lat: resolved.lat,

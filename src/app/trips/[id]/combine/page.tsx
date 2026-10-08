@@ -7,7 +7,7 @@ import { requireUser, toPublicUser } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 import { guides, places, trips } from "@/lib/db/schema";
 import { planTrip } from "@/lib/guides";
-import { neighbourhood } from "@/lib/places/neighbourhood";
+import { placeArea } from "@/lib/places/neighbourhood";
 import { isReusable, placeKey } from "@/lib/reuse";
 
 export const dynamic = "force-dynamic";
@@ -50,7 +50,7 @@ export default async function CombinePage({ params, searchParams }: { params: Pr
     key: placeKey(p),
     name: p.name,
     category: p.category,
-    area: neighbourhood(p.address, p.city, p.country),
+    area: placeArea(p),
     hasNote: !!p.note,
     inTripGuide: tripKeys.has(placeKey(p)),
   }));

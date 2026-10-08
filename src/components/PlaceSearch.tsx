@@ -8,6 +8,7 @@ import { Input, Spinner } from "./ui";
 /** Google Maps autocomplete (or mock) for adding places by typing. */
 export function PlaceSearch({
   cityHint,
+  near,
   onPick,
   placeholder = "Add a place… e.g. Tsuta ramen",
   autoFocus,
@@ -15,6 +16,8 @@ export function PlaceSearch({
   onDropPin,
 }: {
   cityHint?: string;
+  /** Centre of the guide's city, so suggestions favour places there (cities not in our built-in list, like Tashkent). */
+  near?: { lat: number; lng: number } | null;
   onPick: (pick: { providerId?: string; name: string }) => void | Promise<void>;
   placeholder?: string;
   autoFocus?: boolean;
@@ -36,14 +39,14 @@ export function PlaceSearch({
     const t = setTimeout(async () => {
       setLoading(true);
       try {
-        const res = await fetch(`/api/places/autocomplete?q=${encodeURIComponent(q)}${cityHint ? `&city=${encodeURIComponent(cityHint)}` : ""}`, { signal: ctrl.signal });
+        const res = await fetch(`/api/places/autocomplete?q=${encodeURIComponent(q)}${cityHint ? `&city=${encodeURIComponent(cityHint)}` : ""}${near ? `&lat=${near.lat}&lng=${near.lng}` : ""}`, { signal: ctrl.signal });
         const data = (await res.json()) as { suggestions: PlaceSuggestion[] };
         setItems(data.suggestions);
         setOpen(true);
       } catch { /* aborted */ } finally { setLoading(false); }
     }, 220);
     return () => clearTimeout(t);
-  }, [q, cityHint]);
+  }, [q, cityHint, near?.lat, near?.lng]);
 
   const pick = async (s: PlaceSuggestion | null) => {
     const name = s?.mainText ?? q.trim();

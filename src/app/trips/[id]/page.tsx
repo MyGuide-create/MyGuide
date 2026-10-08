@@ -10,7 +10,7 @@ import { requireUser, toPublicUser } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 import { guides, places, trips } from "@/lib/db/schema";
 import { planTrip } from "@/lib/guides";
-import { neighbourhood } from "@/lib/places/neighbourhood";
+import { placeArea } from "@/lib/places/neighbourhood";
 import { formatTripDates } from "@/lib/utils";
 import { isReusable } from "@/lib/reuse";
 import { ForkIcon } from "@/components/Icons";
@@ -140,7 +140,7 @@ function PlaceLine({ href, place, sub }: { href: string; place: Parameters<typeo
         <PlaceTile place={place} size={52} />
         <span className="flex-1 min-w-0">
           <span className="block font-semibold text-[14px] truncate">{place.name}</span>
-          <span className="block text-[11.5px] text-ink-muted truncate">{[place.category, neighbourhood(place.address, place.city, place.country)].filter(Boolean).join(" · ")}</span>
+          <span className="block text-[11.5px] text-ink-muted truncate">{[place.category, placeArea(place)].filter(Boolean).join(" · ")}</span>
           {sub && <span className="block text-[11.5px] text-ink-faint truncate">{sub}</span>}
         </span>
       </Link>

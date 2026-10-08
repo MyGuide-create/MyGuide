@@ -10,6 +10,7 @@ import { findMapsListLink, hasMapsLink, listTitleFromCaption, MAPS_LIST_FALLBACK
 import { formatCoords } from "@/lib/places/pins";
 import { mapLimit } from "@/lib/utils";
 import { CheckIcon, ListIcon, PinIcon, XIcon } from "./Icons";
+import { CityPicker, type PickedCity } from "./CityPicker";
 import { PlaceSearch } from "./PlaceSearch";
 import { ScreenshotImport } from "./ScreenshotImport";
 import { Button, Input, Label, Spinner, Textarea, cx } from "./ui";
@@ -41,9 +42,14 @@ export interface ForWish {
  * (Google Maps lists, screenshots, WhatsApp, notes) and we structure it.
  * Voice was removed on 8 Oct 2026 (unreliable; phones have their own dictation).
  */
-export function VoiceCreate({ forWish }: { forWish?: ForWish | null }) {
+/** A real-sounding example beats "What's this guide for?" (Raad's suggestion). */
+const TITLE_EXAMPLE = "Weekend away with the boys";
+
+export function VoiceCreate({ forWish, initialCity }: { forWish?: ForWish | null; initialCity?: PickedCity | null }) {
   const router = useRouter();
   const [stage, setStage] = useState<Stage>("typed");
+  const [picked, setPicked] = useState<PickedCity | null>(initialCity ?? null);
+  const example = TITLE_EXAMPLE;
   const [pastedList, setPastedList] = useState("");
   const [result, setResult] = useState<ParsedPlacesResponse | null>(null);
   const [draft, setDraft] = useState<DraftPlace[]>([]);
@@ -197,11 +203,19 @@ export function VoiceCreate({ forWish }: { forWish?: ForWish | null }) {
   };
 
   const createTyped = async () => {
-    if (!title.trim()) { setError("Give your guide a title."); return; }
+    if (!picked && !city.trim()) { setError("Pick the city this guide is for."); return; }
+    if (!title.trim()) { setError("Give your guide a title — something friends will recognise, like “" + example + "”."); return; }
     setCreating(true);
     try {
-      const slug = await createGuide({ title: title.trim(), city, wishIds: forWish?.ids });
-      router.push(`/g/${slug}/edit`);
+      const slug = await createGuide({
+        title: title.trim(),
+        city: picked?.city ?? city,
+        country: picked?.country,
+        lat: picked && Number.isFinite(picked.lat) ? picked.lat : null,
+        lng: picked && Number.isFinite(picked.lng) ? picked.lng : null,
+        wishIds: forWish?.ids,
+      });
+      router.push(`/g/${slug}/edit?start=1`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't create the guide.");
       setCreating(false);
@@ -212,20 +226,23 @@ export function VoiceCreate({ forWish }: { forWish?: ForWish | null }) {
   if (stage === "typed") {
     return (
       <div className="px-6 pt-4 pb-10 flex flex-col gap-5">
+        <h1 className="font-display text-[34px] leading-[1.05]">Where&apos;s this guide for?</h1>
         <div>
-          <h1 className="font-display text-[34px] leading-[1.05]">Name your guide.</h1>
-          <p className="mt-2 text-[13.5px] text-ink-muted">Then add places one by one with Maps autocomplete.</p>
+          <Label htmlFor="guide-city-pick">City</Label>
+          <CityPicker
+            id="guide-city-pick"
+            initial={initialCity?.label ?? forWish?.city ?? ""}
+            autoFocus={!initialCity && !forWish}
+            onPick={(c) => { setPicked(c); setCity(c.city); setError(null); }}
+            onFreeText={(t) => { setPicked(null); setCity(t); setError(null); }}
+          />
         </div>
         <div>
-          <Label>Title</Label>
-          <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={forWish ? `e.g. ${forWish.city} for ${forWish.names[0]}` : "e.g. Lisbon for a Long Weekend"} autoFocus />
-        </div>
-        <div>
-          <Label>City (optional)</Label>
-          <Input value={city} onChange={(e) => setCity(e.target.value)} placeholder="Lisbon" />
+          <Label htmlFor="guide-title">Title</Label>
+          <Input id="guide-title" value={title} onChange={(e) => { setTitle(e.target.value); setError(null); }} placeholder={forWish ? `e.g. ${forWish.city} for ${forWish.names[0]}` : `e.g. ${example}`} autoFocus={!!initialCity || !!forWish} />
         </div>
         {error && <p className="text-[12.5px] text-danger">{error}</p>}
-        <Button size="lg" onClick={createTyped} disabled={creating}>{creating ? <Spinner /> : "Continue to add places"}</Button>
+        <Button size="lg" onClick={createTyped} disabled={creating || !title.trim() || !(picked || city.trim())}>{creating ? <Spinner /> : "Start guide"}</Button>
         <div className="mt-2 flex items-center gap-3 text-[12px] font-medium uppercase tracking-[0.08em] text-ink-faint">
           <span className="h-px flex-1 bg-line" /> Or start faster <span className="h-px flex-1 bg-line" />
         </div>

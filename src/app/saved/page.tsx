@@ -8,7 +8,7 @@ import { requireUser, toPublicUser } from "@/lib/auth";
 import { listSavedGuides, listSavedPlaces } from "@/lib/guides";
 import { GuideCard } from "@/components/GuideCard";
 import { cx } from "@/components/ui";
-import { neighbourhood } from "@/lib/places/neighbourhood";
+import { placeArea } from "@/lib/places/neighbourhood";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Favourites" };
@@ -70,7 +70,7 @@ export default async function SavedPage({ searchParams }: { searchParams: Promis
                         <PlaceTile place={place} size={52} />
                         <span className="flex-1 min-w-0">
                           <span className="block font-semibold text-[14px] truncate">{place.name}</span>
-                          <span className="block text-[11.5px] text-ink-muted truncate">{[place.category, neighbourhood(place.address, place.city, place.country)].filter(Boolean).join(" · ")}</span>
+                          <span className="block text-[11.5px] text-ink-muted truncate">{[place.category, placeArea(place)].filter(Boolean).join(" · ")}</span>
                           <span className="block text-[11.5px] text-ink-faint truncate">from {guide.title}</span>
                         </span>
                       </Link>

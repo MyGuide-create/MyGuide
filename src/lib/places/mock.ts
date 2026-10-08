@@ -3,7 +3,7 @@ import { sameBrand } from "./branches";
 import { CITIES, detectCityInText, findCity } from "./cities";
 import { haversineMeters } from "./geo";
 import { MOCK_PLACES, type MockPlace } from "./mock-data";
-import type { NearbyPlaceResult, PlaceResult, PlaceSuggestion, PlacesProvider } from "./types";
+import type { CitySuggestion, NearbyPlaceResult, PlaceResult, PlaceSuggestion, PlacesProvider } from "./types";
 
 const norm = (s: string) =>
   s
@@ -142,6 +142,28 @@ export const mockProvider: PlacesProvider = {
     }
     if (best && best.s >= 50) return toResult(best.p);
     return synthesize(q, cityHint);
+  },
+
+  async cities(input) {
+    const low = (x: string) => x.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+    const q = low(input);
+    if (q.length < 2) return [];
+    const extra = [
+      { city: "Tashkent", country: "Uzbekistan", lat: 41.2995, lng: 69.2401 },
+      { city: "Paris", country: "United States", lat: 33.6609, lng: -95.5555 },
+      { city: "Bali", country: "Indonesia", lat: -8.3405, lng: 115.092 },
+    ];
+    const all: { city: string; country: string; lat: number; lng: number; aliases?: string[] }[] = [...CITIES, ...extra];
+    return all
+      .filter((c) => low(c.city).startsWith(q) || (c.aliases ?? []).some((a) => low(a).startsWith(q)))
+      .slice(0, 6)
+      .map<CitySuggestion>((c) => ({ id: `city:${c.city}|${c.country}|${c.lat}|${c.lng}`, mainText: c.city, secondaryText: c.country }));
+  },
+
+  async city(id) {
+    const [city, country, lat, lng] = id.replace(/^city:/, "").split("|");
+    if (!city || !lat) return null;
+    return { city, country: country ?? "", lat: Number(lat), lng: Number(lng) };
   },
 
   async details(providerId) {

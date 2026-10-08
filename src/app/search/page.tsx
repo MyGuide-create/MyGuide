@@ -11,7 +11,7 @@ import { WishForCityButton } from "@/components/WishList";
 import { SparkleIcon } from "@/components/Icons";
 import { listAllWishes } from "@/lib/wishes";
 import { PlaceTile } from "@/components/PlaceTile";
-import { neighbourhood } from "@/lib/places/neighbourhood";
+import { placeArea } from "@/lib/places/neighbourhood";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Search" };
@@ -167,7 +167,7 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
                       <PlaceTile place={h.place} size={52} />
                       <span className="flex-1 min-w-0">
                         <span className="block font-semibold text-[14px] truncate">{h.place.name}</span>
-                        <span className="block text-[11.5px] text-ink-muted truncate">{[h.place.category, neighbourhood(h.place.address, h.place.city, h.place.country)].filter(Boolean).join(" · ")}</span>
+                        <span className="block text-[11.5px] text-ink-muted truncate">{[h.place.category, placeArea(h.place)].filter(Boolean).join(" · ")}</span>
                         <span className="block text-[11.5px] text-ink-faint truncate">in {h.guide.title} · {h.owner.displayName}</span>
                       </span>
                     </Link>

@@ -7,7 +7,7 @@ import { AudioClip } from "./AudioClip";
 import { AlertIcon, CalendarIcon, ChatIcon, PinIcon, SparkleIcon } from "./Icons";
 import { HoursSummary } from "./HoursSummary";
 import { SaveButton } from "./SaveButton";
-import { neighbourhood } from "@/lib/places/neighbourhood";
+import { placeArea } from "@/lib/places/neighbourhood";
 import { placeTimeZone } from "@/lib/places/hours";
 import { PlaceTile } from "./PlaceTile";
 import { trackAttrs } from "@/lib/track";
@@ -57,7 +57,7 @@ export function PlaceRow({
   const carried = noteAuthor && noteAuthor.id !== ownerId;
   const detailHref = `/g/${guideSlug}/p/${place.id}${shareKey ? `?key=${shareKey}` : ""}`;
   const commentCount = comments?.length ?? 0;
-  const area = neighbourhood(place.address, place.city, place.country);
+  const area = placeArea(place);
   const tipCount = tips?.length ?? 0;
   const extras = tipCount;
   return (

@@ -17,6 +17,8 @@ import { CameraIcon, ChevronDown, ChevronUp, ForkIcon, GlobeIcon, LockIcon, PinI
 import { NoteEditor } from "./NoteEditor";
 import { PhotoPicker } from "./PhotoPicker";
 import { PlaceSearch } from "./PlaceSearch";
+import { CityPicker } from "./CityPicker";
+import { GuideMap } from "./GuideMap";
 import { PinDropSheet } from "./PinDropSheet";
 import { GoogleInfoCard } from "./GoogleInfoCard";
 import { BranchesEditor } from "./BranchesEditor";
@@ -49,6 +51,9 @@ export function GuideEditor({ detail, justForked, justCreated, viewerId, wishFor
   const firstPinned = places.find((p) => p.lat != null && p.lng != null);
   /** The place just added from search — its card looks for other branches straight away. */
   const [justAddedId, setJustAddedId] = useState<string | null>(null);
+  /** A brand-new guide: places come first and the extras fold away, so the first thing to do is add a place. Fixed for this visit so the page doesn't jump once a place is added. */
+  const [startedEmpty] = useState(detail.places.length === 0);
+  const [showExtras, setShowExtras] = useState(false);
   /** Bumped when a merge rewrites a place's description, so its editor reloads the text. */
   const [noteRev, setNoteRev] = useState<Record<string, number>>({});
   const [saving, setSaving] = useState<string | null>(null);
@@ -95,9 +100,9 @@ export function GuideEditor({ detail, justForked, justCreated, viewerId, wishFor
   };
 
   /** What's typed in the City box right now, so the cover pill previews before it saves. */
-  const [cityDraft, setCityDraft] = useState<string | null>(null);
   const placeCities = places.map((p) => p.city);
-  const coverCity = coverCityLabel(cityDraft ?? guide.city, placeCities);
+  const coverCity = coverCityLabel(guide.city, placeCities);
+  const cityCentre = guide.lat != null && guide.lng != null ? { lat: guide.lat, lng: guide.lng } : null;
   const derivedCity = coverCityLabel("", placeCities);
 
   const saveMeta = (patch: Parameters<typeof updateGuideMeta>[1]) => run("guide", async () => {
@@ -178,145 +183,14 @@ export function GuideEditor({ detail, justForked, justCreated, viewerId, wishFor
     start(async () => { await deleteGuide(guide.id); });
   };
 
-  return (
-    <div className="pb-10">
-      {(justForked || justCreated) && (
-        <div className="mx-4 mt-3 rounded-2xl bg-sage-tint text-sage px-4 py-3 text-[13px] leading-snug flex gap-2">
-          {justForked ? <ForkIcon size={16} className="shrink-0 mt-0.5" /> : <PinIcon size={16} className="shrink-0 mt-0.5" />}
-          <span>
-            {justForked
-              ? `This is your private copy of @${detail.forkedFrom?.username ?? "their"}'s guide. Remove what you don't like, add what you found, then publish it as your own.`
-              : "Your places are in and saved as a draft — only you can see it. Add a description to each one, swap in your own photos, and publish when it\u2019s ready."}
-          </span>
-        </div>
-      )}
-
-      {wishFor.length > 0 && (
-        <div className="mx-4 mt-3 rounded-2xl bg-terracotta-tint/70 px-4 py-2.5 text-[12.5px] leading-snug flex gap-2 items-center">
-          <SparkleIcon size={14} className="shrink-0 text-terracotta" />
-          <span>Made for <b className="font-semibold">{namesSentence(wishFor, 2)}</b>&apos;s wish list — {isDraft ? "we'll send it the moment you publish." : "sending now."}</span>
-        </div>
-      )}
-
-      {isDraft && !justCreated && !justForked && detail.viewerIsOwner && (
-        <div className="mx-4 mt-3 rounded-2xl bg-ochre-soft/60 px-4 py-2.5 text-[12.5px] leading-snug flex gap-2 items-center">
-          <LockIcon size={14} className="shrink-0 text-ink-muted" />
-          <span><b className="font-semibold">Draft</b> — only you{detail.collaborators?.length ? " and your co-editors" : ""} can see it. Followers aren&apos;t notified until you publish.</span>
-        </div>
-      )}
-
-      {/* Cover */}
-      <div className="relative mt-3 mx-4 rounded-[22px] overflow-hidden">
-        <GuideCover guide={guide} ownerUsername={owner.username} className="aspect-[16/9]" cityLabel={coverCity} />
-        <div className="absolute top-3 right-3 flex gap-2">
-          <button type="button" onClick={() => setCoverOpen(true)} className="rounded-full bg-paper/90 backdrop-blur px-3 py-1.5 text-[12px] font-medium inline-flex items-center gap-1.5">
-            <CameraIcon size={14} /> {guide.coverMediaId || guide.coverUrl ? "Change cover" : "Add cover photo"}
-          </button>
-        </div>
-      </div>
-      {coverOpen && (
-        <CoverPicker
-          guide={guide}
-          onClose={() => {
-            setCoverOpen(false);
-            setPublishAfterCover(false);
-          }}
-          onChange={(fields) => {
-            setGuide((g) => ({ ...g, ...fields }));
-            if (publishAfterCover && (fields.coverMediaId || fields.coverUrl)) setPublishStep(stepAfterCover());
-          }}
-        />
-      )}
-      {isDraft && !hasCover && (
-        <p className="mx-5 mt-2 text-[12.5px] text-ink-muted">A cover photo is needed before you can publish.</p>
-      )}
-
-      {/* Meta */}
-      <div className="px-5 mt-5 flex flex-col gap-4">
-        <div>
-          <Label>Title</Label>
-          <input
-            defaultValue={guide.title}
-            onBlur={(e) => e.target.value.trim() !== guide.title && saveMeta({ title: e.target.value })}
-            className="w-full bg-transparent font-display text-[32px] leading-[1.05] outline-none border-b border-transparent focus:border-terracotta-soft placeholder:text-ink-faint"
-            placeholder="Name your guide"
-          />
-        </div>
-        <div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label htmlFor="guide-city">City</Label>
-              <Input
-                id="guide-city"
-                key={guide.city}
-                defaultValue={guide.city}
-                placeholder={derivedCity ?? "Tokyo"}
-                onChange={(e) => setCityDraft(e.target.value)}
-                onBlur={(e) => {
-                  if (e.target.value.trim() !== guide.city) saveMeta({ city: e.target.value });
-                  setCityDraft(null);
-                }}
-              />
-            </div>
-            <div>
-              <Label htmlFor="guide-country">Country</Label>
-              <Input id="guide-country" defaultValue={guide.country} placeholder="Japan" onBlur={(e) => e.target.value.trim() !== guide.country && saveMeta({ country: e.target.value })} />
-            </div>
-          </div>
-          <div className="mt-2 flex items-center gap-2 text-[11.5px] text-ink-muted leading-snug">
-            <span className="shrink-0">On the cover:</span>
-            {coverCity ? <CityPill label={coverCity} className="max-w-[70%] bg-ink/75" /> : <span className="text-ink-faint">nothing yet — add a city or some places</span>}
-          </div>
-          <p className="mt-1 text-[11px] text-ink-faint leading-snug">
-            {(cityDraft ?? guide.city).trim()
-              ? "Type a region (e.g. “Bali”) to cover several towns. Clear it to use your places’ cities."
-              : "Blank: worked out from your places — the most common city, plus how many others."}
-          </p>
-        </div>
-        <div>
-          <Label>Description</Label>
-          <Textarea rows={2} defaultValue={guide.description} placeholder="What's this guide for, and who is it for?" onBlur={(e) => e.target.value.trim() !== guide.description && saveMeta({ description: e.target.value })} />
-        </div>
-        <label className="flex items-center justify-between rounded-2xl border border-line bg-paper px-4 py-3">
-          <span>
-            <span className="block text-[14px] font-medium">Let others reuse my notes and photos</span>
-            <span className="block text-[11.5px] text-ink-muted">
-              {guide.allowFork
-                ? "People can copy this guide or add your places to their own trip guides, with your notes credited to you. You'll see it in Activity."
-                : "People can still add a place to their own guide, but only its name and location — your notes and photos stay here, and the guide can't be copied."}
-            </span>
-          </span>
-          <input type="checkbox" checked={guide.allowFork} onChange={(e) => saveMeta({ allowFork: e.target.checked })} className="w-5 h-5 accent-terracotta" />
-        </label>
-        {!isDraft && (
-          <div className="flex items-center justify-between rounded-2xl border border-line bg-paper px-4 py-3">
-            <span>
-              <span className="block text-[14px] font-medium">Still accurate?</span>
-              <span className="block text-[11.5px] text-ink-muted">
-                {guide.verifiedAt ? `Readers see “Checked ${new Date(guide.verifiedAt).toLocaleDateString("en-GB", { month: "short", year: "numeric" })}”.` : "Tell readers you've checked these places recently."}
-              </span>
-            </span>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={pending}
-              onClick={() => start(async () => { const at = await markGuideVerified(guide.id); setGuide((g) => ({ ...g, verifiedAt: at })); })}
-            >
-              Checked today
-            </Button>
-          </div>
-        )}
-        <CollaboratorsEditor guideId={guide.id} initial={detail.collaborators} isOwner={detail.viewerIsOwner} viewerId={viewerId} ownerName={owner.displayName} />
-      </div>
-
-      {/* Places */}
+  const placesSection = (
       <div className="px-5 mt-7">
         <div className="flex items-baseline justify-between">
           <h2 className="font-display text-[24px]">Places <span className="text-ink-faint text-[16px]">{places.length}</span></h2>
           {saving && <span className="text-[11.5px] text-ink-faint inline-flex items-center gap-1"><Spinner /> Saving…</span>}
         </div>
         <div className="mt-3">
-          <PlaceSearch cityHint={guide.city || undefined} onPick={onAdd} busy={adding} autoFocus={places.length === 0} onDropPin={(name) => setPinFor({ mode: "add", name })} />
+          <PlaceSearch cityHint={guide.city || undefined} near={cityCentre} onPick={onAdd} busy={adding} autoFocus={places.length === 0} onDropPin={(name) => setPinFor({ mode: "add", name })} />
           <button type="button" onClick={() => setPinFor({ mode: "add", name: "" })} className="mt-2 inline-flex items-center gap-1.5 text-[12.5px] font-medium text-terracotta-deep">
             <PinIcon size={15} /> Not on Google Maps? Drop a pin — sunset spots, campsites, trailheads
           </button>
@@ -378,8 +252,156 @@ export function GuideEditor({ detail, justForked, justCreated, viewerId, wishFor
             />
           ))}
         </ol>
-        {places.length === 0 && <p className="mt-4 text-[13.5px] text-ink-muted">Start typing a place above. Photo, pin, address and hours come in automatically.</p>}
+        {places.length === 0 && (
+          <>
+            <p className="mt-4 text-[13.5px] text-ink-muted leading-relaxed">
+              Add your first place — or come back and add them when you get there. Photo, pin, address and hours come in automatically, and it stays a private draft until you publish.
+            </p>
+            {cityCentre && (
+              <GuideMap places={[]} center={cityCentre} height={220} locate={false} className="mt-4 w-full rounded-3xl overflow-hidden border border-line" />
+            )}
+          </>
+        )}
       </div>
+  );
+  const extrasSection = (
+    <>
+        <div>
+          <Label>Description</Label>
+          <Textarea rows={2} defaultValue={guide.description} placeholder="e.g. Three days in the capital with family — easy walks, early dinners, one big night out." onBlur={(e) => e.target.value.trim() !== guide.description && saveMeta({ description: e.target.value })} />
+        </div>
+        <label className="flex items-center justify-between rounded-2xl border border-line bg-paper px-4 py-3">
+          <span>
+            <span className="block text-[14px] font-medium">Let others reuse my notes and photos</span>
+            <span className="block text-[11.5px] text-ink-muted">
+              {guide.allowFork
+                ? "People can copy this guide or add your places to their own trip guides, with your notes credited to you. You'll see it in Activity."
+                : "People can still add a place to their own guide, but only its name and location — your notes and photos stay here, and the guide can't be copied."}
+            </span>
+          </span>
+          <input type="checkbox" checked={guide.allowFork} onChange={(e) => saveMeta({ allowFork: e.target.checked })} className="w-5 h-5 accent-terracotta" />
+        </label>
+        {!isDraft && (
+          <div className="flex items-center justify-between rounded-2xl border border-line bg-paper px-4 py-3">
+            <span>
+              <span className="block text-[14px] font-medium">Still accurate?</span>
+              <span className="block text-[11.5px] text-ink-muted">
+                {guide.verifiedAt ? `Readers see “Checked ${new Date(guide.verifiedAt).toLocaleDateString("en-GB", { month: "short", year: "numeric" })}”.` : "Tell readers you've checked these places recently."}
+              </span>
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={pending}
+              onClick={() => start(async () => { const at = await markGuideVerified(guide.id); setGuide((g) => ({ ...g, verifiedAt: at })); })}
+            >
+              Checked today
+            </Button>
+          </div>
+        )}
+        <CollaboratorsEditor guideId={guide.id} initial={detail.collaborators} isOwner={detail.viewerIsOwner} viewerId={viewerId} ownerName={owner.displayName} />
+    </>
+  );
+
+  return (
+    <div className="pb-10">
+      {(justForked || justCreated) && !startedEmpty && (
+        <div className="mx-4 mt-3 rounded-2xl bg-sage-tint text-sage px-4 py-3 text-[13px] leading-snug flex gap-2">
+          {justForked ? <ForkIcon size={16} className="shrink-0 mt-0.5" /> : <PinIcon size={16} className="shrink-0 mt-0.5" />}
+          <span>
+            {justForked
+              ? `This is your private copy of @${detail.forkedFrom?.username ?? "their"}'s guide. Remove what you don't like, add what you found, then publish it as your own.`
+              : "Your places are in and saved as a draft — only you can see it. Add a description to each one, swap in your own photos, and publish when it\u2019s ready."}
+          </span>
+        </div>
+      )}
+
+      {wishFor.length > 0 && (
+        <div className="mx-4 mt-3 rounded-2xl bg-terracotta-tint/70 px-4 py-2.5 text-[12.5px] leading-snug flex gap-2 items-center">
+          <SparkleIcon size={14} className="shrink-0 text-terracotta" />
+          <span>Made for <b className="font-semibold">{namesSentence(wishFor, 2)}</b>&apos;s wish list — {isDraft ? "we'll send it the moment you publish." : "sending now."}</span>
+        </div>
+      )}
+
+      {isDraft && !justCreated && !justForked && !startedEmpty && detail.viewerIsOwner && (
+        <div className="mx-4 mt-3 rounded-2xl bg-ochre-soft/60 px-4 py-2.5 text-[12.5px] leading-snug flex gap-2 items-center">
+          <LockIcon size={14} className="shrink-0 text-ink-muted" />
+          <span><b className="font-semibold">Draft</b> — only you{detail.collaborators?.length ? " and your co-editors" : ""} can see it. Followers aren&apos;t notified until you publish.</span>
+        </div>
+      )}
+
+      {/* Cover */}
+      <div className="relative mt-3 mx-4 rounded-[22px] overflow-hidden">
+        <GuideCover guide={guide} ownerUsername={owner.username} className="aspect-[16/9]" cityLabel={coverCity} />
+        <div className="absolute top-3 right-3 flex gap-2">
+          <button type="button" onClick={() => setCoverOpen(true)} className="rounded-full bg-paper/90 backdrop-blur px-3 py-1.5 text-[12px] font-medium inline-flex items-center gap-1.5">
+            <CameraIcon size={14} /> {guide.coverMediaId || guide.coverUrl ? "Change cover" : "Add cover photo"}
+          </button>
+        </div>
+      </div>
+      {coverOpen && (
+        <CoverPicker
+          guide={guide}
+          onClose={() => {
+            setCoverOpen(false);
+            setPublishAfterCover(false);
+          }}
+          onChange={(fields) => {
+            setGuide((g) => ({ ...g, ...fields }));
+            if (publishAfterCover && (fields.coverMediaId || fields.coverUrl)) setPublishStep(stepAfterCover());
+          }}
+        />
+      )}
+      {isDraft && !hasCover && !startedEmpty && (
+        <p className="mx-5 mt-2 text-[12.5px] text-ink-muted">A cover photo is needed before you can publish.</p>
+      )}
+
+      {/* Title + city */}
+      <div className="px-5 mt-5 flex flex-col gap-4">
+        <div>
+          <Label htmlFor="guide-title">Title</Label>
+          <Input
+            id="guide-title"
+            defaultValue={guide.title}
+            onBlur={(e) => e.target.value.trim() && e.target.value.trim() !== guide.title && saveMeta({ title: e.target.value })}
+            className="text-[17px] font-semibold"
+            placeholder="e.g. Weekend away with the boys"
+          />
+        </div>
+        <div>
+          <Label htmlFor="guide-city">City</Label>
+          <CityPicker
+            id="guide-city"
+            key={`${guide.city}|${guide.country}`}
+            initial={[guide.city, guide.country].filter(Boolean).join(", ")}
+            placeholder={derivedCity ?? "e.g. Tashkent"}
+            onPick={(c) => saveMeta({ city: c.city, country: c.country, lat: Number.isFinite(c.lat) ? c.lat : null, lng: Number.isFinite(c.lng) ? c.lng : null })}
+            onFreeText={(t) => saveMeta({ city: t })}
+          />
+          <div className="mt-2 flex items-center gap-2 text-[11.5px] text-ink-muted leading-snug">
+            <span className="shrink-0">On the cover:</span>
+            {coverCity ? <CityPill label={coverCity} className="max-w-[70%] bg-ink/75" /> : <span className="text-ink-faint">nothing yet — add a city or some places</span>}
+          </div>
+        </div>
+      </div>
+
+      {startedEmpty ? (
+        <>
+          {placesSection}
+          <div className="px-5 mt-8">
+            <button type="button" onClick={() => setShowExtras((v) => !v)} className="w-full flex items-center justify-between rounded-2xl border border-line bg-paper px-4 py-3 text-[14px] font-medium">
+              <span>Description, sharing and co-editors</span>
+              {showExtras ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            </button>
+            {showExtras && <div className="mt-4 flex flex-col gap-4">{extrasSection}</div>}
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="px-5 mt-4 flex flex-col gap-4">{extrasSection}</div>
+          {placesSection}
+        </>
+      )}
 
       {/* Publish bar */}
       <div className="fixed bottom-0 inset-x-0 z-30 flex justify-center pointer-events-none">
