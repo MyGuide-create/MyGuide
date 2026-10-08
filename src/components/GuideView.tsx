@@ -136,7 +136,7 @@ export function GuideView({ detail, viewerId, viewer, shareUrl, shareKey }: { de
               <Tag tone="sage"><ForkIcon size={11} /> based on @{forkedFrom.username}&apos;s guide</Tag>
             </Link>
           )}
-          {!guide.allowFork && <Tag>Notes not for reuse</Tag>}
+          {!guide.allowFork && <Tag>Copies get places only</Tag>}
         </div>
 
         {guide.description && <p className="mt-3.5 text-[13.5px] leading-[1.5] italic">{guide.description}</p>}
@@ -145,12 +145,12 @@ export function GuideView({ detail, viewerId, viewer, shareUrl, shareKey }: { de
           {!detail.viewerCanEdit && <SaveGuideButton guideId={guide.id} initial={detail.viewerSavedGuide} signedIn={!!viewerId} />}
           <Button size="sm" variant="secondary" onClick={() => setSharing(true)} className="flex-1"><ShareIcon size={15} /> Share</Button>
           {detail.viewerCanFork && (
-            <Button size="sm" variant="outline" onClick={fork} disabled={forking} className="flex-1">
-              {forking ? <Spinner /> : <ForkIcon size={15} />} Use this guide
+            <Button size="sm" variant="outline" onClick={fork} disabled={forking} className="flex-1 whitespace-nowrap">
+              {forking ? <Spinner /> : <ForkIcon size={15} />} Copy guide
             </Button>
           )}
-          {!viewerId && guide.allowFork && (
-            <LinkButton href={`/signup?why=fork&next=${encodeURIComponent(`/g/${guide.slug}${shareKey ? `?key=${shareKey}` : ""}`)}`} size="sm" variant="outline" className="flex-1"><ForkIcon size={15} /> Use this guide</LinkButton>
+          {!viewerId && (
+            <LinkButton href={`/signup?why=fork&next=${encodeURIComponent(`/g/${guide.slug}${shareKey ? `?key=${shareKey}` : ""}`)}`} size="sm" variant="outline" className="flex-1 whitespace-nowrap"><ForkIcon size={15} /> Copy guide</LinkButton>
           )}
           <div className="flex rounded-full border border-line p-0.5">
             <button type="button" aria-label="List view" onClick={() => setMode("list")} className={cx("w-9 h-8 rounded-full flex items-center justify-center", mode === "list" ? "bg-ink text-cream" : "text-ink-muted")}><ListIcon size={17} /></button>
@@ -225,7 +225,7 @@ export function GuideView({ detail, viewerId, viewer, shareUrl, shareKey }: { de
                 </h2>
               )}
               {g.places.map((p) => (
-                <PlaceRow key={p.id} place={p} index={numberOf.get(p.id)} ownerId={guide.ownerId} guideSlug={guide.slug} noteAuthor={p.noteAuthorId ? noteAuthors[p.noteAuthorId] : null} flagged={flags[p.id]} comments={detail.placeComments[p.id] ?? []} currentUser={viewer} tips={detail.placeTips[p.id]} saved={saved.has(p.id)} shareKey={shareKey} social={detail.placeSocial[p.id]} friends={detail.friendsWhoLike[p.id]} branchCount={detail.placeLocations[p.id]?.length ?? 0} rating={ratings[p.id]} expanded />
+                <PlaceRow key={p.id} place={p} index={numberOf.get(p.id)} ownerId={guide.ownerId} guideSlug={guide.slug} noteAuthor={p.noteAuthorId ? noteAuthors[p.noteAuthorId] : null} flagged={flags[p.id]} comments={detail.placeComments[p.id] ?? []} currentUser={viewer} tips={detail.placeTips[p.id]} saved={saved.has(p.id)} shareKey={shareKey} social={detail.placeSocial[p.id]} friends={detail.friendsWhoLike[p.id]} branchCount={detail.placeLocations[p.id]?.length ?? 0} rating={ratings[p.id]} credited={detail.credited[p.id]} expanded />
               ))}
             </section>
           ))}

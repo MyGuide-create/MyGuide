@@ -15,6 +15,8 @@ import { coverCityLabel } from "@/lib/coverCity";
 import { namesSentence } from "@/lib/utils";
 import { CameraIcon, ChevronDown, ChevronUp, ForkIcon, GlobeIcon, LockIcon, PinIcon, SparkleIcon, TrashIcon } from "./Icons";
 import { NoteEditor } from "./NoteEditor";
+import { CreditedNotes } from "./CreditedNotes";
+import type { CreditedNote } from "@/lib/reuse";
 import { PhotoPicker } from "./PhotoPicker";
 import { PlaceSearch } from "./PlaceSearch";
 import { CityPicker } from "./CityPicker";
@@ -237,6 +239,7 @@ export function GuideEditor({ detail, justForked, justCreated, viewerId, wishFor
               tips={detail.placeTips[p.id] ?? []}
               onTipCount={onTipCount}
               noteAuthor={p.noteAuthorId && p.noteAuthorId !== owner.id ? detail.noteAuthors[p.noteAuthorId] : null}
+              credited={detail.credited[p.id]}
               onMove={(d) => move(i, d)}
               onRemove={() => remove(p)}
               onPatch={(patch) => patchPlace(p.id, patch)}
@@ -272,11 +275,11 @@ export function GuideEditor({ detail, justForked, justCreated, viewerId, wishFor
         </div>
         <label className="flex items-center justify-between rounded-2xl border border-line bg-paper px-4 py-3">
           <span>
-            <span className="block text-[14px] font-medium">Let others reuse my notes and photos</span>
+            <span className="block text-[14px] font-medium">Let others copy my notes and tips</span>
             <span className="block text-[11.5px] text-ink-muted">
               {guide.allowFork
-                ? "People can copy this guide or add your places to their own trip guides, with your notes credited to you. You'll see it in Activity."
-                : "People can still add a place to their own guide, but only its name and location — your notes and photos stay here, and the guide can't be copied."}
+                ? "When someone copies this guide or adds your places to theirs, your notes, tips and photos come along — credited to you, and they can't edit them. You'll see it in Activity."
+                : "People can still copy your places, but only the places — your notes, tips and photos stay here."}
             </span>
           </span>
           <input type="checkbox" checked={guide.allowFork} onChange={(e) => saveMeta({ allowFork: e.target.checked })} className="w-5 h-5 accent-terracotta" />
@@ -310,7 +313,7 @@ export function GuideEditor({ detail, justForked, justCreated, viewerId, wishFor
           {justForked ? <ForkIcon size={16} className="shrink-0 mt-0.5" /> : <PinIcon size={16} className="shrink-0 mt-0.5" />}
           <span>
             {justForked
-              ? `This is your private copy of @${detail.forkedFrom?.username ?? "their"}'s guide. Remove what you don't like, add what you found, then publish it as your own.`
+              ? `Your private copy of @${detail.forkedFrom?.username ?? "their"}'s guide. Their notes and tips stay on each place, credited to them. Remove places you don't want, add your own finds and notes, and publish when it's yours.`
               : "Your places are in and saved as a draft — only you can see it. Add a description to each one, swap in your own photos, and publish when it\u2019s ready."}
           </span>
         </div>
@@ -531,7 +534,9 @@ function EditablePlace({
   autoFindBranches,
   onMerged,
   noteRev,
+  credited,
 }: {
+  credited?: CreditedNote[];
   place: Place;
   index: number;
   total: number;
@@ -641,8 +646,9 @@ function EditablePlace({
           />
         </div>
       )}
+      <CreditedNotes notes={credited} locked className="mt-3" />
       <div className="mt-3">
-        <Label>Description - What Makes It Special</Label>
+        <Label>{credited?.length ? "Your note" : "Description - What Makes It Special"}</Label>
         {open ? (
           <NoteEditor key={noteRev} placeName={place.name} note={place.note} clipMediaId={place.noteClipMediaId} onSave={(patch) => onPatch(patch)} />
         ) : (

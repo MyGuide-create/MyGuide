@@ -5,7 +5,7 @@ export const SUPPORT_CONTACT = "Hisham";
 
 const REASONS: Record<AuthReason, string> = {
   follow: "Create a free account to follow creators and see their new guides.",
-  fork: "Create a free account to save your own copy of this guide and make it yours.",
+  fork: "Create a free account to copy this guide — keep the places you like and add your own.",
   create: "Create a free account to make your first guide.",
   record: "Create a free account to record places as you go.",
   notifications: "Log in to see guides people have shared with you.",

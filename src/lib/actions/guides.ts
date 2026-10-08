@@ -18,7 +18,7 @@ import type { BranchCandidate } from "../places/branches";
 import { claimUnsplashPhoto } from "../covers/unsplash";
 import { mapLimit, newId, newToken, slugify } from "../utils";
 import { addNotifications } from "../notifications";
-import { copyBranches, notifyGuideUsed } from "../reuse";
+import { copyBranches, copyPlace, notifyGuideUsed } from "../reuse";
 import { normaliseInstagram, normaliseReserve, normaliseWebsite, normaliseWhatsapp, type Normalised } from "@/lib/placeLinks";
 
 /** Owner or invited co-editor. Use for editing places, notes, tips and guide details. */
@@ -665,7 +665,6 @@ export async function forkGuide(guideId: string, shareKey?: string | null): Prom
   const source = await getGuideById(guideId);
   if (!source) throw new Error("Guide not found.");
   if (!(await canViewGuide(source, user.id, shareKey))) throw new Error("You don't have access to this guide.");
-  if (!source.allowFork) throw new Error("The creator has turned off forking for this guide.");
   if (source.ownerId === user.id) throw new Error("This is already your guide.");
 
   const sourcePlaces = await db.select().from(places).where(eq(places.guideId, guideId)).orderBy(places.position);
@@ -692,17 +691,8 @@ export async function forkGuide(guideId: string, shareKey?: string | null): Prom
   });
   if (sourcePlaces.length) {
     const newIds = sourcePlaces.map(() => newId());
-    await db.insert(places).values(
-      sourcePlaces.map((p, i) => ({
-        ...p,
-        id: newIds[i],
-        guideId: id,
-        position: i,
-        // Carry the original creator's note (and voice clip) with attribution.
-        noteAuthorId: p.noteAuthorId ?? source.ownerId,
-        createdAt: now,
-      })),
-    );
+    // Places are copied; the creator's notes and tips stay theirs and show on the copy, credited (see lib/reuse).
+    await db.insert(places).values(sourcePlaces.map((p, i) => ({ ...copyPlace(p, source, { guideId: id, position: i, now }), id: newIds[i] })));
     await copyBranches(sourcePlaces.map((p, i) => [p.id, newIds[i]]));
   }
   await notifyGuideUsed(source, user.id, sourcePlaces.length);

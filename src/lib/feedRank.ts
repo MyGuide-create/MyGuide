@@ -6,7 +6,7 @@
  *   descriptions  30  share of places with a real description (40+ characters)
  *   expert tips   20  share of places with at least one tip
  *   polish        10  guide intro (4) + share of places with the creator's own photo (6)
- *   engagement    15  hearts and "Use this guide" copies, levels off
+ *   engagement    15  hearts and "Copy guide" copies, levels off
  * Shares only count in full from 5 places up, so a 1-place guide with a great note can't top the feed.
  *
  * feed score = quality × freshness, where freshness fades from 1 towards 0.35 (half the gap gone

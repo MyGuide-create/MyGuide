@@ -1,4 +1,5 @@
 import { and, desc, eq, inArray, isNotNull, like, or, sql, type SQL } from "drizzle-orm";
+import { creditedNotesFor, type CreditedNote } from "./reuse";
 import { getDb } from "./db";
 import { follows, guideCollaborators, guideShares, guides, placeComments, placeLocations, placePhotos, placeReactions, placeTips, places, savedGuides, savedPlaces, users, type Guide, type Place, type PlaceComment, type PlacePhoto, type PlaceLocation, type PlaceTip, type User } from "./db/schema";
 import { toPublicUser, type PublicUser } from "./auth";
@@ -32,6 +33,8 @@ export interface GuideDetail extends GuideCard {
   placePhotos: Record<string, PlacePhoto[]>;
   /** Creator-authored expert tips for each place, in order, keyed by placeId. */
   placeTips: Record<string, PlaceTip[]>;
+  /** The original creator's note and tips on copied places, credited and read-only. */
+  credited: Record<string, CreditedNote[]>;
   /** Other branches of each place (the place row is the main one), keyed by placeId. */
   placeLocations: Record<string, PlaceLocation[]>;
   viewerCanEdit: boolean;
@@ -365,11 +368,13 @@ export async function getGuideDetail(guide: Guide, viewer: User | null): Promise
     placeComments: placeCommentsByPlace,
     placePhotos: placePhotosByPlace,
     placeTips: placeTipsByPlace,
+    credited: await creditedNotesFor(placeRows, guide, hiddenAuthors),
     placeLocations: placeLocationsByPlace,
     viewerCanEdit: viewerIsOwner || viewerIsCollaborator,
     viewerIsOwner,
     collaborators,
-    viewerCanFork: !!viewer && !viewerIsOwner && !viewerIsCollaborator && guide.allowFork,
+    // Anyone can copy a guide's places; its notes and tips come along (credited) only when allowFork.
+    viewerCanFork: !!viewer && !viewerIsOwner && !viewerIsCollaborator,
     savedPlaceIds: savedRows.map((r) => r.id),
     viewerSavedGuide: !!viewer && !!(await db.query.savedGuides.findFirst({ where: and(eq(savedGuides.userId, viewer.id), eq(savedGuides.guideId, guide.id)) })),
     guideSaves: Number((await db.select({ n: sql<number>`count(*)` }).from(savedGuides).where(eq(savedGuides.guideId, guide.id)))[0]?.n ?? 0),
@@ -404,7 +409,8 @@ export async function searchGuides(intent: SearchIntent, viewerId?: string | nul
     conds.push(like(guides.country, `%${intent.country}%`));
   }
   const query = (extra: (SQL | undefined)[]) =>
-    db.select().from(guides).where(and(...conds, ...extra)).orderBy(desc(guides.publishedAt)).limit(40);
+    // Originals before copies of them ("Based on @…"), newest first within each.
+    db.select().from(guides).where(and(...conds, ...extra)).orderBy(sql`${guides.forkedFromGuideId} is not null`, desc(guides.publishedAt)).limit(40);
   const catCond = intent.category
     ? inArray(guides.id, db.select({ id: places.guideId }).from(places).where(eq(places.category, intent.category)))
     : undefined;

@@ -56,7 +56,7 @@ export function AddToGuideButton({ placeId, signedIn, signupHref, targets, notes
               <button type="button" aria-label="Close" onClick={() => setOpen(false)} className="w-9 h-9 flex items-center justify-center rounded-full text-ink-muted"><XIcon size={18} /></button>
             </div>
             <p className="text-[12.5px] text-ink-muted mb-3">
-              {notesShared ? "The creator's note comes with it, credited to them." : "The creator keeps their notes private, so you'll get the place's name and location."}
+              {notesShared ? "The creator's note and tips come with it, credited to them." : "The creator keeps their notes here, so you'll get the place itself."}
             </p>
             {done ? (
               <div className="rounded-2xl bg-sage/10 px-4 py-3.5 text-[13.5px]">

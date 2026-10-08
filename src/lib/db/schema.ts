@@ -145,6 +145,12 @@ export const places = sqliteTable(
     noteClipMediaId: text("note_clip_media_id"),
     /** Who wrote the current note (differs from guide owner on forked guides). */
     noteAuthorId: text("note_author_id"),
+    /**
+     * Copied from this place (Copy guide, Add to my guide, trip combine). The original creator's note and
+     * tips are shown on the copy live from here, credited and read-only — they're never copied as text.
+     * Null when the place was added directly, or the source guide doesn't share its notes.
+     */
+    sourcePlaceId: text("source_place_id"),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   },
   (t) => [index("places_guide_idx").on(t.guideId, t.position)],

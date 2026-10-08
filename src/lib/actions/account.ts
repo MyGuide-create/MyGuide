@@ -39,7 +39,7 @@ export interface DeleteAccountState {
 
 /**
  * Permanently delete the signed-in account and everything it owns.
- * Copies other people made of this person's guides ("Use this guide") are kept,
+ * Copies other people made of this person's guides ("Copy guide") are kept,
  * with the "based on @…" credit and any carried-over note credits removed.
  * Child rows are deleted explicitly rather than relying on SQLite cascades.
  */

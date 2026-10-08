@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { CreditedNotes } from "@/components/CreditedNotes";
 import Link from "next/link";
 import { formatCoords, isDroppedPin, mapsUrl } from "@/lib/places/pins";
 import { tidyCity } from "@/lib/places/cityName";
@@ -268,6 +269,8 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
           </div>
         )}
 
+        <CreditedNotes notes={detail.credited[place.id]} locked={detail.viewerCanEdit} />
+
         {detail.viewerCanEdit ? (
           <TipsEditor guideId={guide.id} placeId={place.id} initial={tips} variant="card" />
         ) : (
@@ -287,7 +290,7 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
         )}
 
         {detail.viewerCanEdit && !place.note && (
-          <LinkButton href={`/g/${slug}/edit#place-edit-${place.id}`} variant="outline" size="sm" className="self-start">Add a description – what makes it special</LinkButton>
+          <LinkButton href={`/g/${slug}/edit#place-edit-${place.id}`} variant="outline" size="sm" className="self-start">{detail.credited[place.id]?.length ? "Add your own note" : "Add a description – what makes it special"}</LinkButton>
         )}
 
         <div>

@@ -1,14 +1,16 @@
 import { and, desc, eq, gt, inArray, isNull, sql } from "drizzle-orm";
 import { getDb } from "./db";
-import { guides, notifications, placeLocations, places, trips, type Guide, type Place } from "./db/schema";
+import { guides, notifications, placeLocations, places, placeTips, trips, users, type Guide, type Place } from "./db/schema";
+import { toPublicUser, type PublicUser } from "./auth";
 import { addNotifications } from "./notifications";
 import { newId, slugify } from "./utils";
 
 /**
- * Reusing other people's places (copying a guide, combining guides for a trip,
- * "Add to my guide"). The place itself is public information; the creator's
- * notes, photos and voice clips are theirs and only come along when the guide
- * allows it (guides.allowFork — "Let others reuse my notes and photos").
+ * Reusing other people's places (Copy guide, combining guides for a trip, "Add to my guide").
+ * The place itself is public information and is copied. The creator's note, tips and voice clip are
+ * never copied as text: the copy points at the original (places.sourcePlaceId) and shows them live,
+ * credited and read-only — only when the guide allows it (guides.allowFork — "Let others copy my notes and tips").
+ * The copier writes their own note in the copy's empty note box.
  */
 
 /** Same real-world place across guides: Google id when we have one, otherwise name + rough location. */
@@ -31,12 +33,69 @@ export function copyPlace(p: Place, source: Pick<Guide, "ownerId" | "allowFork">
     guideId: target.guideId,
     position: target.position,
     createdAt: target.now,
-    note: withNotes ? p.note : "",
-    noteClipMediaId: withNotes ? p.noteClipMediaId : null,
-    noteAuthorId: withNotes && p.note ? (p.noteAuthorId ?? source.ownerId) : null,
+    // The copier's own note starts empty; the creator's words are shown from the original, credited.
+    note: "",
+    noteClipMediaId: null,
+    noteAuthorId: null,
     special: null,
     photoMediaId: withNotes ? p.photoMediaId : null,
+    sourcePlaceId: withNotes ? p.id : null,
   };
+}
+
+/** A creator's note and tips shown on someone's copy of their place — read-only, credited, live from the original. */
+export interface CreditedNote {
+  sourcePlaceId: string;
+  author: PublicUser;
+  note: string;
+  clipMediaId: string | null;
+  tips: string[];
+  guideSlug: string;
+  guideTitle: string;
+}
+
+/**
+ * Credited notes for the places of `copy` (follows copies of copies, up to 3 steps back).
+ * Shown when the original guide still shares its notes, and either the original is public or the copy isn't
+ * (so someone's private-guide notes never end up on a published copy).
+ */
+export async function creditedNotesFor(placeRows: Place[], copy: Pick<Guide, "visibility" | "publishedAt">, hidden: Set<string>): Promise<Record<string, CreditedNote[]>> {
+  const out: Record<string, CreditedNote[]> = {};
+  const copyIsPublic = copy.visibility === "public" && !!copy.publishedAt;
+  // place in this guide -> the source id we still need to look at
+  let pending = new Map(placeRows.filter((p) => p.sourcePlaceId).map((p) => [p.id, p.sourcePlaceId!]));
+  if (!pending.size) return out;
+  const db = await getDb();
+  for (let hop = 0; hop < 3 && pending.size; hop++) {
+    const ids = [...new Set(pending.values())];
+    const srcRows = await db.select().from(places).where(inArray(places.id, ids));
+    const src = new Map(srcRows.map((p) => [p.id, p]));
+    const gIds = [...new Set(srcRows.map((p) => p.guideId))];
+    const gRows = gIds.length ? await db.select().from(guides).where(inArray(guides.id, gIds)) : [];
+    const gMap = new Map(gRows.map((g) => [g.id, g]));
+    const tipRows = ids.length ? await db.select().from(placeTips).where(inArray(placeTips.placeId, ids)).orderBy(placeTips.position, placeTips.createdAt) : [];
+    const tipsBy = new Map<string, string[]>();
+    for (const t of tipRows) tipsBy.set(t.placeId, [...(tipsBy.get(t.placeId) ?? []), t.body]);
+    const authorIds = [...new Set(srcRows.map((p) => p.noteAuthorId ?? gMap.get(p.guideId)?.ownerId).filter((x): x is string => !!x))];
+    const authorRows = authorIds.length ? await db.select().from(users).where(inArray(users.id, authorIds)) : [];
+    const authors = new Map(authorRows.map((u) => [u.id, toPublicUser(u)]));
+
+    const next = new Map<string, string>();
+    for (const [placeId, srcId] of pending) {
+      const s = src.get(srcId);
+      const g = s ? gMap.get(s.guideId) : undefined;
+      if (!s || !g || !g.allowFork) continue;
+      const author = authors.get(s.noteAuthorId ?? g.ownerId);
+      const tips = tipsBy.get(s.id) ?? [];
+      const visible = isReusable(g) || !copyIsPublic;
+      if (author && visible && !hidden.has(author.id) && (s.note.trim() || tips.length || s.noteClipMediaId)) {
+        (out[placeId] ??= []).push({ sourcePlaceId: s.id, author, note: s.note, clipMediaId: s.noteClipMediaId, tips, guideSlug: g.slug, guideTitle: g.title });
+      }
+      if (s.sourcePlaceId) next.set(placeId, s.sourcePlaceId);
+    }
+    pending = next;
+  }
+  return out;
 }
 
 /** Branches are public facts (addresses), so they always come along with a copied place. */

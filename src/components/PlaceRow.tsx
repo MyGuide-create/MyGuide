@@ -4,6 +4,8 @@ import type { Place, PlaceTip } from "@/lib/db/schema";
 import type { PublicUser } from "@/lib/auth";
 import type { PlaceCommentView } from "@/lib/guides";
 import { AudioClip } from "./AudioClip";
+import { CreditedNotes } from "./CreditedNotes";
+import type { CreditedNote } from "@/lib/reuse";
 import { AlertIcon, CalendarIcon, ChatIcon, PinIcon, SparkleIcon } from "./Icons";
 import { HoursSummary } from "./HoursSummary";
 import { SaveButton } from "./SaveButton";
@@ -33,7 +35,10 @@ export function PlaceRow({
   friends,
   branchCount = 0,
   rating,
+  credited,
 }: {
+  /** The original creator's note and tips, when this place was copied from their guide. */
+  credited?: CreditedNote[];
   /** Google's rating for this place, when loaded. */
   rating?: GoogleRating | null;
   place: Place;
@@ -88,6 +93,7 @@ export function PlaceRow({
             {carried && <span className="not-italic text-[11px] text-ink-faint"> — @{noteAuthor!.username}</span>}
           </p>
         )}
+        <CreditedNotes notes={credited} compact className="mt-1.5" />
         {(friends?.length ?? 0) > 0 ? (
           <p className="mt-1 text-[11.5px] text-sage font-medium">♥ {namesSentence(friends!.map((u) => u.displayName.split(" ")[0]))} {friends!.length === 1 ? "likes" : "like"} this</p>
         ) : social && social.loved + social.been > 0 ? (
