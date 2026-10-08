@@ -12,11 +12,8 @@ export const metadata = { title: "Create a guide" };
 
 export default async function CreatePage({ searchParams }: PageProps<"/create">) {
   const sp = await searchParams;
-  // Land on the typed "name your guide" page by default — it has the voice
-  // option right there via "Or say your places instead". Pass ?mode=voice to
-  // deep-link straight into the voice flow instead.
   const wishParam = typeof sp.wish === "string" ? sp.wish : "";
-  const user = await requireUser(`/create${sp.mode === "voice" ? "?mode=voice" : wishParam ? `?wish=${encodeURIComponent(wishParam)}` : ""}`);
+  const user = await requireUser(`/create${wishParam ? `?wish=${encodeURIComponent(wishParam)}` : ""}`);
   // "Make this guide" from someone's wish list: who it's for, sent to them when published.
   const wanted = wishParam ? await wishesForMaking(wishParam.split(","), user.id) : [];
   const forWish = wanted.length
@@ -33,7 +30,7 @@ export default async function CreatePage({ searchParams }: PageProps<"/create">)
           </span>
         </div>
       )}
-      <VoiceCreate initialMode={sp.mode === "voice" ? "voice" : "type"} forWish={forWish} />
+      <VoiceCreate forWish={forWish} />
     </AppShell>
   );
 }

@@ -510,7 +510,11 @@ export async function peopleToFollow(viewerId?: string | null, limit = 8): Promi
   return { hits, followingCount: followed.size };
 }
 
-export async function searchPeople(q: string, viewerId?: string | null, limit = 3): Promise<{ hits: PersonHit[]; total: number }> {
+/**
+ * People whose name or @username matches `q`. With `wholeWord` (used when the search is a city, e.g. "Paris"),
+ * only whole-word name matches count, so "Paris" doesn't bring up "Naz Parish".
+ */
+export async function searchPeople(q: string, viewerId?: string | null, limit = 3, opts: { wholeWord?: boolean } = {}): Promise<{ hits: PersonHit[]; total: number }> {
   const clean = q.replace(/^@/, "").trim().toLowerCase();
   if (clean.length < 2) return { hits: [], total: 0 };
   const db = await getDb();
@@ -531,8 +535,11 @@ export async function searchPeople(q: string, viewerId?: string | null, limit = 
     if (un.startsWith(clean) || dn.startsWith(clean) || dn.split(/\s+/).some((w) => w.startsWith(clean))) return 2;
     return 3;
   };
+  const wholeWordMatch = (u: User) =>
+    u.username.toLowerCase() === clean || u.displayName.toLowerCase() === clean || u.displayName.toLowerCase().split(/\s+/).includes(clean);
   const all = rows
     .filter((r) => r.u.id !== viewerId && !hidden.has(r.u.id))
+    .filter((r) => !opts.wholeWord || wholeWordMatch(r.u))
     .sort((a, b) => rank(a.u) - rank(b.u) || Number(b.n) - Number(a.n) || a.u.displayName.localeCompare(b.u.displayName));
   const page = all.slice(0, limit);
   const mine = new Map<string, "pending" | "accepted">();

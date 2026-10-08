@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { BellIcon, HomeIcon, MicIcon, PinIcon, PlusIcon, SearchIcon, UserIcon, XIcon } from "./Icons";
+import { BellIcon, HomeIcon, ListIcon, PinIcon, PlusIcon, SearchIcon, UserIcon, XIcon } from "./Icons";
 import { cx } from "./ui";
 
 export function BottomNav({ signedIn, username, unread }: { signedIn: boolean; username: string | null; unread: number }) {
@@ -33,16 +33,16 @@ export function BottomNav({ signedIn, username, unread }: { signedIn: boolean; u
             </div>
             <div className="flex flex-col gap-2.5">
               <Link href="/create" onClick={() => setCreating(false)} className="flex items-center gap-3 rounded-2xl border border-line bg-paper px-4 py-3.5 hover:border-terracotta-soft">
-                <span className="w-10 h-10 rounded-full bg-terracotta text-white flex items-center justify-center shrink-0"><MicIcon size={19} /></span>
+                <span className="w-10 h-10 rounded-full bg-terracotta text-white flex items-center justify-center shrink-0"><ListIcon size={19} /></span>
                 <span className="min-w-0">
                   <span className="block font-semibold text-[14.5px]">Create a guide</span>
-                  <span className="block text-[12px] text-ink-muted">Say or type the places you love in a city — we&apos;ll build the guide.</span>
+                  <span className="block text-[12px] text-ink-muted">Add the places you love in a city, or paste a list you already have.</span>
                 </span>
               </Link>
               <Link href="/record" onClick={() => setCreating(false)} className="flex items-center gap-3 rounded-2xl border border-line bg-paper px-4 py-3.5 hover:border-terracotta-soft">
                 <span className="w-10 h-10 rounded-full bg-sage text-white flex items-center justify-center shrink-0"><PinIcon size={19} /></span>
                 <span className="min-w-0">
-                  <span className="block font-semibold text-[14.5px]">Record a place</span>
+                  <span className="block font-semibold text-[14.5px]">Add a place</span>
                   <span className="block text-[12px] text-ink-muted">At a spot right now? Add it to one of your guides in a few taps.</span>
                 </span>
               </Link>

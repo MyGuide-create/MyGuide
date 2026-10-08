@@ -54,6 +54,7 @@ export default async function WelcomePage({ searchParams }: { searchParams: Prom
         samples={samples}
         finish={finishOnboarding.bind(null, next)}
         pushPublicKey={pushPublicKey()}
+        initialStep={typeof sp.step === "string" ? sp.step : undefined}
       />
     </AppShell>
   );

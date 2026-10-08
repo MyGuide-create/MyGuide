@@ -106,7 +106,7 @@ export default async function ProfilePage({ params, searchParams }: PageProps<"/
               </>
             )}
             {published.length === 0 && (
-              <EmptyState title={own ? "No guides yet" : `${profile.displayName.split(" ")[0]} hasn't published a guide yet`} body={own ? "Say the places you love and we'll build the first one." : undefined} action={own ? <LinkButton href="/create" size="sm">Create by voice</LinkButton> : undefined} />
+              <EmptyState title={own ? "No guides yet" : `${profile.displayName.split(" ")[0]} hasn't published a guide yet`} body={own ? "Add the places you love, or paste a list you already have." : undefined} action={own ? <LinkButton href="/create" size="sm">Create a guide</LinkButton> : undefined} />
             )}
             {published.map((c) => <GuideCard key={c.guide.id} data={c} showOwner={false} />)}
           </>

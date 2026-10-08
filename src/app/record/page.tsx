@@ -4,7 +4,7 @@ import { requireUser } from "@/lib/auth";
 import { listGuidesByOwner } from "@/lib/guides";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Record a place" };
+export const metadata = { title: "Add a place" };
 
 export default async function RecordPage() {
   const user = await requireUser("/record");

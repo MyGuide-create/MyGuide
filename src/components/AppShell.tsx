@@ -1,10 +1,11 @@
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { Suspense, type ReactNode } from "react";
 import type { PublicUser } from "@/lib/auth";
 import { getCurrentUser } from "@/lib/auth";
 import { unreadNotificationCount } from "@/lib/guides";
 import { pushPublicKey } from "@/lib/push";
 import { AlertsNudge } from "./AlertsNudge";
+import { BackButton, NavTrail } from "./BackButton";
 import { VisitPing } from "./VisitPing";
 import { BottomNav } from "./BottomNav";
 import { ChevronLeft } from "./Icons";
@@ -31,6 +32,7 @@ export async function AppShell({
         {children}
       </div>
       {nav && <BottomNav signedIn={!!user} username={user?.username ?? null} unread={unread} />}
+      <Suspense fallback={null}><NavTrail /></Suspense>
       {user && <VisitPing userId={user.id} />}
       {user && nav && <AlertsNudge publicKey={pushPublicKey()} />}
     </div>
@@ -59,16 +61,15 @@ export function TopBar({
       )}
     >
       {back ? (
-        <Link
+        <BackButton
           href={back}
-          aria-label="Back"
           className={cx(
             "w-10 h-10 -ml-1 flex items-center justify-center rounded-full text-ink",
             transparent ? "bg-cream/90 backdrop-blur shadow-sm border border-line/60" : "hover:bg-cream-deep/60",
           )}
         >
           <ChevronLeft size={22} />
-        </Link>
+        </BackButton>
       ) : (
         <div className="w-2" />
       )}

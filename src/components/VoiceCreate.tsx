@@ -1,9 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
-import { useSpeech } from "@/hooks/useSpeech";
+import { useState } from "react";
 import { createGuide } from "@/lib/actions/guides";
 import type { ParsedPlacesResponse } from "@/app/api/ai/parse-places/route";
 import type { PlaceResult } from "@/lib/places";
@@ -11,12 +9,12 @@ import type { MapsListResult } from "@/lib/places/googleMapsList";
 import { findMapsListLink, hasMapsLink, listTitleFromCaption, MAPS_LIST_FALLBACK } from "@/lib/places/importText";
 import { formatCoords } from "@/lib/places/pins";
 import { mapLimit } from "@/lib/utils";
-import { CheckIcon, KeyboardIcon, ListIcon, MicIcon, PinIcon, StopIcon, XIcon } from "./Icons";
+import { CheckIcon, ListIcon, PinIcon, XIcon } from "./Icons";
 import { PlaceSearch } from "./PlaceSearch";
 import { ScreenshotImport } from "./ScreenshotImport";
 import { Button, Input, Label, Spinner, Textarea, cx } from "./ui";
 
-type Stage = "talk" | "structuring" | "importing" | "review" | "typed" | "paste";
+type Stage = "structuring" | "importing" | "review" | "typed" | "paste";
 type DraftPlace = ParsedPlacesResponse["places"][number] & {
   key: string;
   removed?: boolean;
@@ -31,10 +29,6 @@ const MATCH_BATCH = 20;
 const MATCH_PARALLEL = 2;
 const SINGLE_PLACE_MSG = "This looks like a single place, not a list. Paste it in the box below instead.";
 
-/**
- * Create a Guide by voice: name the places you want in one go, we structure
- * them and pull in Maps data. Only the places you name, never suggestions.
- */
 export interface ForWish {
   ids: string[];
   city: string;
@@ -42,11 +36,14 @@ export interface ForWish {
   names: string[];
 }
 
-export function VoiceCreate({ initialMode, forWish }: { initialMode: "voice" | "type"; forWish?: ForWish | null }) {
+/**
+ * Create a guide: name it and add places one by one, or import a list
+ * (Google Maps lists, screenshots, WhatsApp, notes) and we structure it.
+ * Voice was removed on 8 Oct 2026 (unreliable; phones have their own dictation).
+ */
+export function VoiceCreate({ forWish }: { forWish?: ForWish | null }) {
   const router = useRouter();
-  const speech = useSpeech({ continuous: true });
-  const [stage, setStage] = useState<Stage>(initialMode === "type" ? "typed" : "talk");
-  const [typed, setTyped] = useState("");
+  const [stage, setStage] = useState<Stage>("typed");
   const [pastedList, setPastedList] = useState("");
   const [result, setResult] = useState<ParsedPlacesResponse | null>(null);
   const [draft, setDraft] = useState<DraftPlace[]>([]);
@@ -55,17 +52,12 @@ export function VoiceCreate({ initialMode, forWish }: { initialMode: "voice" | "
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [fixingKey, setFixingKey] = useState<string | null>(null);
-  const [showTyped, setShowTyped] = useState(false);
   const [importMsg, setImportMsg] = useState("");
   const [fromList, setFromList] = useState(false);
   const [listLink, setListLink] = useState("");
   const [linkError, setLinkError] = useState<string | null>(null);
-  const transcriptRef = useRef<HTMLDivElement | null>(null);
 
-  const transcript = [speech.text, speech.interim].filter(Boolean).join(" ");
-  useEffect(() => { transcriptRef.current?.scrollTo({ top: 1e6 }); }, [transcript]);
-
-  const structure = async (text: string, from: Stage = "talk") => {
+  const structure = async (text: string, from: Stage = "paste") => {
     if (!text.trim()) { setError("Name at least one place first."); return; }
     setStage("structuring");
     setError(null);
@@ -254,17 +246,6 @@ export function VoiceCreate({ initialMode, forWish }: { initialMode: "voice" | "
               </span>
             </span>
           </button>
-          <button
-            type="button"
-            onClick={() => { setStage("talk"); setError(null); }}
-            className="text-left rounded-3xl border border-line bg-paper p-4 flex gap-4 items-start hover:border-terracotta-soft active:scale-[0.99] transition-transform"
-          >
-            <span className="w-12 h-12 rounded-2xl bg-terracotta text-white flex items-center justify-center shrink-0"><MicIcon size={22} /></span>
-            <span className="min-w-0">
-              <span className="block font-semibold text-[16px]">Say your places</span>
-              <span className="block mt-0.5 text-[13px] text-ink-muted leading-snug">Just talk — &ldquo;Shelter for dinner, Ettore for gelato, Times Beach for sunset&rdquo; — and we&apos;ll build it.</span>
-            </span>
-          </button>
         </div>
       </div>
     );
@@ -425,7 +406,7 @@ export function VoiceCreate({ initialMode, forWish }: { initialMode: "voice" | "
                       ? `${p.resolved.category} · ${p.resolved.address || p.resolved.city}`
                       : p.pin
                         ? `Dropped pin · ${p.pin.address || formatCoords(p.pin.lat, p.pin.lng)}`
-                        : `Heard “${p.name}” — couldn't match it to a place`}
+                        : `“${p.name}” — couldn't match it to a place`}
                   </div>
                   {p.note && <div className="mt-1 text-[12px] text-ink-muted italic line-clamp-2">“{p.note}”</div>}
                   {!p.removed && (
@@ -469,7 +450,7 @@ export function VoiceCreate({ initialMode, forWish }: { initialMode: "voice" | "
         {error && <p className="text-[12.5px] text-danger">{error}</p>}
         <div className="fixed bottom-0 inset-x-0 z-30 flex justify-center pointer-events-none">
           <div className="pointer-events-auto w-full max-w-[480px] safe-bottom bg-paper/95 backdrop-blur border-t border-line px-4 py-3 flex items-center gap-2">
-            <button type="button" onClick={() => { setStage(fromList ? "paste" : "talk"); setFromList(false); setError(null); speech.reset(); }} className="text-[13px] font-medium text-ink-muted px-3 py-2">Start over</button>
+            <button type="button" onClick={() => { setStage("paste"); setFromList(false); setError(null); }} className="text-[13px] font-medium text-ink-muted px-3 py-2">Start over</button>
             <div className="flex-1" />
             <Button onClick={finish} disabled={creating || kept.length === 0}>{creating ? <Spinner /> : `Create guide · ${kept.length} place${kept.length === 1 ? "" : "s"}`}</Button>
           </div>
@@ -478,56 +459,8 @@ export function VoiceCreate({ initialMode, forWish }: { initialMode: "voice" | "
     );
   }
 
-  /* ---------- talk ---------- */
-  return (
-    <div className="px-6 pt-4 pb-10 flex flex-col min-h-[calc(100dvh-56px)]">
-      <h1 className="font-display text-[34px] leading-[1.05]">Say the places you want in your guide.</h1>
-      <p className="mt-2 text-[13.5px] text-ink-muted leading-relaxed">
-        All in one go, like you&apos;d tell a friend: <span className="italic text-ink">“Tsuta ramen, Yanaka Coffee Ten, Ichiran in Shinjuku…”</span>
-      </p>
-
-      <div ref={transcriptRef} className={cx("mt-5 flex-1 min-h-[140px] max-h-[38dvh] overflow-y-auto rounded-3xl border px-4 py-3 text-[16px] leading-relaxed", speech.listening ? "border-terracotta bg-paper" : "border-line bg-paper/60")}>
-        {transcript ? (
-          <p>{speech.text}{speech.interim && <span className="text-ink-faint"> {speech.interim}</span>}</p>
-        ) : (
-          <p className="text-ink-faint">{speech.listening ? "Listening…" : "Your list will appear here."}</p>
-        )}
-      </div>
-      {speech.error && <p className="mt-2 text-[12.5px] text-ink-muted">{speech.error}</p>}
-      {error && <p className="mt-2 text-[12.5px] text-danger">{error}</p>}
-
-      {(!speech.supported || showTyped) && (
-        <div className="mt-3">
-          <Textarea value={typed} onChange={(e) => setTyped(e.target.value)} rows={3} autoFocus={showTyped} placeholder={speech.supported ? "Type your places, separated by commas." : "Voice isn't available in this browser. Type your places, separated by commas."} />
-        </div>
-      )}
-
-      <div className="mt-6 flex flex-col items-center gap-4">
-        {speech.supported ? (
-          <button
-            type="button"
-            onClick={() => (speech.listening ? speech.stop() : speech.start())}
-            aria-label={speech.listening ? "Stop listening" : "Start listening"}
-            className={cx("relative w-[84px] h-[84px] rounded-full text-white flex items-center justify-center transition-transform active:scale-95 shadow-float", speech.listening ? "bg-danger pulse-ring" : "bg-terracotta")}
-          >
-            {speech.listening ? <StopIcon size={30} /> : <MicIcon size={34} />}
-          </button>
-        ) : null}
-        <p className="text-[12.5px] text-ink-muted">{speech.listening ? "Tap to stop when you're done." : speech.supported ? "Tap to talk." : ""}</p>
-        <Button size="lg" onClick={() => structure([speech.text || transcript, typed].filter((t) => t.trim()).join(", "), "talk")} disabled={speech.listening || !(transcript.trim() || typed.trim())} className="w-full">
-          Build my guide
-        </Button>
-        <div className="flex items-center gap-4 text-[13px] text-ink-muted">
-          {speech.supported && transcript && !speech.listening && <button type="button" onClick={speech.reset} className="underline">Clear</button>}
-          {speech.supported && !showTyped && <button type="button" onClick={() => setShowTyped(true)} className="inline-flex items-center gap-1.5"><KeyboardIcon size={15} /> Type your list</button>}
-          <button type="button" onClick={() => setStage("typed")} className="inline-flex items-center gap-1.5">Add places one by one</button>
-        </div>
-      </div>
-      <p className="mt-6 text-[11.5px] text-ink-faint text-center">
-        Voice is handled by your browser. <Link href="/" className="underline">Cancel</Link>
-      </p>
-    </div>
-  );
+  /* Anything else (e.g. review without a result) falls back to the typed start. */
+  return null;
 }
 
 function emptyResolved(name: string, city: string): NonNullable<ParsedPlacesResponse["places"][number]["resolved"]> {

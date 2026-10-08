@@ -12,7 +12,7 @@ export default function PrivacyPage() {
       <ul>
         <li><b>Account:</b> your name, username, email and a securely hashed password. Optional bio, photo, Instagram and website.</li>
         <li><b>What you create:</b> guides, places, notes, tips, photos, voice notes, comments, favourites, reactions and trips.</li>
-        <li><b>Location — only when you ask:</b> &ldquo;Record a place&rdquo; and &ldquo;my location&rdquo; on the map use your position once to find nearby places. We don&apos;t track you in the background or store your location history.</li>
+        <li><b>Location — only when you ask:</b> &ldquo;Add a place&rdquo; and &ldquo;my location&rdquo; on the map use your position once to find nearby places. We don&apos;t track you in the background or store your location history.</li>
         <li><b>Usage:</b> simple counts such as guide views, shares, saves and taps on directions, so creators can see how their guides are used and we can improve the app. Signed-out visitors get an anonymous browser id.</li>
         <li><b>Phone alerts:</b> if you turn them on, a technical address for your device so we can send notifications.</li>
       </ul>

@@ -28,7 +28,7 @@ const CATEGORY_PHRASES: Record<string, (city: string) => string> = {
   Stay: (c) => `Where to stay in ${c}`,
 };
 
-/** "Try saying" examples built from what's actually on MyGuide, so every one returns something. */
+/** "Try searching" examples built from what's actually on MyGuide, so every one returns something. */
 async function buildExamples(cities: string[], signedIn: boolean): Promise<string[]> {
   const out: string[] = [];
   for (const city of cities.slice(0, 2)) {
@@ -51,13 +51,29 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
   // "See all" on the People section: just the people, no guide search.
   const allPeople = sp.people === "all";
   const here = `/search?q=${encodeURIComponent(q)}${allPeople ? "&people=all" : ""}`;
-  const people = q ? await searchPeople(q, user?.id, allPeople ? 50 : 3) : { hits: [], total: 0 };
   const intent = q && !allPeople ? await interpretSearch(q) : null;
+  // A city search ("Paris") is about places: people only show on a whole-word name match, and below the guides.
+  const placeSearch = !!(intent && (intent.city || intent.country) && !intent.byUsername);
+  const people = q ? await searchPeople(q, user?.id, allPeople ? 50 : 3, { wholeWord: placeSearch }) : { hits: [], total: 0 };
   const [results, placeHits] = intent ? await Promise.all([searchGuides(intent, user?.id), searchPlaces(intent, user?.id)]) : [[], []];
   const cities = q ? [] : await listFeedCities();
   const examples = q ? [] : await buildExamples(cities, !!user);
   const wanted = q ? [] : (await listAllWishes(user?.id)).slice(0, 3);
   const suggested = q ? null : await peopleToFollow(user?.id, 8);
+
+  const peopleSection = people.hits.length > 0 && (
+    <section>
+      <div className="flex items-baseline justify-between px-1 mb-2">
+        <h2 className="text-[12px] font-medium uppercase tracking-[0.08em] text-ink-muted">People</h2>
+        {people.total > people.hits.length && (
+          <Link href={`/search?q=${encodeURIComponent(q)}&people=all`} className="text-[12.5px] font-medium text-terracotta">See all {people.total} →</Link>
+        )}
+      </div>
+      <ul className="flex flex-col gap-2">
+        {people.hits.map((h) => <PersonRow key={h.user.id} hit={h} signedIn={!!user} next={here} />)}
+      </ul>
+    </section>
+  );
 
   return (
     <AppShell>
@@ -70,7 +86,7 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
         <div className="px-5 pt-5 flex flex-col gap-5">
           {examples.length > 0 && (
           <div>
-            <h2 className="text-[12px] font-medium uppercase tracking-[0.08em] text-ink-muted mb-2">Try saying</h2>
+            <h2 className="text-[12px] font-medium uppercase tracking-[0.08em] text-ink-muted mb-2">Try searching</h2>
             <div className="flex flex-col gap-1.5">
               {examples.map((e) => (
                 <Link key={e} href={`/search?q=${encodeURIComponent(e)}`} className="text-[15px] font-display leading-snug text-ink hover:text-terracotta">“{e}”</Link>
@@ -140,19 +156,7 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
           {intent.scope === "following" && !user && (
             <EmptyState title="Log in to search your people" body="“By people I'm following” needs to know who you follow." action={<LinkButton href={`/login?next=${encodeURIComponent(`/search?q=${q}`)}`} size="sm">Log in</LinkButton>} />
           )}
-          {people.hits.length > 0 && (
-            <section>
-              <div className="flex items-baseline justify-between px-1 mb-2">
-                <h2 className="text-[12px] font-medium uppercase tracking-[0.08em] text-ink-muted">People</h2>
-                {people.total > people.hits.length && (
-                  <Link href={`/search?q=${encodeURIComponent(q)}&people=all`} className="text-[12.5px] font-medium text-terracotta">See all {people.total} →</Link>
-                )}
-              </div>
-              <ul className="flex flex-col gap-2">
-                {people.hits.map((h) => <PersonRow key={h.user.id} hit={h} signedIn={!!user} next={here} />)}
-              </ul>
-            </section>
-          )}
+          {!placeSearch && peopleSection}
           {placeHits.length > 0 && (
             <section>
               <h2 className="px-1 text-[12px] font-medium uppercase tracking-[0.08em] text-ink-muted mb-2">Places</h2>
@@ -190,6 +194,7 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
             />
           )}
           {results.map((g) => <GuideCard key={g.guide.id} data={g} />)}
+          {placeSearch && peopleSection}
         </main>
       )}
     </AppShell>

@@ -11,6 +11,7 @@ import {
   type PushState,
 } from "@/lib/pushClient";
 import { BellIcon, CheckIcon, PlusIcon, ShareIcon } from "./Icons";
+import { Logo } from "./Logo";
 import { Spinner, cx } from "./ui";
 
 const bigButton = "h-14 w-full rounded-full text-[17px] font-semibold inline-flex items-center justify-center transition-colors disabled:opacity-60";
@@ -26,10 +27,13 @@ export function HomeScreenStep({
   platform,
   publicKey,
   onDone,
+  stepLabel,
 }: {
   platform: InstallPlatform;
   publicKey: string | null;
   onDone: () => Promise<void> | void;
+  /** e.g. "Step 3 of 3" in the intro. */
+  stepLabel?: string;
 }) {
   const [finishing, startFinish] = useTransition();
   const done = () => startFinish(async () => onDone());
@@ -37,15 +41,16 @@ export function HomeScreenStep({
 
   return (
     <div className="flex-1 flex flex-col px-6 pt-12">
-      <div className="flex items-center justify-between min-h-11">
-        <span className="font-display text-[26px] font-semibold text-terracotta leading-none">M.</span>
+      <div className="flex items-center justify-center min-h-11">
+        <Logo />
       </div>
 
       {platform === "standalone" ? (
         <AlertsOnly publicKey={publicKey} />
       ) : (
         <>
-          <div className="mt-4 flex flex-col gap-2">
+          <div className="mt-6 flex flex-col gap-2 text-center">
+            {stepLabel && <span className="text-[13px] font-semibold uppercase tracking-[0.08em] text-terracotta">{stepLabel}</span>}
             <h1 className="font-display text-[30px] leading-[1.15] font-semibold">Add MyGuide to your home screen</h1>
             <p className="text-[17px] leading-normal text-ink-muted">
               {ios
@@ -83,8 +88,8 @@ function IOSSteps({ platform }: { platform: InstallPlatform }) {
         title={<>Tap the <b className="text-terracotta">Share</b> button</>}
         body={
           chrome
-            ? "It’s the square with an arrow pointing up, at the top right next to the web address."
-            : "It’s the square with an arrow pointing up. Don’t see it? Tap ⋯ at the bottom right of Safari first."
+            ? "The square with an arrow pointing up — at the top right, next to the web address. Not there? Tap ⋯ at the bottom right first."
+            : "The square with an arrow pointing up, at the bottom of Safari. On newer iPhones, tap ⋯ at the bottom right first, then Share."
         }
         art={chrome ? <ChromeBarArt /> : <SafariBarArt />}
       />
@@ -96,8 +101,8 @@ function IOSSteps({ platform }: { platform: InstallPlatform }) {
       />
       <Step
         n={3}
-        title={<>Keep <b className="text-terracotta">Open as Web App</b> on, then tap <b className="text-terracotta">Add</b></>}
-        body="MyGuide now sits on your home screen like any other app."
+        title={<>Tap <b className="text-terracotta">Add</b> at the top right</>}
+        body="Not Cancel. If you see “Open as Web App”, leave it switched on. MyGuide now sits on your home screen like any other app."
         art={<AddSheetArt />}
       />
       <Step
@@ -217,10 +222,10 @@ function AddSheetArt() {
   return (
     <div className="w-full max-w-[280px] rounded-[14px] bg-paper overflow-hidden text-[15px]">
       <div className="px-3.5 py-2.5 flex items-center justify-between border-b border-line">
-        <span className="text-ink-muted/70">Cancel</span>
-        <span className="font-semibold">Add to Home Screen</span>
+        <span className="text-ink-muted/50">Cancel</span>
+        <span className="font-semibold text-[13px] text-ink-muted">Add to Home Screen</span>
         <Hot round={false}>
-          <span className="px-2 py-0.5 rounded-full ring-2 ring-terracotta text-terracotta font-semibold">Add</span>
+          <span className="px-3 py-1 rounded-full bg-terracotta text-white font-semibold">Add</span>
         </Hot>
       </div>
       <div className="px-3.5 py-3 flex items-center gap-3 border-b border-line">
@@ -229,7 +234,7 @@ function AddSheetArt() {
       </div>
       <div className="px-3.5 py-2.5 flex items-center justify-between">
         <span>Open as Web App</span>
-        <span className="w-[46px] h-7 rounded-full bg-[#34c759] p-0.5 flex justify-end ring-2 ring-terracotta ring-offset-2 ring-offset-paper">
+        <span className="w-[46px] h-7 rounded-full bg-[#34c759] p-0.5 flex justify-end">
           <span className="w-6 h-6 rounded-full bg-white shadow" />
         </span>
       </div>

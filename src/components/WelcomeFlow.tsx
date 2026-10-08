@@ -8,7 +8,8 @@ import { followMany, toggleFollow, type FollowStatus } from "@/lib/actions/socia
 import { installPlatform, type InstallPlatform } from "@/lib/pushClient";
 import { HomeScreenStep, needsHomeScreenStep } from "./HomeScreenStep";
 import { GuideCover } from "./GuideCover";
-import { CameraIcon, HeartIcon, ListIcon, MicIcon } from "./Icons";
+import { CameraIcon, HeartIcon, ListIcon, PinIcon } from "./Icons";
+import { Logo } from "./Logo";
 import { UsernameForm } from "./UsernameForm";
 import { Avatar, Spinner, cx } from "./ui";
 
@@ -22,9 +23,11 @@ export type WelcomeSample = {
 
 const SLIDES = [
   { title: "Guides from people you trust", body: "Follow friends and see the places they actually love — not ads or top-10 lists." },
-  { title: "Save as you go", body: "Heart the places and guides you like, then combine them into one guide for your trip." },
-  { title: "Share your own in seconds", body: "Turn the list you already send friends into a guide — no typing addresses or hours." },
+  { title: "Save places you like", body: "Tap ♥ on any place and it’s kept for your next trip." },
+  { title: "Share your own in seconds", body: "Start from the list you already send friends." },
 ];
+
+type Stage = "username" | "slides" | "follow" | "home";
 
 const bigButton = "h-14 w-full rounded-full text-[17px] font-semibold inline-flex items-center justify-center transition-colors disabled:opacity-60";
 
@@ -43,6 +46,7 @@ export function WelcomeFlow({
   samples,
   finish,
   pushPublicKey,
+  initialStep,
 }: {
   firstName: string;
   askUsername: boolean;
@@ -54,9 +58,25 @@ export function WelcomeFlow({
   /** Marks onboarding done and redirects to `next` (bound server action). */
   finish: () => Promise<void>;
   pushPublicKey: string | null;
+  /** From ?step= — so going back (or returning from Safari's Share sheet) lands on the same step, not slide 1. */
+  initialStep?: string;
 }) {
   const router = useRouter();
-  const [stage, setStage] = useState<"username" | "slides" | "follow" | "home">(askUsername && !tour ? "username" : "slides");
+  const [stage, setStageRaw] = useState<Stage>(() => {
+    if (initialStep === "follow" && !tour) return "follow";
+    if (initialStep === "home") return "home";
+    if (initialStep === "slides") return "slides";
+    return askUsername && !tour ? "username" : "slides";
+  });
+  // Keep the step in the address so back/refresh returns here instead of restarting the intro.
+  const setStage = (s: Stage) => {
+    setStageRaw(s);
+    // Through the router (not history.replaceState) so a server-action refresh doesn't drop it.
+    const params = new URLSearchParams(window.location.search);
+    params.set("step", s);
+    router.replace(`/welcome?${params.toString()}`, { scroll: false });
+    window.scrollTo({ top: 0 });
+  };
   const [platform, setPlatform] = useState<InstallPlatform>("desktop");
   const [showHome, setShowHome] = useState(false);
   useEffect(() => {
@@ -90,7 +110,7 @@ export function WelcomeFlow({
       <Screen>
         <Header />
         <div className="flex-1 flex flex-col justify-center gap-5">
-          <div>
+          <div className="text-center">
             <h1 className="font-display text-[30px] leading-[1.15] font-semibold">Welcome, {firstName}.</h1>
             <p className="mt-2 text-[17px] leading-normal text-ink-muted">First, check the name friends will find you by.</p>
           </div>
@@ -103,9 +123,17 @@ export function WelcomeFlow({
     );
   }
 
-  if (stage === "follow") return <FollowStep people={people} finish={afterFollow} />;
+  const total = tour ? 2 : showHome ? 3 : 2;
+  if (stage === "follow") return <FollowStep people={people} finish={afterFollow} stepLabel={`Step 2 of ${total}`} />;
   if (stage === "home")
-    return <HomeScreenStep platform={platform} publicKey={pushPublicKey} onDone={tour ? () => router.push(exitHref) : finish} />;
+    return (
+      <HomeScreenStep
+        platform={platform}
+        publicKey={pushPublicKey}
+        stepLabel={`Step ${total} of ${total}`}
+        onDone={tour ? () => router.push(exitHref) : finish}
+      />
+    );
 
   return (
     <Screen>
@@ -114,7 +142,7 @@ export function WelcomeFlow({
           tour ? (
             <Link href={exitHref} className="min-h-11 min-w-11 flex items-center justify-end text-[16px] font-medium text-ink-muted hover:text-ink">Close</Link>
           ) : (
-            <button type="button" onClick={() => setStage("follow")} className="min-h-11 min-w-11 flex items-center justify-end text-[16px] font-medium text-ink-muted hover:text-ink">Skip</button>
+            <button type="button" onClick={() => setStage("follow")} className="min-h-11 min-w-11 flex items-center justify-end text-[15px] font-medium text-ink-muted hover:text-ink whitespace-nowrap">Skip intro</button>
           )
         }
       />
@@ -131,16 +159,16 @@ export function WelcomeFlow({
         {SLIDES.map((s, i) => (
           <section key={s.title} aria-label={`${i + 1} of ${SLIDES.length}`} className="w-full shrink-0 snap-center px-6 flex flex-col gap-6">
             <div className="flex-1 min-h-[300px] flex items-center justify-center py-2">
-              {i === 0 ? <TrustArt samples={samples} /> : i === 1 ? <SaveArt people={people} /> : <ShareArt />}
+              {i === 0 ? <TrustArt samples={samples} /> : i === 1 ? <SaveArt /> : <ShareArt />}
             </div>
-            <div className="flex flex-col gap-2.5">
+            <div className="flex flex-col gap-2.5 text-center">
               <h2 className="font-display text-[30px] leading-[1.15] font-semibold">{s.title}</h2>
               <p className="text-[17px] leading-normal text-ink-muted">{s.body}</p>
             </div>
           </section>
         ))}
       </div>
-      <div className="mt-6 flex gap-2 items-center" aria-hidden>
+      <div className="mt-6 flex gap-2 items-center justify-center" aria-hidden>
         {SLIDES.map((s, i) => (
           <span key={s.title} className={cx("h-2 rounded-full transition-all", i === index ? "w-6 bg-terracotta" : "w-2 bg-cream-line")} />
         ))}
@@ -160,11 +188,13 @@ function Screen({ children }: { children: ReactNode }) {
   return <div className="flex-1 flex flex-col px-6 pt-12 pb-[max(2rem,env(safe-area-inset-bottom))] overflow-hidden">{children}</div>;
 }
 
+/** Logo centred, with an optional action (Skip / Close) on the right. */
 function Header({ right }: { right?: ReactNode }) {
   return (
-    <div className="flex items-center justify-between min-h-11">
-      <span className="font-display text-[26px] font-semibold text-terracotta leading-none">M.</span>
-      {right}
+    <div className="grid grid-cols-[1fr_auto_1fr] items-center min-h-11">
+      <span />
+      <Logo />
+      <span className="flex justify-end">{right}</span>
     </div>
   );
 }
@@ -203,40 +233,23 @@ function TrustArt({ samples }: { samples: WelcomeSample[] }) {
   );
 }
 
-function SaveArt({ people }: { people: WelcomePerson[] }) {
-  const faces = people.slice(0, 3);
+function SaveArt() {
   return (
-    <div className="flex flex-col items-center gap-3.5" aria-hidden>
-      <div className={cx("w-[296px] rounded-[20px] bg-paper p-4 flex gap-3.5 items-center", cardShadow)}>
-        <div className="w-16 h-16 rounded-[14px] bg-ochre-soft shrink-0" />
-        <div className="flex-1 min-w-0 flex flex-col gap-1">
-          <div className="text-[16px] font-semibold">Ettore Gelato</div>
-          <div className="text-[13px] text-ink-muted">Canggu · In 2 guides</div>
-          <span className="self-start text-[12px] px-2.5 py-0.5 rounded-full bg-cream-deep text-ink-muted">Food &amp; Drinks</span>
-        </div>
-        <span className="w-11 h-11 rounded-full bg-terracotta-tint text-terracotta flex items-center justify-center shrink-0">
-          <HeartIcon size={22} filled />
+    <div className={cx("w-[296px] rounded-[20px] bg-paper overflow-hidden", cardShadow)} aria-hidden>
+      <div className="relative h-[150px] bg-[linear-gradient(135deg,oklch(86%_0.07_75),oklch(78%_0.09_45))]">
+        <span className="absolute top-3 right-3 w-12 h-12 rounded-full bg-paper text-terracotta flex items-center justify-center shadow-md">
+          <span className="pulse-ring absolute inset-0 rounded-full" />
+          <HeartIcon size={24} filled />
         </span>
       </div>
-      <svg width="24" height="30" viewBox="0 0 24 30" fill="none" className="text-cream-line" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M12 2v24" />
-        <path d="M5 19l7 7 7-7" />
-      </svg>
-      <div className={cx("w-[296px] rounded-[20px] bg-paper overflow-hidden", cardShadow)}>
-        <div className="h-[88px] bg-sage-soft" />
-        <div className="px-4 py-3.5 flex flex-col gap-2">
-          <div className="text-[17px] font-semibold">My Bali trip</div>
-          <div className="text-[13px] text-ink-muted">Combined from 3 guides · 18 places</div>
-          <div className="flex items-center">
-            {faces.length >= 2
-              ? faces.map((p, i) => (
-                  <span key={p.id} className={cx("rounded-full ring-2 ring-paper", i > 0 && "-ml-2")}>
-                    <Avatar user={p} size={28} />
-                  </span>
-                ))
-              : ["bg-terracotta", "bg-sage", "bg-ochre"].map((c, i) => <span key={c} className={cx("w-7 h-7 rounded-full ring-2 ring-paper", c, i > 0 && "-ml-2")} />)}
-          </div>
+      <div className="px-4 py-3.5 flex items-center gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="text-[17px] font-semibold">Ettore Gelato</div>
+          <div className="text-[13px] text-ink-muted">Gelato · Canggu</div>
         </div>
+        <span className="rounded-full bg-terracotta-tint text-terracotta px-3 py-1 text-[13px] font-semibold inline-flex items-center gap-1">
+          <HeartIcon size={14} filled /> Saved
+        </span>
       </div>
     </div>
   );
@@ -244,26 +257,23 @@ function SaveArt({ people }: { people: WelcomePerson[] }) {
 
 function ShareArt() {
   const tiles = [
-    { icon: <ListIcon size={22} />, title: "Paste a list", body: "Google Maps links, notes, WhatsApp messages" },
-    { icon: <CameraIcon size={22} />, title: "Upload screenshots", body: "We pick out the places for you" },
-    { icon: <MicIcon size={22} />, title: "Record a place", body: "Say what's special while you're there" },
+    { icon: <ListIcon size={30} />, title: "Paste a list", tone: "bg-sage text-white" },
+    { icon: <CameraIcon size={30} />, title: "Screenshots", tone: "bg-ochre text-ink" },
+    { icon: <PinIcon size={30} />, title: "Add a place", tone: "bg-terracotta text-white" },
   ];
   return (
-    <div className="w-full flex flex-col gap-3" aria-hidden>
+    <div className="w-full grid grid-cols-3 gap-3" aria-hidden>
       {tiles.map((t) => (
-        <div key={t.title} className="rounded-[18px] bg-paper p-4 flex gap-3.5 items-center shadow-[0_6px_20px_oklch(22%_0.02_60/0.08)]">
-          <span className="w-12 h-12 rounded-full bg-terracotta-tint text-terracotta flex items-center justify-center shrink-0">{t.icon}</span>
-          <div className="min-w-0">
-            <div className="text-[16px] font-semibold">{t.title}</div>
-            <div className="text-[14px] text-ink-muted">{t.body}</div>
-          </div>
+        <div key={t.title} className={cx("rounded-[20px] bg-paper px-2 pt-5 pb-4 flex flex-col items-center gap-3", cardShadow)}>
+          <span className={cx("w-16 h-16 rounded-[18px] flex items-center justify-center", t.tone)}>{t.icon}</span>
+          <span className="text-[14px] font-semibold text-center leading-tight">{t.title}</span>
         </div>
       ))}
     </div>
   );
 }
 
-function FollowStep({ people, finish }: { people: WelcomePerson[]; finish: () => Promise<void> }) {
+function FollowStep({ people, finish, stepLabel }: { people: WelcomePerson[]; finish: () => Promise<void>; stepLabel: string }) {
   const [status, setStatus] = useState<Record<string, FollowStatus>>(() => Object.fromEntries(people.map((p) => [p.id, p.status])));
   const [busy, setBusy] = useState<Record<string, boolean>>({});
   const [allPending, startAll] = useTransition();
@@ -294,7 +304,9 @@ function FollowStep({ people, finish }: { people: WelcomePerson[]; finish: () =>
 
   return (
     <div className="flex-1 flex flex-col px-6 pt-12">
-      <div className="flex flex-col gap-2">
+      <Header />
+      <div className="mt-6 flex flex-col gap-2 text-center">
+        <span className="text-[13px] font-semibold uppercase tracking-[0.08em] text-terracotta">{stepLabel}</span>
         <h1 className="font-display text-[30px] leading-[1.15] font-semibold">Follow people you know</h1>
         <p className="text-[17px] leading-normal text-ink-muted">Their guides show up on your Home, and you&apos;ll hear when they add something new.</p>
       </div>
@@ -314,7 +326,8 @@ function FollowStep({ people, finish }: { people: WelcomePerson[]; finish: () =>
               const s = status[p.id];
               return (
                 <li key={p.id} className="rounded-[18px] bg-paper px-3.5 py-3 flex gap-3 items-center">
-                  <Link href={`/u/${p.username}`} className="flex gap-3 items-center flex-1 min-w-0">
+                  {/* Tapping a name follows/unfollows — it doesn't leave the intro (going back used to restart it). */}
+                  <button type="button" onClick={() => toggle(p.id)} disabled={busy[p.id] || allPending} className="flex gap-3 items-center flex-1 min-w-0 text-left">
                     <Avatar user={p} size={48} />
                     <div className="min-w-0">
                       <div className="text-[16px] font-semibold truncate">{p.displayName}</div>
@@ -322,7 +335,7 @@ function FollowStep({ people, finish }: { people: WelcomePerson[]; finish: () =>
                         @{p.username} · {p.guideCount ? `${p.guideCount} guide${p.guideCount === 1 ? "" : "s"}` : "New on MyGuide"}
                       </div>
                     </div>
-                  </Link>
+                  </button>
                   <button
                     type="button"
                     onClick={() => toggle(p.id)}
@@ -341,7 +354,7 @@ function FollowStep({ people, finish }: { people: WelcomePerson[]; finish: () =>
           </ul>
         </>
       ) : (
-        <p className="mt-6 rounded-2xl bg-cream-deep/60 px-4 py-3.5 text-[14px] text-ink-muted leading-relaxed">
+        <p className="mt-6 rounded-2xl bg-cream-deep/60 px-4 py-3.5 text-[14px] text-ink-muted leading-relaxed text-center">
           You&rsquo;re one of the first here. You can find people any time from Search.
         </p>
       )}

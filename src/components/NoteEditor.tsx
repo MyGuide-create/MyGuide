@@ -1,16 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { useRecorder, uploadMedia } from "@/hooks/useRecorder";
-import { useSpeech } from "@/hooks/useSpeech";
-import { formatDuration } from "@/lib/utils";
+import { useState } from "react";
 import { AudioClip } from "./AudioClip";
-import { MicIcon, SparkleIcon, StopIcon, TrashIcon } from "./Icons";
-import { Button, Spinner, Textarea, cx } from "./ui";
+import { SparkleIcon, TrashIcon } from "./Icons";
+import { Button, Spinner, Textarea } from "./ui";
 
 /**
- * "My Recommendation" editor: type it, or dictate it. Dictation records the
- * raw clip *and* transcribes it, so both the words and the voice are kept.
+ * "My Recommendation" editor: type the note (phones' own keyboard dictation works too).
+ * In-app voice recording was removed on 8 Oct 2026; older notes keep their voice clip,
+ * which can still be played or removed here.
  */
 export function NoteEditor({
   placeName,
@@ -29,59 +27,13 @@ export function NoteEditor({
   const [polishing, setPolishing] = useState(false);
   /** The note as it was before "Tidy up", so it can be put back. */
   const [beforeTidy, setBeforeTidy] = useState<string | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const speech = useSpeech({ continuous: true });
-  const recorder = useRecorder();
-  const baseRef = useRef(note);
   const dirty = text !== note;
-
-  // Stream the transcript into the textarea while dictating.
-  useEffect(() => {
-    if (!speech.listening && !speech.text) return;
-    const live = [speech.text, speech.interim].filter(Boolean).join(" ").trim();
-    if (live) setText((baseRef.current ? `${baseRef.current.trim()} ` : "") + live);
-  }, [speech.text, speech.interim, speech.listening]);
-
-  // When the recording stops, upload the clip and attach it.
-  useEffect(() => {
-    if (!recorder.clip) return;
-    const c = recorder.clip;
-    (async () => {
-      setUploading(true);
-      try {
-        const ext = c.mime.includes("mp4") ? "m4a" : c.mime.includes("ogg") ? "ogg" : "webm";
-        const up = await uploadMedia(c.blob, `note.${ext}`, c.durationSec);
-        setClip(up.id);
-        await onSave({ noteClipMediaId: up.id });
-      } catch (e) {
-        console.warn(e);
-      } finally {
-        setUploading(false);
-        recorder.discard();
-      }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recorder.clip]);
-
-  const startDictation = async () => {
-    baseRef.current = text;
-    speech.reset();
-    speech.start();
-    if (recorder.supported) await recorder.start();
-  };
-  const stopDictation = async () => {
-    speech.stop();
-    recorder.stop();
-    // Persist the transcript once recognition settles.
-    setTimeout(() => void save(), 400);
-  };
 
   const save = async (override?: string) => {
     const value = (override ?? text).trim();
     setSaving(true);
     try {
       await onSave({ note: value });
-      baseRef.current = value;
     } finally {
       setSaving(false);
     }
@@ -108,32 +60,20 @@ export function NoteEditor({
     await onSave({ noteClipMediaId: null });
   };
 
-  const active = speech.listening || recorder.recording;
-
   return (
     <div>
       <Textarea
         value={text}
         onChange={(e) => { setText(e.target.value); setBeforeTidy(null); }}
-        onBlur={() => { if (dirty && !active) void save(); }}
+        onBlur={() => { if (dirty) void save(); }}
         rows={3}
         placeholder={`Why ${placeName}? What should a friend order, when should they go…`}
-        className={cx(active && "border-terracotta ring-2 ring-terracotta/20")}
       />
       <div className="mt-2 flex items-center gap-2 flex-wrap">
-        {active ? (
-          <Button size="sm" variant="danger" onClick={stopDictation}>
-            <StopIcon size={14} /> Stop {recorder.recording ? `· ${formatDuration(recorder.elapsed)}` : ""}
-          </Button>
-        ) : (
-          <Button size="sm" variant="outline" onClick={startDictation} disabled={uploading}>
-            <MicIcon size={14} /> Say it
-          </Button>
-        )}
-        <Button size="sm" variant="ghost" onClick={polish} disabled={polishing || !text.trim() || active} className="border border-line">
+        <Button size="sm" variant="ghost" onClick={polish} disabled={polishing || !text.trim()} className="border border-line">
           {polishing ? <Spinner /> : <SparkleIcon size={14} />} Tidy up
         </Button>
-        {beforeTidy !== null && !active && (
+        {beforeTidy !== null && (
           <button
             type="button"
             onClick={async () => {
@@ -147,20 +87,16 @@ export function NoteEditor({
             Undo tidy
           </button>
         )}
-        {dirty && !active && (
+        {dirty && (
           <Button size="sm" variant="secondary" onClick={() => save()} disabled={saving}>{saving ? <Spinner /> : "Save note"}</Button>
         )}
-        {uploading && <span className="text-[11.5px] text-ink-muted inline-flex items-center gap-1"><Spinner /> Saving clip…</span>}
-        {clip && !uploading && (
+        {clip && (
           <span className="inline-flex items-center gap-2">
             <AudioClip mediaId={clip} />
             <button type="button" onClick={removeClip} aria-label="Remove voice clip" className="text-ink-muted hover:text-danger w-8 h-8 flex items-center justify-center"><TrashIcon size={17} /></button>
           </span>
         )}
       </div>
-      {(speech.error || recorder.error) && <p className="mt-1.5 text-[11.5px] text-ink-muted">{speech.error ?? recorder.error}</p>}
-      {active && speech.supported && <p className="mt-1.5 text-[11.5px] text-terracotta">Listening… speak naturally, then tap Stop.</p>}
-      {active && !speech.supported && <p className="mt-1.5 text-[11.5px] text-terracotta">Recording your voice clip (live transcription isn&apos;t supported in this browser — type the note too).</p>}
     </div>
   );
 }

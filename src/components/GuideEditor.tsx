@@ -186,7 +186,7 @@ export function GuideEditor({ detail, justForked, justCreated, viewerId, wishFor
           <span>
             {justForked
               ? `This is your private copy of @${detail.forkedFrom?.username ?? "their"}'s guide. Remove what you don't like, add what you found, then publish it as your own.`
-              : "Your places are in and saved as a draft — only you can see it. Add a description to each one (typed or spoken), swap in your own photos, and publish when it\u2019s ready."}
+              : "Your places are in and saved as a draft — only you can see it. Add a description to each one, swap in your own photos, and publish when it\u2019s ready."}
           </span>
         </div>
       )}
