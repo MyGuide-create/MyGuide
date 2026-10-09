@@ -105,8 +105,8 @@ export function GuideCover({
       {bare && <CoverOverlay city={cityLabel} />}
       {!bare && <div className={cx("absolute inset-0 flex flex-col justify-end", compact ? "p-3" : "p-5")} style={{ background: `linear-gradient(to top, ${p.bg} 45%, transparent 85%)` }}>
         {place && (
-          <div className={cx("flex items-start gap-1.5 font-bold uppercase tracking-[0.03em] leading-[1.05] text-terracotta-deep", compact ? "text-[22px]" : "text-[28px]")}>
-            <PinIcon size={compact ? 22 : 28} className="shrink-0 mt-0.5" />
+          <div className={cx("flex items-start gap-1.5 font-bold uppercase tracking-[0.03em] leading-[1.05] text-terracotta-deep", compact ? "text-[13px]" : "text-[17px]")}>
+            <PinIcon size={compact ? 13 : 17} className="shrink-0 mt-px" />
             <span className="min-w-0">{place}</span>
           </div>
         )}
@@ -131,8 +131,8 @@ function CoverOverlay({ city, credit }: { city?: string | null; credit?: ReactNo
 /** "📍 Crans-Montana" — the same pill everywhere a cover shows. */
 export function CityPill({ label, className, large }: { label: string; className?: string; large?: boolean }) {
   return (
-    <span className={cx("min-w-0 inline-flex items-center rounded-full bg-ink/70 backdrop-blur-sm text-white shadow-[0_1px_4px_oklch(22%_0.02_60/0.25)]", large ? "max-w-[92%] gap-1.5 pl-3 pr-4 py-1.5 text-[28px] font-bold leading-8" : "max-w-[75%] gap-1 pl-2 pr-3 py-[5px] text-[14px] font-semibold leading-5", className)}>
-      <PinIcon size={large ? 28 : 16} className="shrink-0" />
+    <span className={cx("min-w-0 inline-flex items-center rounded-full bg-ink/70 backdrop-blur-sm text-white shadow-[0_1px_4px_oklch(22%_0.02_60/0.25)]", large ? "max-w-[85%] gap-1 pl-2.5 pr-3 py-1 text-[17px] font-bold leading-6" : "max-w-[75%] gap-1 pl-2 pr-3 py-[5px] text-[14px] font-semibold leading-5", className)}>
+      <PinIcon size={large ? 17 : 16} className="shrink-0" />
       <span className="truncate">{label}</span>
     </span>
   );
