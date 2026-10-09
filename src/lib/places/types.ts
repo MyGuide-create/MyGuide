@@ -59,6 +59,8 @@ export interface PlacesProvider {
   /** Cities and regions only, for "Going somewhere?" and a guide's city. */
   cities(input: string): Promise<CitySuggestion[]>;
   city(id: string): Promise<CityInfo | null>;
+  /** The closest real city/region to some free text, typos and all ("Brussles" → Brussels). */
+  cityByText(text: string): Promise<CitySuggestion | null>;
   searchText(query: string, cityHint?: string): Promise<PlaceResult | null>;
   details(providerId: string): Promise<PlaceResult | null>;
   businessStatus(providerId: string): Promise<PlaceResult["businessStatus"]>;

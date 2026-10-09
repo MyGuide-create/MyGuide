@@ -160,6 +160,12 @@ export const mockProvider: PlacesProvider = {
       .map<CitySuggestion>((c) => ({ id: `city:${c.city}|${c.country}|${c.lat}|${c.lng}`, mainText: c.city, secondaryText: c.country }));
   },
 
+  async cityByText(text) {
+    const { looksLikeMisspelling } = await import("./spelling");
+    const c = CITIES.find((x) => looksLikeMisspelling(text, x.city));
+    return c ? { id: `city:${c.city}|${c.country}|${c.lat}|${c.lng}`, mainText: c.city, secondaryText: c.country } : null;
+  },
+
   async city(id) {
     const [city, country, lat, lng] = id.replace(/^city:/, "").split("|");
     if (!city || !lat) return null;

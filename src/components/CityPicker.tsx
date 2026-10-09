@@ -38,6 +38,8 @@ export function CityPicker({
   const [open, setOpen] = useState(false);
   const [touched, setTouched] = useState(false);
   const abort = useRef<AbortController | null>(null);
+  /** "Did you mean Brussels?" — shown when the typed city looks like a misspelling of a real one. */
+  const [fix, setFix] = useState<{ suggestion: CitySuggestion; typed: string } | null>(null);
 
   useEffect(() => {
     if (!touched || q.trim().length < 2) return;
@@ -81,7 +83,28 @@ export function CityPicker({
     if (!text || !onFreeText) return;
     setOpen(false);
     setTouched(false);
+    setResolving(true);
+    let suggestion: CitySuggestion | null = null;
+    try {
+      const res = await fetch(`/api/places/city-check?q=${encodeURIComponent(text)}`);
+      suggestion = ((await res.json()) as { suggestion: CitySuggestion | null }).suggestion;
+    } catch {
+      /* offline: just use what they typed */
+    } finally {
+      setResolving(false);
+    }
+    if (suggestion) {
+      setFix({ suggestion, typed: text });
+      return;
+    }
     await onFreeText(text);
+  };
+
+  const keepTyped = async () => {
+    if (!fix || !onFreeText) return;
+    const typed = fix.typed;
+    setFix(null);
+    await onFreeText(typed);
   };
 
   const showList = open && touched && q.trim().length >= 2;
@@ -99,6 +122,7 @@ export function CityPicker({
           onChange={(e) => {
             setQ(e.target.value);
             setTouched(true);
+            setFix(null);
             if (e.target.value.trim().length < 2) setItems([]);
           }}
           onFocus={(e) => {
@@ -128,6 +152,30 @@ export function CityPicker({
           </span>
         )}
       </div>
+      {fix && (
+        <div role="alertdialog" aria-label="Check the spelling" className="mt-2 rounded-2xl border border-terracotta-soft bg-terracotta-tint/60 px-4 py-3">
+          <p className="text-[14.5px]">
+            Did you mean <strong>{fix.suggestion.mainText}</strong>
+            {fix.suggestion.secondaryText ? <span className="text-ink-muted">, {fix.suggestion.secondaryText}</span> : null}?
+          </p>
+          <div className="mt-2.5 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                const s = fix.suggestion;
+                setFix(null);
+                void choose(s);
+              }}
+              className="rounded-full bg-terracotta text-white px-4 py-2 text-[14px] font-semibold"
+            >
+              Yes, {fix.suggestion.mainText}
+            </button>
+            <button type="button" onClick={keepTyped} className="rounded-full border border-line bg-paper px-4 py-2 text-[14px] text-ink-muted">
+              No, keep “{fix.typed}”
+            </button>
+          </div>
+        </div>
+      )}
       {showList && (items.length > 0 || onFreeText) && (
         <ul className="absolute z-30 left-0 right-0 mt-1.5 rounded-2xl border border-line bg-paper shadow-card overflow-hidden max-h-80 overflow-y-auto">
           {items.map((s) => (

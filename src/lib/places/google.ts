@@ -168,6 +168,20 @@ export const googleProvider: PlacesProvider = {
       }));
   },
 
+  async cityByText(text) {
+    // Text Search copes with typos better than autocomplete does.
+    const data = await gfetch<{ places?: Array<{ id: string; displayName?: { text: string }; formattedAddress?: string }> }>("/places:searchText", {
+      method: "POST",
+      fieldMask: "places.id,places.displayName,places.formattedAddress",
+      body: JSON.stringify({ textQuery: text, pageSize: 1, includedType: "locality" }),
+    });
+    const p = data?.places?.[0];
+    if (!p?.displayName?.text) return null;
+    const name = p.displayName.text;
+    const rest = (p.formattedAddress ?? "").split(",").map((x) => x.trim()).filter((x) => x && x !== name);
+    return { id: p.id, mainText: name, secondaryText: rest.join(", ") };
+  },
+
   async city(id) {
     const p = await gfetch<{ displayName?: { text: string }; addressComponents?: Array<{ longText: string; types?: string[] }>; location?: { latitude: number; longitude: number } }>(
       `/places/${encodeURIComponent(id)}`,
