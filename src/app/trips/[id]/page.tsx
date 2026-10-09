@@ -11,7 +11,7 @@ import { getDb } from "@/lib/db";
 import { guides, places, trips } from "@/lib/db/schema";
 import { planTrip } from "@/lib/guides";
 import { placeArea } from "@/lib/places/neighbourhood";
-import { formatTripDates } from "@/lib/utils";
+import { formatTripDates, titleSize } from "@/lib/utils";
 import { isReusable } from "@/lib/reuse";
 import { ForkIcon } from "@/components/Icons";
 
@@ -45,7 +45,7 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
           <Link href={`/g/${tripGuide.slug}`} className="flex items-center gap-3 rounded-2xl border border-terracotta-soft bg-terracotta-tint/50 px-4 py-3.5 hover:border-terracotta">
             <span className="flex-1 min-w-0">
               <span className="block text-[11px] font-semibold uppercase tracking-[0.08em] text-terracotta-deep">Your trip guide</span>
-              <span className="block font-display text-[22px] leading-tight truncate">{tripGuide.title}</span>
+              <span className="block font-display leading-tight break-words" style={{ fontSize: titleSize(tripGuide.title, 22) }}>{tripGuide.title}</span>
               <span className="block text-[12px] text-ink-muted">{tripGuideCount} {tripGuideCount === 1 ? "place" : "places"} · {tripGuide.publishedAt && tripGuide.visibility === "public" ? "published" : "private until you publish"}</span>
             </span>
             <span className="text-terracotta text-[13px] font-medium shrink-0">Open →</span>

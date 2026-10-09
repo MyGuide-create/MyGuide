@@ -1,0 +1,530 @@
+diff --git a/drizzle/0020_place_sources.sql b/drizzle/0020_place_sources.sql
+new file mode 100644
+index 0000000..e0fff27
+--- /dev/null
++++ b/drizzle/0020_place_sources.sql
+@@ -0,0 +1,20 @@
++ALTER TABLE `places` ADD `source_place_id` text;
++--> statement-breakpoint
++CREATE INDEX `places_source_idx` ON `places` (`source_place_id`);
++--> statement-breakpoint
++-- Notes copied before 8 Oct 2026 (Use this guide, Add to my guide, trip combine) become credited, read-only quotes:
++-- link each carried note to the original place (same text, written by that author, in their own guide)...
++UPDATE `places` SET `source_place_id` = (
++  SELECT s.`id` FROM `places` s JOIN `guides` sg ON sg.`id` = s.`guide_id`
++  WHERE s.`id` != `places`.`id`
++    AND s.`note` = `places`.`note`
++    AND sg.`owner_id` = `places`.`note_author_id`
++    AND coalesce(s.`note_author_id`, sg.`owner_id`) = `places`.`note_author_id`
++    AND ((s.`google_place_id` IS NOT NULL AND s.`google_place_id` = `places`.`google_place_id`) OR s.`name` = `places`.`name`)
++  ORDER BY s.`created_at` LIMIT 1
++)
++WHERE `note_author_id` IS NOT NULL AND `note` != ''
++  AND `note_author_id` != (SELECT g.`owner_id` FROM `guides` g WHERE g.`id` = `places`.`guide_id`);
++--> statement-breakpoint
++-- ...and clear the copied text, so the copier's own note box starts empty. Unmatched carried notes keep their "— @author" credit.
++UPDATE `places` SET `note` = '', `note_author_id` = NULL, `note_clip_media_id` = NULL WHERE `source_place_id` IS NOT NULL;
+diff --git a/drizzle/meta/_journal.json b/drizzle/meta/_journal.json
+index 4f985e7..eb42ce1 100644
+--- a/drizzle/meta/_journal.json
++++ b/drizzle/meta/_journal.json
+@@ -141,6 +141,13 @@
+       "when": 1791450000000,
+       "tag": "0019_city_coords_and_area",
+       "breakpoints": true
++    },
++    {
++      "idx": 20,
++      "version": "6",
++      "when": 1791460000000,
++      "tag": "0020_place_sources",
++      "breakpoints": true
+     }
+   ]
+ }
+diff --git a/src/app/g/[slug]/p/[placeId]/page.tsx b/src/app/g/[slug]/p/[placeId]/page.tsx
+index 49f7e40..4e22319 100644
+--- a/src/app/g/[slug]/p/[placeId]/page.tsx
++++ b/src/app/g/[slug]/p/[placeId]/page.tsx
+@@ -1,4 +1,5 @@
+ import type { Metadata } from "next";
++import { CreditedNotes } from "@/components/CreditedNotes";
+ import Link from "next/link";
+ import { formatCoords, isDroppedPin, mapsUrl } from "@/lib/places/pins";
+ import { tidyCity } from "@/lib/places/cityName";
+@@ -268,6 +269,8 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
+           </div>
+         )}
+ 
++        <CreditedNotes notes={detail.credited[place.id]} locked={detail.viewerCanEdit} />
++
+         {detail.viewerCanEdit ? (
+           <TipsEditor guideId={guide.id} placeId={place.id} initial={tips} variant="card" />
+         ) : (
+@@ -287,7 +290,7 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
+         )}
+ 
+         {detail.viewerCanEdit && !place.note && (
+-          <LinkButton href={`/g/${slug}/edit#place-edit-${place.id}`} variant="outline" size="sm" className="self-start">Add a description – what makes it special</LinkButton>
++          <LinkButton href={`/g/${slug}/edit#place-edit-${place.id}`} variant="outline" size="sm" className="self-start">{detail.credited[place.id]?.length ? "Add your own note" : "Add a description – what makes it special"}</LinkButton>
+         )}
+ 
+         <div>
+diff --git a/src/components/AddToGuideButton.tsx b/src/components/AddToGuideButton.tsx
+index 9738e10..3d5057e 100644
+--- a/src/components/AddToGuideButton.tsx
++++ b/src/components/AddToGuideButton.tsx
+@@ -56,7 +56,7 @@ export function AddToGuideButton({ placeId, signedIn, signupHref, targets, notes
+               <button type="button" aria-label="Close" onClick={() => setOpen(false)} className="w-9 h-9 flex items-center justify-center rounded-full text-ink-muted"><XIcon size={18} /></button>
+             </div>
+             <p className="text-[12.5px] text-ink-muted mb-3">
+-              {notesShared ? "The creator's note comes with it, credited to them." : "The creator keeps their notes private, so you'll get the place's name and location."}
++              {notesShared ? "The creator's note and tips come with it, credited to them." : "The creator keeps their notes here, so you'll get the place itself."}
+             </p>
+             {done ? (
+               <div className="rounded-2xl bg-sage/10 px-4 py-3.5 text-[13.5px]">
+diff --git a/src/components/CreditedNotes.tsx b/src/components/CreditedNotes.tsx
+new file mode 100644
+index 0000000..42e005f
+--- /dev/null
++++ b/src/components/CreditedNotes.tsx
+@@ -0,0 +1,60 @@
++import Link from "next/link";
++import type { CreditedNote } from "@/lib/reuse";
++import { AudioClip } from "./AudioClip";
++import { LockIcon, SparkleIcon } from "./Icons";
++import { cx } from "./ui";
++
++/**
++ * The original creator's note and tips on a copied place: their words, their name, read-only,
++ * shown live from their guide. "compact" for list rows, full for the place page and editor.
++ */
++export function CreditedNotes({ notes, compact, locked, className }: { notes?: CreditedNote[]; compact?: boolean; locked?: boolean; className?: string }) {
++  if (!notes?.length) return null;
++  return (
++    <div className={cx("flex flex-col gap-2", className)}>
++      {notes.map((n) =>
++        compact ? (
++          <div key={n.sourcePlaceId} className="text-[12.5px] leading-[1.45] text-ink-muted">
++            {n.note.trim() && (
++              <p className="whitespace-pre-line italic line-clamp-3">
++                <span className="not-italic font-semibold text-ink">@{n.author.username}:</span> {n.note}
++              </p>
++            )}
++            {n.tips.length > 0 && (
++              <p className="mt-1 inline-flex items-start gap-1.5 rounded-xl bg-terracotta-tint/70 px-2.5 py-1.5 text-[12px] text-ink not-italic">
++                <SparkleIcon size={12} className="text-terracotta mt-[2px] shrink-0" />
++                <span className="line-clamp-2">
++                  {n.tips[0]}
++                  <span className="text-ink-muted"> — @{n.author.username}{n.tips.length > 1 ? ` · +${n.tips.length - 1} more` : ""}</span>
++                </span>
++              </p>
++            )}
++          </div>
++        ) : (
++          <div key={n.sourcePlaceId} className="rounded-2xl border border-line bg-cream-deep/40 px-4 py-3">
++            <p className="text-[11.5px] font-semibold text-ink-muted flex items-center gap-1.5">
++              {locked && <LockIcon size={11} />}
++              <span className="min-w-0 truncate">
++                From <Link href={`/u/${n.author.username}`} className="text-ink hover:text-terracotta">@{n.author.username}</Link>&apos;s{" "}
++                <Link href={`/g/${n.guideSlug}/p/${n.sourcePlaceId}`} className="underline underline-offset-2 hover:text-terracotta">{n.guideTitle}</Link>
++              </span>
++            </p>
++            {n.note.trim() && <p className="mt-1.5 text-[14px] italic leading-relaxed whitespace-pre-line">{n.note}</p>}
++            {n.clipMediaId && <div className="mt-1.5"><AudioClip mediaId={n.clipMediaId} label={`@${n.author.username}'s voice note`} /></div>}
++            {n.tips.length > 0 && (
++              <ul className="mt-2 flex flex-col gap-1">
++                {n.tips.map((t, i) => (
++                  <li key={i} className="text-[13px] leading-relaxed flex gap-2">
++                    <SparkleIcon size={12} className="text-terracotta mt-[5px] shrink-0" />
++                    <span>{t}</span>
++                  </li>
++                ))}
++              </ul>
++            )}
++            {locked && <p className="mt-2 text-[11px] text-ink-faint">Their words stay theirs — add your own note below.</p>}
++          </div>
++        ),
++      )}
++    </div>
++  );
++}
+diff --git a/src/components/GuideEditor.tsx b/src/components/GuideEditor.tsx
+index aa2aa70..4a49710 100644
+--- a/src/components/GuideEditor.tsx
++++ b/src/components/GuideEditor.tsx
+@@ -15,6 +15,8 @@ import { coverCityLabel } from "@/lib/coverCity";
+ import { namesSentence } from "@/lib/utils";
+ import { CameraIcon, ChevronDown, ChevronUp, ForkIcon, GlobeIcon, LockIcon, PinIcon, SparkleIcon, TrashIcon } from "./Icons";
+ import { NoteEditor } from "./NoteEditor";
++import { CreditedNotes } from "./CreditedNotes";
++import type { CreditedNote } from "@/lib/reuse";
+ import { PhotoPicker } from "./PhotoPicker";
+ import { PlaceSearch } from "./PlaceSearch";
+ import { CityPicker } from "./CityPicker";
+@@ -237,6 +239,7 @@ export function GuideEditor({ detail, justForked, justCreated, viewerId, wishFor
+               tips={detail.placeTips[p.id] ?? []}
+               onTipCount={onTipCount}
+               noteAuthor={p.noteAuthorId && p.noteAuthorId !== owner.id ? detail.noteAuthors[p.noteAuthorId] : null}
++              credited={detail.credited[p.id]}
+               onMove={(d) => move(i, d)}
+               onRemove={() => remove(p)}
+               onPatch={(patch) => patchPlace(p.id, patch)}
+@@ -272,11 +275,11 @@ export function GuideEditor({ detail, justForked, justCreated, viewerId, wishFor
+         </div>
+         <label className="flex items-center justify-between rounded-2xl border border-line bg-paper px-4 py-3">
+           <span>
+-            <span className="block text-[14px] font-medium">Let others reuse my notes and photos</span>
++            <span className="block text-[14px] font-medium">Let others copy my notes and tips</span>
+             <span className="block text-[11.5px] text-ink-muted">
+               {guide.allowFork
+-                ? "People can copy this guide or add your places to their own trip guides, with your notes credited to you. You'll see it in Activity."
+-                : "People can still add a place to their own guide, but only its name and location — your notes and photos stay here, and the guide can't be copied."}
++                ? "When someone copies this guide or adds your places to theirs, your notes, tips and photos come along — credited to you, and they can't edit them. You'll see it in Activity."
++                : "People can still copy your places, but only the places — your notes, tips and photos stay here."}
+             </span>
+           </span>
+           <input type="checkbox" checked={guide.allowFork} onChange={(e) => saveMeta({ allowFork: e.target.checked })} className="w-5 h-5 accent-terracotta" />
+@@ -310,7 +313,7 @@ export function GuideEditor({ detail, justForked, justCreated, viewerId, wishFor
+           {justForked ? <ForkIcon size={16} className="shrink-0 mt-0.5" /> : <PinIcon size={16} className="shrink-0 mt-0.5" />}
+           <span>
+             {justForked
+-              ? `This is your private copy of @${detail.forkedFrom?.username ?? "their"}'s guide. Remove what you don't like, add what you found, then publish it as your own.`
++              ? `Your private copy of @${detail.forkedFrom?.username ?? "their"}'s guide. Their notes and tips stay on each place, credited to them. Remove places you don't want, add your own finds and notes, and publish when it's yours.`
+               : "Your places are in and saved as a draft — only you can see it. Add a description to each one, swap in your own photos, and publish when it\u2019s ready."}
+           </span>
+         </div>
+@@ -531,7 +534,9 @@ function EditablePlace({
+   autoFindBranches,
+   onMerged,
+   noteRev,
++  credited,
+ }: {
++  credited?: CreditedNote[];
+   place: Place;
+   index: number;
+   total: number;
+@@ -641,8 +646,9 @@ function EditablePlace({
+           />
+         </div>
+       )}
++      <CreditedNotes notes={credited} locked className="mt-3" />
+       <div className="mt-3">
+-        <Label>Description - What Makes It Special</Label>
++        <Label>{credited?.length ? "Your note" : "Description - What Makes It Special"}</Label>
+         {open ? (
+           <NoteEditor key={noteRev} placeName={place.name} note={place.note} clipMediaId={place.noteClipMediaId} onSave={(patch) => onPatch(patch)} />
+         ) : (
+diff --git a/src/components/GuideView.tsx b/src/components/GuideView.tsx
+index eb6af06..f322a6a 100644
+--- a/src/components/GuideView.tsx
++++ b/src/components/GuideView.tsx
+@@ -136,7 +136,7 @@ export function GuideView({ detail, viewerId, viewer, shareUrl, shareKey }: { de
+               <Tag tone="sage"><ForkIcon size={11} /> based on @{forkedFrom.username}&apos;s guide</Tag>
+             </Link>
+           )}
+-          {!guide.allowFork && <Tag>Notes not for reuse</Tag>}
++          {!guide.allowFork && <Tag>Copies get places only</Tag>}
+         </div>
+ 
+         {guide.description && <p className="mt-3.5 text-[13.5px] leading-[1.5] italic">{guide.description}</p>}
+@@ -145,12 +145,12 @@ export function GuideView({ detail, viewerId, viewer, shareUrl, shareKey }: { de
+           {!detail.viewerCanEdit && <SaveGuideButton guideId={guide.id} initial={detail.viewerSavedGuide} signedIn={!!viewerId} />}
+           <Button size="sm" variant="secondary" onClick={() => setSharing(true)} className="flex-1"><ShareIcon size={15} /> Share</Button>
+           {detail.viewerCanFork && (
+-            <Button size="sm" variant="outline" onClick={fork} disabled={forking} className="flex-1">
+-              {forking ? <Spinner /> : <ForkIcon size={15} />} Use this guide
++            <Button size="sm" variant="outline" onClick={fork} disabled={forking} className="flex-1 whitespace-nowrap">
++              {forking ? <Spinner /> : <ForkIcon size={15} />} Copy guide
+             </Button>
+           )}
+-          {!viewerId && guide.allowFork && (
+-            <LinkButton href={`/signup?why=fork&next=${encodeURIComponent(`/g/${guide.slug}${shareKey ? `?key=${shareKey}` : ""}`)}`} size="sm" variant="outline" className="flex-1"><ForkIcon size={15} /> Use this guide</LinkButton>
++          {!viewerId && (
++            <LinkButton href={`/signup?why=fork&next=${encodeURIComponent(`/g/${guide.slug}${shareKey ? `?key=${shareKey}` : ""}`)}`} size="sm" variant="outline" className="flex-1 whitespace-nowrap"><ForkIcon size={15} /> Copy guide</LinkButton>
+           )}
+           <div className="flex rounded-full border border-line p-0.5">
+             <button type="button" aria-label="List view" onClick={() => setMode("list")} className={cx("w-9 h-8 rounded-full flex items-center justify-center", mode === "list" ? "bg-ink text-cream" : "text-ink-muted")}><ListIcon size={17} /></button>
+@@ -225,7 +225,7 @@ export function GuideView({ detail, viewerId, viewer, shareUrl, shareKey }: { de
+                 </h2>
+               )}
+               {g.places.map((p) => (
+-                <PlaceRow key={p.id} place={p} index={numberOf.get(p.id)} ownerId={guide.ownerId} guideSlug={guide.slug} noteAuthor={p.noteAuthorId ? noteAuthors[p.noteAuthorId] : null} flagged={flags[p.id]} comments={detail.placeComments[p.id] ?? []} currentUser={viewer} tips={detail.placeTips[p.id]} saved={saved.has(p.id)} shareKey={shareKey} social={detail.placeSocial[p.id]} friends={detail.friendsWhoLike[p.id]} branchCount={detail.placeLocations[p.id]?.length ?? 0} rating={ratings[p.id]} expanded />
++                <PlaceRow key={p.id} place={p} index={numberOf.get(p.id)} ownerId={guide.ownerId} guideSlug={guide.slug} noteAuthor={p.noteAuthorId ? noteAuthors[p.noteAuthorId] : null} flagged={flags[p.id]} comments={detail.placeComments[p.id] ?? []} currentUser={viewer} tips={detail.placeTips[p.id]} saved={saved.has(p.id)} shareKey={shareKey} social={detail.placeSocial[p.id]} friends={detail.friendsWhoLike[p.id]} branchCount={detail.placeLocations[p.id]?.length ?? 0} rating={ratings[p.id]} credited={detail.credited[p.id]} expanded />
+               ))}
+             </section>
+           ))}
+diff --git a/src/components/PlaceRow.tsx b/src/components/PlaceRow.tsx
+index a21f649..59ad04c 100644
+--- a/src/components/PlaceRow.tsx
++++ b/src/components/PlaceRow.tsx
+@@ -4,6 +4,8 @@ import type { Place, PlaceTip } from "@/lib/db/schema";
+ import type { PublicUser } from "@/lib/auth";
+ import type { PlaceCommentView } from "@/lib/guides";
+ import { AudioClip } from "./AudioClip";
++import { CreditedNotes } from "./CreditedNotes";
++import type { CreditedNote } from "@/lib/reuse";
+ import { AlertIcon, CalendarIcon, ChatIcon, PinIcon, SparkleIcon } from "./Icons";
+ import { HoursSummary } from "./HoursSummary";
+ import { SaveButton } from "./SaveButton";
+@@ -33,7 +35,10 @@ export function PlaceRow({
+   friends,
+   branchCount = 0,
+   rating,
++  credited,
+ }: {
++  /** The original creator's note and tips, when this place was copied from their guide. */
++  credited?: CreditedNote[];
+   /** Google's rating for this place, when loaded. */
+   rating?: GoogleRating | null;
+   place: Place;
+@@ -88,6 +93,7 @@ export function PlaceRow({
+             {carried && <span className="not-italic text-[11px] text-ink-faint"> — @{noteAuthor!.username}</span>}
+           </p>
+         )}
++        <CreditedNotes notes={credited} compact className="mt-1.5" />
+         {(friends?.length ?? 0) > 0 ? (
+           <p className="mt-1 text-[11.5px] text-sage font-medium">♥ {namesSentence(friends!.map((u) => u.displayName.split(" ")[0]))} {friends!.length === 1 ? "likes" : "like"} this</p>
+         ) : social && social.loved + social.been > 0 ? (
+diff --git a/src/lib/actions/account.ts b/src/lib/actions/account.ts
+index c4dbad1..812b36a 100644
+--- a/src/lib/actions/account.ts
++++ b/src/lib/actions/account.ts
+@@ -39,7 +39,7 @@ export interface DeleteAccountState {
+ 
+ /**
+  * Permanently delete the signed-in account and everything it owns.
+- * Copies other people made of this person's guides ("Use this guide") are kept,
++ * Copies other people made of this person's guides ("Copy guide") are kept,
+  * with the "based on @…" credit and any carried-over note credits removed.
+  * Child rows are deleted explicitly rather than relying on SQLite cascades.
+  */
+diff --git a/src/lib/actions/guides.ts b/src/lib/actions/guides.ts
+index ccbf1b1..dd330a0 100644
+--- a/src/lib/actions/guides.ts
++++ b/src/lib/actions/guides.ts
+@@ -18,7 +18,7 @@ import type { BranchCandidate } from "../places/branches";
+ import { claimUnsplashPhoto } from "../covers/unsplash";
+ import { mapLimit, newId, newToken, slugify } from "../utils";
+ import { addNotifications } from "../notifications";
+-import { copyBranches, notifyGuideUsed } from "../reuse";
++import { copyBranches, copyPlace, notifyGuideUsed } from "../reuse";
+ import { normaliseInstagram, normaliseReserve, normaliseWebsite, normaliseWhatsapp, type Normalised } from "@/lib/placeLinks";
+ 
+ /** Owner or invited co-editor. Use for editing places, notes, tips and guide details. */
+@@ -665,7 +665,6 @@ export async function forkGuide(guideId: string, shareKey?: string | null): Prom
+   const source = await getGuideById(guideId);
+   if (!source) throw new Error("Guide not found.");
+   if (!(await canViewGuide(source, user.id, shareKey))) throw new Error("You don't have access to this guide.");
+-  if (!source.allowFork) throw new Error("The creator has turned off forking for this guide.");
+   if (source.ownerId === user.id) throw new Error("This is already your guide.");
+ 
+   const sourcePlaces = await db.select().from(places).where(eq(places.guideId, guideId)).orderBy(places.position);
+@@ -692,17 +691,8 @@ export async function forkGuide(guideId: string, shareKey?: string | null): Prom
+   });
+   if (sourcePlaces.length) {
+     const newIds = sourcePlaces.map(() => newId());
+-    await db.insert(places).values(
+-      sourcePlaces.map((p, i) => ({
+-        ...p,
+-        id: newIds[i],
+-        guideId: id,
+-        position: i,
+-        // Carry the original creator's note (and voice clip) with attribution.
+-        noteAuthorId: p.noteAuthorId ?? source.ownerId,
+-        createdAt: now,
+-      })),
+-    );
++    // Places are copied; the creator's notes and tips stay theirs and show on the copy, credited (see lib/reuse).
++    await db.insert(places).values(sourcePlaces.map((p, i) => ({ ...copyPlace(p, source, { guideId: id, position: i, now }), id: newIds[i] })));
+     await copyBranches(sourcePlaces.map((p, i) => [p.id, newIds[i]]));
+   }
+   await notifyGuideUsed(source, user.id, sourcePlaces.length);
+diff --git a/src/lib/authContext.ts b/src/lib/authContext.ts
+index d1bf0dc..745f214 100644
+--- a/src/lib/authContext.ts
++++ b/src/lib/authContext.ts
+@@ -5,7 +5,7 @@ export const SUPPORT_CONTACT = "Hisham";
+ 
+ const REASONS: Record<AuthReason, string> = {
+   follow: "Create a free account to follow creators and see their new guides.",
+-  fork: "Create a free account to save your own copy of this guide and make it yours.",
++  fork: "Create a free account to copy this guide — keep the places you like and add your own.",
+   create: "Create a free account to make your first guide.",
+   record: "Create a free account to record places as you go.",
+   notifications: "Log in to see guides people have shared with you.",
+diff --git a/src/lib/db/schema.ts b/src/lib/db/schema.ts
+index 5a2c648..4db929d 100644
+--- a/src/lib/db/schema.ts
++++ b/src/lib/db/schema.ts
+@@ -145,6 +145,12 @@ export const places = sqliteTable(
+     noteClipMediaId: text("note_clip_media_id"),
+     /** Who wrote the current note (differs from guide owner on forked guides). */
+     noteAuthorId: text("note_author_id"),
++    /**
++     * Copied from this place (Copy guide, Add to my guide, trip combine). The original creator's note and
++     * tips are shown on the copy live from here, credited and read-only — they're never copied as text.
++     * Null when the place was added directly, or the source guide doesn't share its notes.
++     */
++    sourcePlaceId: text("source_place_id"),
+     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+   },
+   (t) => [index("places_guide_idx").on(t.guideId, t.position)],
+diff --git a/src/lib/feedRank.ts b/src/lib/feedRank.ts
+index 4224168..e4b9ce1 100644
+--- a/src/lib/feedRank.ts
++++ b/src/lib/feedRank.ts
+@@ -6,7 +6,7 @@
+  *   descriptions  30  share of places with a real description (40+ characters)
+  *   expert tips   20  share of places with at least one tip
+  *   polish        10  guide intro (4) + share of places with the creator's own photo (6)
+- *   engagement    15  hearts and "Use this guide" copies, levels off
++ *   engagement    15  hearts and "Copy guide" copies, levels off
+  * Shares only count in full from 5 places up, so a 1-place guide with a great note can't top the feed.
+  *
+  * feed score = quality × freshness, where freshness fades from 1 towards 0.35 (half the gap gone
+diff --git a/src/lib/guides.ts b/src/lib/guides.ts
+index 61c003e..86db759 100644
+--- a/src/lib/guides.ts
++++ b/src/lib/guides.ts
+@@ -1,4 +1,5 @@
+ import { and, desc, eq, inArray, isNotNull, like, or, sql, type SQL } from "drizzle-orm";
++import { creditedNotesFor, type CreditedNote } from "./reuse";
+ import { getDb } from "./db";
+ import { follows, guideCollaborators, guideShares, guides, placeComments, placeLocations, placePhotos, placeReactions, placeTips, places, savedGuides, savedPlaces, users, type Guide, type Place, type PlaceComment, type PlacePhoto, type PlaceLocation, type PlaceTip, type User } from "./db/schema";
+ import { toPublicUser, type PublicUser } from "./auth";
+@@ -32,6 +33,8 @@ export interface GuideDetail extends GuideCard {
+   placePhotos: Record<string, PlacePhoto[]>;
+   /** Creator-authored expert tips for each place, in order, keyed by placeId. */
+   placeTips: Record<string, PlaceTip[]>;
++  /** The original creator's note and tips on copied places, credited and read-only. */
++  credited: Record<string, CreditedNote[]>;
+   /** Other branches of each place (the place row is the main one), keyed by placeId. */
+   placeLocations: Record<string, PlaceLocation[]>;
+   viewerCanEdit: boolean;
+@@ -365,11 +368,13 @@ export async function getGuideDetail(guide: Guide, viewer: User | null): Promise
+     placeComments: placeCommentsByPlace,
+     placePhotos: placePhotosByPlace,
+     placeTips: placeTipsByPlace,
++    credited: await creditedNotesFor(placeRows, guide, hiddenAuthors),
+     placeLocations: placeLocationsByPlace,
+     viewerCanEdit: viewerIsOwner || viewerIsCollaborator,
+     viewerIsOwner,
+     collaborators,
+-    viewerCanFork: !!viewer && !viewerIsOwner && !viewerIsCollaborator && guide.allowFork,
++    // Anyone can copy a guide's places; its notes and tips come along (credited) only when allowFork.
++    viewerCanFork: !!viewer && !viewerIsOwner && !viewerIsCollaborator,
+     savedPlaceIds: savedRows.map((r) => r.id),
+     viewerSavedGuide: !!viewer && !!(await db.query.savedGuides.findFirst({ where: and(eq(savedGuides.userId, viewer.id), eq(savedGuides.guideId, guide.id)) })),
+     guideSaves: Number((await db.select({ n: sql<number>`count(*)` }).from(savedGuides).where(eq(savedGuides.guideId, guide.id)))[0]?.n ?? 0),
+@@ -404,7 +409,8 @@ export async function searchGuides(intent: SearchIntent, viewerId?: string | nul
+     conds.push(like(guides.country, `%${intent.country}%`));
+   }
+   const query = (extra: (SQL | undefined)[]) =>
+-    db.select().from(guides).where(and(...conds, ...extra)).orderBy(desc(guides.publishedAt)).limit(40);
++    // Originals before copies of them ("Based on @…"), newest first within each.
++    db.select().from(guides).where(and(...conds, ...extra)).orderBy(sql`${guides.forkedFromGuideId} is not null`, desc(guides.publishedAt)).limit(40);
+   const catCond = intent.category
+     ? inArray(guides.id, db.select({ id: places.guideId }).from(places).where(eq(places.category, intent.category)))
+     : undefined;
+diff --git a/src/lib/reuse.ts b/src/lib/reuse.ts
+index 0bca23d..dbf968f 100644
+--- a/src/lib/reuse.ts
++++ b/src/lib/reuse.ts
+@@ -1,14 +1,16 @@
+ import { and, desc, eq, gt, inArray, isNull, sql } from "drizzle-orm";
+ import { getDb } from "./db";
+-import { guides, notifications, placeLocations, places, trips, type Guide, type Place } from "./db/schema";
++import { guides, notifications, placeLocations, places, placeTips, trips, users, type Guide, type Place } from "./db/schema";
++import { toPublicUser, type PublicUser } from "./auth";
+ import { addNotifications } from "./notifications";
+ import { newId, slugify } from "./utils";
+ 
+ /**
+- * Reusing other people's places (copying a guide, combining guides for a trip,
+- * "Add to my guide"). The place itself is public information; the creator's
+- * notes, photos and voice clips are theirs and only come along when the guide
+- * allows it (guides.allowFork — "Let others reuse my notes and photos").
++ * Reusing other people's places (Copy guide, combining guides for a trip, "Add to my guide").
++ * The place itself is public information and is copied. The creator's note, tips and voice clip are
++ * never copied as text: the copy points at the original (places.sourcePlaceId) and shows them live,
++ * credited and read-only — only when the guide allows it (guides.allowFork — "Let others copy my notes and tips").
++ * The copier writes their own note in the copy's empty note box.
+  */
+ 
+ /** Same real-world place across guides: Google id when we have one, otherwise name + rough location. */
+@@ -31,14 +33,71 @@ export function copyPlace(p: Place, source: Pick<Guide, "ownerId" | "allowFork">
+     guideId: target.guideId,
+     position: target.position,
+     createdAt: target.now,
+-    note: withNotes ? p.note : "",
+-    noteClipMediaId: withNotes ? p.noteClipMediaId : null,
+-    noteAuthorId: withNotes && p.note ? (p.noteAuthorId ?? source.ownerId) : null,
++    // The copier's own note starts empty; the creator's words are shown from the original, credited.
++    note: "",
++    noteClipMediaId: null,
++    noteAuthorId: null,
+     special: null,
+     photoMediaId: withNotes ? p.photoMediaId : null,
++    sourcePlaceId: withNotes ? p.id : null,
+   };
+ }
+ 
++/** A creator's note and tips shown on someone's copy of their place — read-only, credited, live from the original. */
++export interface CreditedNote {
++  sourcePlaceId: string;
++  author: PublicUser;
++  note: string;
++  clipMediaId: string | null;
++  tips: string[];
++  guideSlug: string;
++  guideTitle: string;
++}
++
++/**
++ * Credited notes for the places of `copy` (follows copies of copies, up to 3 steps back).
++ * Shown when the original guide still shares its notes, and either the original is public or the copy isn't
++ * (so someone's private-guide notes never end up on a published copy).
++ */
++export async function creditedNotesFor(placeRows: Place[], copy: Pick<Guide, "visibility" | "publishedAt">, hidden: Set<string>): Promise<Record<string, CreditedNote[]>> {
++  const out: Record<string, CreditedNote[]> = {};
++  const copyIsPublic = copy.visibility === "public" && !!copy.publishedAt;
++  // place in this guide -> the source id we still need to look at
++  let pending = new Map(placeRows.filter((p) => p.sourcePlaceId).map((p) => [p.id, p.sourcePlaceId!]));
++  if (!pending.size) return out;
++  const db = await getDb();
++  for (let hop = 0; hop < 3 && pending.size; hop++) {
++    const ids = [...new Set(pending.values())];
++    const srcRows = await db.select().from(places).where(inArray(places.id, ids));
++    const src = new Map(srcRows.map((p) => [p.id, p]));
++    const gIds = [...new Set(srcRows.map((p) => p.guideId))];
++    const gRows = gIds.length ? await db.select().from(guides).where(inArray(guides.id, gIds)) : [];
++    const gMap = new Map(gRows.map((g) => [g.id, g]));
++    const tipRows = ids.length ? await db.select().from(placeTips).where(inArray(placeTips.placeId, ids)).orderBy(placeTips.position, placeTips.createdAt) : [];
++    const tipsBy = new Map<string, string[]>();
++    for (const t of tipRows) tipsBy.set(t.placeId, [...(tipsBy.get(t.placeId) ?? []), t.body]);
++    const authorIds = [...new Set(srcRows.map((p) => p.noteAuthorId ?? gMap.get(p.guideId)?.ownerId).filter((x): x is string => !!x))];
++    const authorRows = authorIds.length ? await db.select().from(users).where(inArray(users.id, authorIds)) : [];
++    const authors = new Map(authorRows.map((u) => [u.id, toPublicUser(u)]));
++
++    const next = new Map<string, string>();
++    for (const [placeId, srcId] of pending) {
++      const s = src.get(srcId);
++      const g = s ? gMap.get(s.guideId) : undefined;
++      if (!s || !g || !g.allowFork) continue;
++      const author = authors.get(s.noteAuthorId ?? g.ownerId);
++      const tips = tipsBy.get(s.id) ?? [];
++      const visible = isReusable(g) || !copyIsPublic;
++      if (author && visible && !hidden.has(author.id) && (s.note.trim() || tips.length || s.noteClipMediaId)) {
++        (out[placeId] ??= []).push({ sourcePlaceId: s.id, author, note: s.note, clipMediaId: s.noteClipMediaId, tips, guideSlug: g.slug, guideTitle: g.title });
++      }
++      if (s.sourcePlaceId) next.set(placeId, s.sourcePlaceId);
++    }
++    pending = next;
++  }
++  return out;
++}
++
+ /** Branches are public facts (addresses), so they always come along with a copied place. */
+ export async function copyBranches(pairs: Array<[fromPlaceId: string, toPlaceId: string]>): Promise<void> {
+   if (!pairs.length) return;

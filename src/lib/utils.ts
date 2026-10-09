@@ -95,3 +95,19 @@ export async function mapLimit<T, R>(items: readonly T[], limit: number, fn: (it
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
   return out;
 }
+
+/**
+ * Font size for a guide title so the whole title shows (it wraps, never cut off):
+ * short titles keep the full size, longer ones step down.
+ */
+export function titleSize(title: string, base: number): string {
+  const n = title.trim().length;
+  const f = n <= 24 ? 1 : n <= 38 ? 0.86 : n <= 56 ? 0.74 : n <= 80 ? 0.64 : 0.56;
+  return `${Math.round(base * f * 2) / 2}px`;
+}
+
+/** "Dubai, UAE" — the city label with the country added when it's the guide's own single city. */
+export function cityLine(label: string | null | undefined, guide: { city?: string | null; country?: string | null }): string {
+  if (label) return label === guide.city && guide.country ? `${label}, ${guide.country}` : label;
+  return [guide.city, guide.country].filter(Boolean).join(", ");
+}

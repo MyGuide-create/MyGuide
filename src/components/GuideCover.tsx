@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { hashInt } from "@/lib/utils";
+import { cityLine, hashInt, titleSize } from "@/lib/utils";
 import { UNSPLASH_HOME } from "@/lib/covers/shared";
 import { PinIcon } from "./Icons";
 import { cx } from "./ui";
@@ -65,9 +65,7 @@ export function GuideCover({
   const p = palettes[hashInt(guide.id, palettes.length)];
   const variant = hashInt(guide.title, 3);
   // Illustrated covers already print the place under the title; the pill is only for the bare header.
-  const place = cityLabel
-    ? cityLabel === guide.city && guide.country ? `${cityLabel}, ${guide.country}` : cityLabel
-    : [guide.city, guide.country].filter(Boolean).join(", ");
+  const place = cityLine(cityLabel, guide);
   return (
     <div className={cx("relative overflow-hidden", className)} style={{ background: p.bg }}>
       <svg className="absolute inset-0 w-full h-full" viewBox="0 0 390 220" preserveAspectRatio="xMidYMid slice" aria-hidden>
@@ -104,9 +102,15 @@ export function GuideCover({
         ))}
       </svg>
       {bare && <CoverOverlay city={cityLabel} />}
-      {!bare && <div className={cx("absolute inset-0 flex flex-col justify-end", compact ? "p-3" : "p-5")}>
-        <div className={cx("text-ink-muted font-medium", compact ? "text-[10px]" : "text-[12px]")}>@{ownerUsername}{place ? ` · ${place}` : ""}</div>
-        <div className={cx("font-display text-ink leading-[1.02] mt-0.5 line-clamp-2", compact ? "text-[19px]" : "text-[30px]")}>{guide.title}</div>
+      {!bare && <div className={cx("absolute inset-0 flex flex-col justify-end", compact ? "p-3" : "p-5")} style={{ background: `linear-gradient(to top, ${p.bg} 45%, transparent 85%)` }}>
+        {place && (
+          <div className={cx("flex items-center gap-1 font-bold uppercase tracking-[0.06em] text-terracotta-deep", compact ? "text-[11px]" : "text-[14px]")}>
+            <PinIcon size={compact ? 12 : 15} className="shrink-0" />
+            <span className="min-w-0 truncate">{place}</span>
+          </div>
+        )}
+        <div className="font-display text-ink leading-[1.04] mt-0.5 break-words" style={{ fontSize: titleSize(guide.title, compact ? 19 : 30) }}>{guide.title}</div>
+        <div className={cx("text-ink-muted font-medium mt-1", compact ? "text-[10px]" : "text-[12px]")}>@{ownerUsername}</div>
       </div>}
     </div>
   );
@@ -126,8 +130,8 @@ function CoverOverlay({ city, credit }: { city?: string | null; credit?: ReactNo
 /** "📍 Crans-Montana" — the same pill everywhere a cover shows. */
 export function CityPill({ label, className }: { label: string; className?: string }) {
   return (
-    <span className={cx("min-w-0 max-w-[60%] inline-flex items-center gap-1 rounded-full bg-ink/55 backdrop-blur-sm pl-1.5 pr-2.5 py-[3px] text-[11.5px] font-medium leading-4 text-white shadow-[0_1px_4px_oklch(22%_0.02_60/0.25)]", className)}>
-      <PinIcon size={13} className="shrink-0" />
+    <span className={cx("min-w-0 max-w-[75%] inline-flex items-center gap-1 rounded-full bg-ink/70 backdrop-blur-sm pl-2 pr-3 py-[5px] text-[14px] font-semibold leading-5 text-white shadow-[0_1px_4px_oklch(22%_0.02_60/0.25)]", className)}>
+      <PinIcon size={16} className="shrink-0" />
       <span className="truncate">{label}</span>
     </span>
   );
@@ -154,7 +158,7 @@ function CoverCredit({
     "Google Maps"
   );
   return (
-    <div className="pointer-events-auto min-w-0 max-w-[60%] shrink truncate rounded-full bg-ink/45 backdrop-blur-sm px-2 py-0.5 text-[10px] leading-4 text-white/95">
+    <div className="pointer-events-auto min-w-0 max-w-[40%] shrink truncate rounded-full bg-ink/45 backdrop-blur-sm px-2 py-0.5 text-[10px] leading-4 text-white/95">
       Photo: {name} · {source}
     </div>
   );

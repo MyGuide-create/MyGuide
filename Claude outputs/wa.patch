@@ -1,0 +1,127 @@
+diff --git a/src/components/AskForGuide.tsx b/src/components/AskForGuide.tsx
+index 5f258c7..87cffe8 100644
+--- a/src/components/AskForGuide.tsx
++++ b/src/components/AskForGuide.tsx
+@@ -52,6 +52,8 @@ function AskSheet({ city: initialCity, person, onClose }: { city: City | null; p
+   const [sentTo, setSentTo] = useState<string[] | null>(null);
+   const [linkSent, setLinkSent] = useState(false);
+   const [copied, setCopied] = useState(false);
++  /** The ask link is made; the message waits for a tap that opens WhatsApp (a real tap is what makes phones open the contact picker). */
++  const [ready, setReady] = useState<string | null>(null);
+ 
+   const input = () => ({ city: city!.city, country: city!.country ?? "", lat: city!.lat ?? null, lng: city!.lng ?? null, note });
+ 
+@@ -69,23 +71,14 @@ function AskSheet({ city: initialCity, person, onClose }: { city: City | null; p
+     }
+   };
+ 
+-  /** WhatsApp straight away on phones; the share sheet (or copy) as a fallback. */
+-  const sendLink = async (how: "whatsapp" | "other") => {
++  /** Step 1: make the personal link (needs the server). Step 2 is a real link the person taps. */
++  const prepareLink = async () => {
+     if (!city) return;
+     setBusy("link");
+     setError(null);
+     try {
+       const { message } = await createAskLink(input());
+-      setLinkSent(true);
+-      if (how === "whatsapp") {
+-        // wa.me opens the WhatsApp app on phones (and WhatsApp Web on a computer) with the message ready.
+-        window.location.href = `https://wa.me/?text=${encodeURIComponent(message)}`;
+-      } else if (typeof navigator.share === "function") {
+-        await navigator.share({ text: message }).catch(() => {});
+-      } else {
+-        await navigator.clipboard.writeText(message).catch(() => {});
+-        setCopied(true);
+-      }
++      setReady(message);
+     } catch (e) {
+       setError(errorText(e, "Couldn't make your ask link."));
+     } finally {
+@@ -93,6 +86,29 @@ function AskSheet({ city: initialCity, person, onClose }: { city: City | null; p
+     }
+   };
+ 
++  const shareOther = async (message: string) => {
++    if (typeof navigator.share === "function") {
++      try {
++        await navigator.share({ text: message });
++        setLinkSent(true);
++      } catch {
++        /* closed the share sheet */
++      }
++      return;
++    }
++    await copy(message);
++  };
++
++  const copy = async (message: string) => {
++    try {
++      await navigator.clipboard.writeText(message);
++      setCopied(true);
++      setLinkSent(true);
++    } catch {
++      setError("Couldn’t copy — press and hold the message above to copy it.");
++    }
++  };
++
+   if (sentTo || linkSent) {
+     return (
+       <Sheet title="Ask sent" onClose={onClose}>
+@@ -104,7 +120,7 @@ function AskSheet({ city: initialCity, person, onClose }: { city: City | null; p
+           <p className="text-[13px] text-ink-muted leading-relaxed">We&apos;ll tell you when they open it and when your guide is ready. You can follow it on your wish list.</p>
+           <div className="mt-2 flex flex-col gap-2 w-full">
+             {sentTo && <Button variant="outline" onClick={() => setSentTo(null)}>Ask someone else too</Button>}
+-            {linkSent && <Button variant="outline" onClick={() => setLinkSent(false)}>Ask someone else too</Button>}
++            {linkSent && <Button variant="outline" onClick={() => { setLinkSent(false); setReady(null); setCopied(false); }}>Ask someone else too</Button>}
+             <Button variant="ghost" onClick={onClose}>Done</Button>
+           </div>
+         </div>
+@@ -112,6 +128,34 @@ function AskSheet({ city: initialCity, person, onClose }: { city: City | null; p
+     );
+   }
+ 
++  if (ready) {
++    // whatsapp://send opens the app's "send to…" contact picker on phones. wa.me (the web link) sometimes
++    // only opens WhatsApp's chat list instead, especially from a home-screen app — that's what Shaz hit.
++    const mobile = typeof navigator !== "undefined" && /iphone|ipad|ipod|android/i.test(navigator.userAgent);
++    const waHref = mobile ? `whatsapp://send?text=${encodeURIComponent(ready)}` : `https://wa.me/?text=${encodeURIComponent(ready)}`;
++    return (
++      <Sheet title="Send your ask" onClose={onClose}>
++        <div className="flex flex-col gap-3">
++          <p className="text-[13px] text-ink-muted">Your message with your personal link:</p>
++          <p className="rounded-2xl border border-line bg-paper px-3.5 py-3 text-left text-[13px] leading-relaxed whitespace-pre-line break-words [overflow-wrap:anywhere] select-all">{ready}</p>
++          <a
++            href={waHref}
++            onClick={() => setTimeout(() => setLinkSent(true), 800)}
++            className="h-12 rounded-full bg-[#25D366] text-white text-[15px] font-semibold inline-flex items-center justify-center gap-2"
++          >
++            <WhatsAppIcon size={18} /> Open WhatsApp and pick who
++          </a>
++          <div className="flex gap-2">
++            <Button variant="outline" className="flex-1" onClick={() => shareOther(ready)}>Other apps</Button>
++            <Button variant="outline" className="flex-1" onClick={() => copy(ready)}>Copy message</Button>
++          </div>
++          {error && <p className="text-[12.5px] text-danger">{error}</p>}
++          <p className="text-[11.5px] text-ink-faint text-center">WhatsApp opened without a contact list? Go back, tap Copy message and paste it into the chat.</p>
++        </div>
++      </Sheet>
++    );
++  }
++
+   return (
+     <Sheet title="Ask for a guide" onClose={onClose}>
+       <div className="flex flex-col gap-5">
+@@ -161,10 +205,10 @@ function AskSheet({ city: initialCity, person, onClose }: { city: City | null; p
+             <p className="text-[13px] font-semibold">Friend not on MyGuide?</p>
+             <p className="text-[12px] text-ink-muted leading-snug">Send them a personal link — they sign up in a minute and land straight in your guide.</p>
+             <div className="mt-2.5 flex gap-2">
+-              <Button size="sm" disabled={!city || !!busy} onClick={() => sendLink("whatsapp")} className="flex-1 bg-[#25D366]! hover:bg-[#1ebe5b]! text-white! border-transparent!">
++              <Button size="sm" disabled={!city || !!busy} onClick={prepareLink} className="flex-1 bg-[#25D366]! hover:bg-[#1ebe5b]! text-white! border-transparent!">
+                 {busy === "link" ? <Spinner /> : <><WhatsAppIcon size={15} /> WhatsApp</>}
+               </Button>
+-              <Button size="sm" variant="outline" disabled={!city || !!busy} onClick={() => sendLink("other")} className="flex-1">Other apps</Button>
++              <Button size="sm" variant="outline" disabled={!city || !!busy} onClick={prepareLink} className="flex-1">Other apps</Button>
+             </div>
+           </div>
+           {!city && <p className="text-[12px] text-ink-faint text-center">Pick the city first.</p>}

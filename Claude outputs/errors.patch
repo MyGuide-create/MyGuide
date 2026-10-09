@@ -1,0 +1,942 @@
+diff --git a/drizzle/0021_app_errors.sql b/drizzle/0021_app_errors.sql
+new file mode 100644
+index 0000000..2464cc2
+--- /dev/null
++++ b/drizzle/0021_app_errors.sql
+@@ -0,0 +1,12 @@
++CREATE TABLE `app_errors` (
++	`id` text PRIMARY KEY NOT NULL,
++	`user_id` text,
++	`context` text NOT NULL,
++	`message` text NOT NULL,
++	`digest` text,
++	`page` text,
++	`created_at` integer NOT NULL,
++	FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE set null
++);
++--> statement-breakpoint
++CREATE INDEX `app_errors_created_idx` ON `app_errors` (`created_at`);
+diff --git a/drizzle/meta/_journal.json b/drizzle/meta/_journal.json
+index eb42ce1..bc70dc3 100644
+--- a/drizzle/meta/_journal.json
++++ b/drizzle/meta/_journal.json
+@@ -148,6 +148,13 @@
+       "when": 1791460000000,
+       "tag": "0020_place_sources",
+       "breakpoints": true
++    },
++    {
++      "idx": 21,
++      "version": "6",
++      "when": 1791470000000,
++      "tag": "0021_app_errors",
++      "breakpoints": true
+     }
+   ]
+ }
+diff --git a/src/app/admin/page.tsx b/src/app/admin/page.tsx
+index 9484a4b..9b3a09b 100644
+--- a/src/app/admin/page.tsx
++++ b/src/app/admin/page.tsx
+@@ -211,6 +211,22 @@ async function StatsTab() {
+           </section>
+         )}
+ 
++        <section>
++          <h2 className="px-1 text-[12px] font-medium uppercase tracking-[0.08em] text-ink-muted mb-2">Errors people hit ({s.errors.length})</h2>
++          <p className="px-1 -mt-1 mb-2 text-[11.5px] text-ink-faint">Unexpected problems shown as “Something went wrong…”, newest first. Our own messages (“That place isn’t in this guide”) aren’t listed.</p>
++          {s.errors.length === 0 ? <p className="px-1 text-[12.5px] text-ink-faint">None yet.</p> : (
++            <ul className="flex flex-col gap-2">
++              {s.errors.map((e) => (
++                <li key={e.id} className="rounded-2xl bg-ochre-soft/40 border border-line/70 px-3.5 py-2.5">
++                  <p className="text-[13px] font-medium">{e.context}</p>
++                  <p className="mt-0.5 text-[11.5px] text-ink-muted break-words">{e.message}</p>
++                  <p className="mt-1 text-[11px] text-ink-faint">{e.who ?? "Signed out"} · {timeAgo(e.at)}{e.page ? ` · ${e.page}` : ""}</p>
++                </li>
++              ))}
++            </ul>
++          )}
++        </section>
++
+         <section>
+           <h2 className="px-1 text-[12px] font-medium uppercase tracking-[0.08em] text-ink-muted mb-2">Feedback ({s.feedback.length})</h2>
+           {s.feedback.length === 0 ? <p className="px-1 text-[12.5px] text-ink-faint">None yet.</p> : (
+diff --git a/src/app/api/client-error/route.ts b/src/app/api/client-error/route.ts
+new file mode 100644
+index 0000000..92d08aa
+--- /dev/null
++++ b/src/app/api/client-error/route.ts
+@@ -0,0 +1,35 @@
++import { desc, lt } from "drizzle-orm";
++import { NextResponse } from "next/server";
++import { getCurrentUser } from "@/lib/auth";
++import { getDb } from "@/lib/db";
++import { appErrors } from "@/lib/db/schema";
++import { newId } from "@/lib/utils";
++
++const KEEP = 500;
++
++/** The browser reports an unexpected error someone saw (errorText / error page). Always 204. */
++export async function POST(req: Request) {
++  try {
++    const body = (await req.json().catch(() => null)) as { context?: unknown; message?: unknown; digest?: unknown; page?: unknown } | null;
++    const str = (v: unknown, n: number) => (typeof v === "string" ? v.slice(0, n) : "");
++    const message = str(body?.message, 500);
++    if (!message) return new NextResponse(null, { status: 204 });
++    const user = await getCurrentUser().catch(() => null);
++    const db = await getDb();
++    await db.insert(appErrors).values({
++      id: newId(),
++      userId: user?.id ?? null,
++      context: str(body?.context, 200) || "Unknown",
++      message,
++      digest: str(body?.digest, 120) || null,
++      page: str(body?.page, 300) || null,
++      createdAt: new Date(),
++    });
++    // Keep the table small: drop anything older than the newest KEEP rows.
++    const [cut] = await db.select({ at: appErrors.createdAt }).from(appErrors).orderBy(desc(appErrors.createdAt)).limit(1).offset(KEEP);
++    if (cut) await db.delete(appErrors).where(lt(appErrors.createdAt, cut.at));
++  } catch (e) {
++    console.warn("[client-error]", e);
++  }
++  return new NextResponse(null, { status: 204 });
++}
+diff --git a/src/app/api/media/route.ts b/src/app/api/media/route.ts
+index 223057c..c481369 100644
+--- a/src/app/api/media/route.ts
++++ b/src/app/api/media/route.ts
+@@ -12,11 +12,11 @@ export async function POST(req: Request) {
+   if (!user) return NextResponse.json({ error: "Please log in." }, { status: 401 });
+   const form = await req.formData();
+   const file = form.get("file");
+-  if (!(file instanceof File)) return NextResponse.json({ error: "No file." }, { status: 400 });
+-  if (file.size > MAX_BYTES) return NextResponse.json({ error: "File is too large (max 6 MB)." }, { status: 413 });
++  if (!(file instanceof File)) return NextResponse.json({ error: "No photo came through — try picking it again." }, { status: 400 });
++  if (file.size > MAX_BYTES) return NextResponse.json({ error: "That photo is too big — photos up to 6 MB work. Try a smaller one." }, { status: 413 });
+   const mime = file.type || "application/octet-stream";
+   const kind = mime.startsWith("image/") ? "image" : mime.startsWith("audio/") || mime.startsWith("video/") ? "audio" : null;
+-  if (!kind) return NextResponse.json({ error: "Unsupported file type." }, { status: 415 });
++  if (!kind) return NextResponse.json({ error: "That kind of file can’t be added here — use a photo (JPG, PNG or HEIC)." }, { status: 415 });
+   const duration = Number(form.get("duration") ?? "") || null;
+   const id = newId();
+   const db = await getDb();
+diff --git a/src/app/error.tsx b/src/app/error.tsx
+new file mode 100644
+index 0000000..163c770
+--- /dev/null
++++ b/src/app/error.tsx
+@@ -0,0 +1,38 @@
++"use client";
++
++import Link from "next/link";
++import { usePathname } from "next/navigation";
++import { useEffect } from "react";
++import { readUserError } from "@/lib/userError";
++import { isOffline, OFFLINE_TEXT, reportError } from "@/lib/errorText";
++
++/** Shown instead of Next's "This page couldn't load" when a page breaks. Plain words, and a way out. */
++export default function ErrorPage({ error, retry, reset }: { error: unknown; retry?: () => void; reset: () => void }) {
++  const path = usePathname() ?? "/";
++  const mine = readUserError(error);
++  const offline = !mine && isOffline(error);
++  useEffect(() => {
++    if (!mine && !offline) reportError(error, "A page couldn't load");
++  }, [error, mine, offline]);
++
++  const body = mine?.message ?? (offline ? OFFLINE_TEXT : "Something on our side went wrong. Try again — it usually works the second time. If it keeps happening, tell us and we’ll fix it.");
++  return (
++    <div className="flex-1 flex flex-col items-center">
++      <div className="w-full max-w-[480px] min-h-dvh px-6 py-24 text-center flex flex-col items-center">
++        <p className="font-display text-[32px] leading-tight">{offline ? "No connection." : "That didn’t load."}</p>
++        <p className="mt-3 text-[14px] text-ink-muted leading-relaxed">{body}</p>
++        <div className="mt-7 flex flex-col gap-2.5 w-full max-w-[280px]">
++          <button type="button" onClick={() => (retry ?? reset)()} className="h-12 rounded-full bg-terracotta text-white text-[15px] font-semibold">
++            Try again
++          </button>
++          <Link href="/" className="h-12 rounded-full border border-line bg-paper text-[15px] font-medium inline-flex items-center justify-center">
++            Go home
++          </Link>
++          <Link href={`/feedback?from=${encodeURIComponent(path)}`} className="mt-1 text-[13.5px] font-medium text-terracotta">
++            Tell us what happened
++          </Link>
++        </div>
++      </div>
++    </div>
++  );
++}
+diff --git a/src/app/global-error.tsx b/src/app/global-error.tsx
+new file mode 100644
+index 0000000..319cf9c
+--- /dev/null
++++ b/src/app/global-error.tsx
+@@ -0,0 +1,23 @@
++"use client";
++
++import { useEffect } from "react";
++import { reportError } from "@/lib/errorText";
++import "./globals.css";
++
++/** Last resort when even the app's frame fails to load. */
++export default function GlobalError({ error, retry, reset }: { error: unknown; retry?: () => void; reset: () => void }) {
++  useEffect(() => reportError(error, "The app couldn't load"), [error]);
++  return (
++    <html lang="en">
++      <body className="min-h-full flex flex-col bg-cream text-ink">
++        <div className="mx-auto w-full max-w-[480px] px-6 py-24 text-center">
++          <p className="text-[30px] font-semibold leading-tight">MyGuide didn’t load.</p>
++          <p className="mt-3 text-[14px] text-ink-muted leading-relaxed">Something on our side went wrong. Try again in a moment — if it keeps happening, message Hisham.</p>
++          <button type="button" onClick={() => (retry ?? reset)()} className="mt-7 h-12 w-full max-w-[280px] rounded-full bg-terracotta text-white text-[15px] font-semibold">
++            Try again
++          </button>
++        </div>
++      </body>
++    </html>
++  );
++}
+diff --git a/src/components/BranchesEditor.tsx b/src/components/BranchesEditor.tsx
+index dcc1799..f47f7ec 100644
+--- a/src/components/BranchesEditor.tsx
++++ b/src/components/BranchesEditor.tsx
+@@ -1,6 +1,7 @@
+ "use client";
+ 
+ import { useEffect, useRef, useState } from "react";
++import { errorText } from "@/lib/errorText";
+ import type { Place, PlaceLocation } from "@/lib/db/schema";
+ import { addBranches, findBranches, removeBranch, type BranchSuggestion } from "@/lib/actions/guides";
+ import { CheckIcon, PinIcon, TrashIcon } from "./Icons";
+@@ -48,7 +49,7 @@ export function BranchesEditor({
+       setSuggestions(auto && !found.length ? null : found);
+       setTicked(new Set(found.filter((f) => !f.existingPlaceId).map((f) => f.providerId)));
+     } catch (e) {
+-      if (!auto) setError(e instanceof Error ? e.message : "Couldn't look for branches.");
++      if (!auto) setError(errorText(e, "Couldn't look for branches."));
+     } finally {
+       setFinding(false);
+     }
+@@ -71,7 +72,7 @@ export function BranchesEditor({
+       if (r.mergedPlaceIds.length) onMerged(r.mergedPlaceIds, r.note);
+       return true;
+     } catch (e) {
+-      setError(e instanceof Error ? e.message : "Couldn't add that branch.");
++      setError(errorText(e, "Couldn't add that branch."));
+       return false;
+     } finally {
+       setSaving(false);
+diff --git a/src/components/CoverPicker.tsx b/src/components/CoverPicker.tsx
+index 156ab26..39e2eed 100644
+--- a/src/components/CoverPicker.tsx
++++ b/src/components/CoverPicker.tsx
+@@ -1,6 +1,7 @@
+ "use client";
+ 
+ import { useCallback, useEffect, useState } from "react";
++import { errorText } from "@/lib/errorText";
+ import type { PlaceCoverOption } from "@/app/api/covers/places/route";
+ import { clearCover, setExternalCover, updateGuideMeta, type CoverChoice } from "@/lib/actions/guides";
+ import type { UnsplashPhoto } from "@/lib/covers/unsplash";
+@@ -43,7 +44,7 @@ export function CoverPicker({
+       onChange(await fn());
+       onClose();
+     } catch (e) {
+-      setError(e instanceof Error ? e.message : "Couldn't set that photo.");
++      setError(errorText(e, "Couldn't set that photo as the cover."));
+     } finally {
+       setBusy(null);
+     }
+@@ -80,7 +81,7 @@ export function CoverPicker({
+       {error && <p className="mb-3 text-[13px] text-danger bg-danger-tint rounded-xl px-3 py-2">{error}</p>}
+ 
+       {tab === "search" && <SearchTab initial={guide.city || guide.title} busy={busy} onPick={(p) => choose(`u:${p.id}`, { kind: "unsplash", photoId: p.id })} />}
+-      {tab === "places" && <PlacesTab guideId={guide.id} busy={busy} onPickMedia={pickMedia} onPickGoogle={(o) => choose(`g:${o.ref}`, { kind: "google", placeId: o.placeId, ref: o.ref })} />}
++      {tab === "places" && <PlacesTab guideId={guide.id} busy={busy} onPickMedia={pickMedia} onPickGoogle={(o) => choose(`g:${o.ref}`, { kind: "google", placeId: o.placeId, ref: o.ref, author: o.author })} />}
+       {tab === "mine" && (
+         <div className="rounded-2xl border border-dashed border-line px-5 py-8 text-center">
+           <p className="text-[13.5px] text-ink-muted mb-4">Take a photo or pick one from your library.</p>
+diff --git a/src/components/GuideEditor.tsx b/src/components/GuideEditor.tsx
+index 4a49710..3b8262b 100644
+--- a/src/components/GuideEditor.tsx
++++ b/src/components/GuideEditor.tsx
+@@ -1,6 +1,7 @@
+ "use client";
+ 
+ import Link from "next/link";
++import { errorText } from "@/lib/errorText";
+ import { useRouter } from "next/navigation";
+ import { useCallback, useRef, useState, useTransition } from "react";
+ import type { GuideDetail } from "@/lib/guides";
+@@ -75,7 +76,7 @@ export function GuideEditor({ detail, justForked, justCreated, viewerId, wishFor
+       try {
+         await fn();
+       } catch (e) {
+-        setError(e instanceof Error ? e.message : "Something went wrong.");
++        setError(errorText(e, "Couldn't save that change."));
+       } finally {
+         setSaving(null);
+       }
+@@ -120,7 +121,7 @@ export function GuideEditor({ detail, justForked, justCreated, viewerId, wishFor
+       setJustAddedId(p.id);
+       if (!guide.city && p.city) setGuide((g) => ({ ...g, city: p.city, country: p.country }));
+     } catch (e) {
+-      setError(e instanceof Error ? e.message : "Couldn't add that place.");
++      setError(errorText(e, "Couldn't add that place."));
+     } finally {
+       setAdding(false);
+     }
+@@ -153,7 +154,7 @@ export function GuideEditor({ detail, justForked, justCreated, viewerId, wishFor
+       try {
+         await publishGuide(guide.id, visibility);
+       } catch (e) {
+-        setPublishError(e instanceof Error ? e.message : "Couldn't publish. Try again.");
++        setPublishError(errorText(e, "Couldn't publish the guide."));
+         return;
+       }
+       setPublishStep(null);
+diff --git a/src/components/GuideView.tsx b/src/components/GuideView.tsx
+index f322a6a..7dd3679 100644
+--- a/src/components/GuideView.tsx
++++ b/src/components/GuideView.tsx
+@@ -1,6 +1,7 @@
+ "use client";
+ 
+ import { mapsUrl } from "@/lib/places/pins";
++import { errorText } from "@/lib/errorText";
+ 
+ import Link from "next/link";
+ import { useEffect, useState, useTransition } from "react";
+@@ -83,7 +84,7 @@ export function GuideView({ detail, viewerId, viewer, shareUrl, shareKey }: { de
+         const slug = await forkGuide(guide.id, shareKey);
+         router.push(`/g/${slug}/edit?forked=1`);
+       } catch (e) {
+-        setForkError(e instanceof Error ? e.message : "Couldn't fork this guide.");
++        setForkError(errorText(e, "Couldn't copy this guide."));
+       }
+     });
+   };
+diff --git a/src/components/PhotoPicker.tsx b/src/components/PhotoPicker.tsx
+index a3fe52d..f6b275c 100644
+--- a/src/components/PhotoPicker.tsx
++++ b/src/components/PhotoPicker.tsx
+@@ -1,6 +1,7 @@
+ "use client";
+ 
+ import { useRef, useState } from "react";
++import { errorText } from "@/lib/errorText";
+ import { resizeImage, uploadMedia } from "@/hooks/useRecorder";
+ import { CameraIcon } from "./Icons";
+ import { Spinner, cx } from "./ui";
+@@ -28,7 +29,7 @@ export function PhotoPicker({ onUploaded, label = "Add photo", className, childr
+             const up = await uploadMedia(blob, "photo.jpg");
+             await onUploaded(up.id);
+           } catch (err) {
+-            setError(err instanceof Error ? err.message : "Upload failed");
++            setError(errorText(err, "That photo didn't upload."));
+           } finally {
+             setBusy(false);
+           }
+diff --git a/src/components/PinDropSheet.tsx b/src/components/PinDropSheet.tsx
+index 5ffa93a..d06a3cf 100644
+--- a/src/components/PinDropSheet.tsx
++++ b/src/components/PinDropSheet.tsx
+@@ -1,6 +1,7 @@
+ "use client";
+ 
+ import { useEffect, useState } from "react";
++import { errorText } from "@/lib/errorText";
+ import { APIProvider, ControlPosition, Map, useMap } from "@vis.gl/react-google-maps";
+ import { CATEGORIES } from "@/lib/places/categories";
+ import { findCity } from "@/lib/places/cities";
+@@ -105,7 +106,7 @@ export function PinDropSheet({
+     try {
+       await onSave({ name: name.trim(), lat: center.lat, lng: center.lng, category });
+     } catch (e) {
+-      setError(e instanceof Error ? e.message : "Couldn't save that pin.");
++      setError(errorText(e, "Couldn't save that pin."));
+       setSaving(false);
+     }
+   };
+diff --git a/src/components/PlaceComments.tsx b/src/components/PlaceComments.tsx
+index a810b66..c68594f 100644
+--- a/src/components/PlaceComments.tsx
++++ b/src/components/PlaceComments.tsx
+@@ -1,6 +1,7 @@
+ "use client";
+ 
+ import Link from "next/link";
++import { errorText } from "@/lib/errorText";
+ import { usePathname } from "next/navigation";
+ import { useState, useTransition } from "react";
+ import type { PublicUser } from "@/lib/auth";
+@@ -44,7 +45,7 @@ export function PlaceComments({ placeId, initial, currentUser }: { placeId: stri
+         await addPlaceComment(placeId, body);
+       } catch (e) {
+         setRows((r) => r.filter((row) => row.comment.id !== optimistic.comment.id));
+-        setError(e instanceof Error ? e.message : "Couldn't post that comment.");
++        setError(errorText(e, "Couldn't post that comment."));
+       }
+     });
+   };
+@@ -72,7 +73,7 @@ export function PlaceComments({ placeId, initial, currentUser }: { placeId: stri
+         await editPlaceComment(commentId, body);
+       } catch (e) {
+         setRows(prevRows);
+-        setError(e instanceof Error ? e.message : "Couldn't save that edit.");
++        setError(errorText(e, "Couldn't save that edit."));
+       }
+     });
+   };
+diff --git a/src/components/RecordFlow.tsx b/src/components/RecordFlow.tsx
+index c34cb64..a5714e3 100644
+--- a/src/components/RecordFlow.tsx
++++ b/src/components/RecordFlow.tsx
+@@ -1,6 +1,7 @@
+ "use client";
+ 
+ import { useRouter } from "next/navigation";
++import { errorText } from "@/lib/errorText";
+ import { useEffect, useState, useTransition } from "react";
+ import { saveRecordedPlace } from "@/lib/actions/record";
+ import { PhotoPicker } from "./PhotoPicker";
+@@ -135,7 +136,7 @@ export function RecordFlow({ guides }: { guides: GuideOption[] }) {
+         });
+         router.push(editing ? `/g/${guideSlug}/edit?justCreated=1` : `/g/${guideSlug}`);
+       } catch (e) {
+-        setError(e instanceof Error ? e.message : "Couldn't save that place.");
++        setError(errorText(e, "Couldn't save that place."));
+       }
+     });
+   };
+diff --git a/src/components/TipsEditor.tsx b/src/components/TipsEditor.tsx
+index 73cb129..c6f1d11 100644
+--- a/src/components/TipsEditor.tsx
++++ b/src/components/TipsEditor.tsx
+@@ -1,6 +1,7 @@
+ "use client";
+ 
+ import { useEffect, useState } from "react";
++import { errorText } from "@/lib/errorText";
+ import type { PlaceTip } from "@/lib/db/schema";
+ import { addPlaceTip, removePlaceTip, updatePlaceTip } from "@/lib/actions/guides";
+ import { CheckIcon, EditIcon, SparkleIcon, TrashIcon, XIcon } from "./Icons";
+@@ -43,7 +44,7 @@ export function TipsEditor({
+       setTips((ts) => [...ts, tip]);
+       setDraft("");
+     } catch (e) {
+-      setError(e instanceof Error ? e.message : "Couldn't add that tip.");
++      setError(errorText(e, "Couldn't add that tip."));
+     } finally {
+       setAdding(false);
+     }
+@@ -64,7 +65,7 @@ export function TipsEditor({
+       await updatePlaceTip(guideId, id, body);
+     } catch (e) {
+       setTips(prev);
+-      setError(e instanceof Error ? e.message : "Couldn't save that tip.");
++      setError(errorText(e, "Couldn't save that tip."));
+     }
+   };
+ 
+@@ -75,7 +76,7 @@ export function TipsEditor({
+       await removePlaceTip(guideId, id);
+     } catch (e) {
+       setTips(prev);
+-      setError(e instanceof Error ? e.message : "Couldn't remove that tip.");
++      setError(errorText(e, "Couldn't remove that tip."));
+     }
+   };
+ 
+diff --git a/src/components/VoiceCreate.tsx b/src/components/VoiceCreate.tsx
+index 633c602..c0db771 100644
+--- a/src/components/VoiceCreate.tsx
++++ b/src/components/VoiceCreate.tsx
+@@ -1,6 +1,8 @@
+ "use client";
+ 
+ import { useRouter } from "next/navigation";
++import { UserError } from "@/lib/userError";
++import { errorText } from "@/lib/errorText";
+ import { useState } from "react";
+ import { createGuide } from "@/lib/actions/guides";
+ import type { ParsedPlacesResponse } from "@/app/api/ai/parse-places/route";
+@@ -74,7 +76,7 @@ export function VoiceCreate({ forWish, initialCity, startWithImport }: { forWish
+         if (err.code === "maps_list" && err.listUrls?.length) {
+           return await importMapsLists(err.listUrls, { from, fallbackTitle: err.listTitle, extraText: err.rest });
+         }
+-        throw new Error(err.error ?? "Couldn't structure that.");
++        throw new UserError(err.error ?? "Couldn't read that list — try pasting it again, one place per line.");
+       }
+       const data = (await res.json()) as ParsedPlacesResponse;
+       setFromList(false);
+@@ -85,7 +87,7 @@ export function VoiceCreate({ forWish, initialCity, startWithImport }: { forWish
+       setCity((c) => c.trim() || data.city);
+       setStage("review");
+     } catch (e) {
+-      setError(e instanceof Error ? e.message : "Couldn't structure that.");
++      setError(errorText(e, "Couldn't read that list."));
+       setStage(from);
+     }
+   };
+@@ -197,7 +199,7 @@ export function VoiceCreate({ forWish, initialCity, startWithImport }: { forWish
+       });
+       router.push(`/g/${slug}/edit?created=1`);
+     } catch (e) {
+-      setError(e instanceof Error ? e.message : "Couldn't create the guide.");
++      setError(errorText(e, "Couldn't create the guide."));
+       setCreating(false);
+     }
+   };
+@@ -217,7 +219,7 @@ export function VoiceCreate({ forWish, initialCity, startWithImport }: { forWish
+       });
+       router.push(`/g/${slug}/edit?start=1`);
+     } catch (e) {
+-      setError(e instanceof Error ? e.message : "Couldn't create the guide.");
++      setError(errorText(e, "Couldn't create the guide."));
+       setCreating(false);
+     }
+   };
+diff --git a/src/hooks/useRecorder.ts b/src/hooks/useRecorder.ts
+index 7ce8ed8..908c500 100644
+--- a/src/hooks/useRecorder.ts
++++ b/src/hooks/useRecorder.ts
+@@ -1,6 +1,7 @@
+ "use client";
+ 
+ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
++import { UserError } from "@/lib/userError";
+ 
+ const noopSubscribe = () => () => {};
+ const recorderSupported = () => typeof navigator !== "undefined" && !!navigator.mediaDevices?.getUserMedia && typeof MediaRecorder !== "undefined";
+@@ -85,7 +86,8 @@ export async function uploadMedia(file: Blob, name: string, duration?: number):
+   fd.append("file", new File([file], name, { type: file.type }));
+   if (duration) fd.append("duration", String(Math.round(duration * 10) / 10));
+   const res = await fetch("/api/media", { method: "POST", body: fd });
+-  if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error ?? "Upload failed");
++  if (res.status === 401) throw new UserError("Please log in.", "auth");
++  if (!res.ok) throw new UserError((await res.json().catch(() => ({})))?.error ?? "That photo didn't upload. Try a smaller one, or check your connection.", "upload");
+   return res.json();
+ }
+ 
+diff --git a/src/lib/actions/comments.ts b/src/lib/actions/comments.ts
+index 6de611b..e4b91f6 100644
+--- a/src/lib/actions/comments.ts
++++ b/src/lib/actions/comments.ts
+@@ -1,5 +1,6 @@
+ "use server";
+ 
++import { UserError } from "../userError";
+ import { eq } from "drizzle-orm";
+ import { revalidatePath } from "next/cache";
+ import { redirect } from "next/navigation";
+@@ -16,15 +17,15 @@ export async function addPlaceComment(placeId: string, body: string): Promise<vo
+   const user = await getCurrentUser();
+   if (!user) redirect("/login");
+   const text = body.trim().slice(0, 500);
+-  if (!text) throw new Error("Say something first.");
++  if (!text) throw new UserError("Say something first.", "invalid");
+ 
+   const db = await getDb();
+   const place = await db.query.places.findFirst({ where: eq(places.id, placeId) });
+-  if (!place) throw new Error("That place no longer exists.");
++  if (!place) throw new UserError("That place no longer exists.", "gone");
+   const guide = await getGuideById(place.guideId);
+-  if (!guide) throw new Error("That guide no longer exists.");
+-  if (!(await canViewGuide(guide, user.id))) throw new Error("You don't have access to this guide.");
+-  if ((await hiddenUserIds(user.id)).has(guide.ownerId)) throw new Error("You can't comment on this guide.");
++  if (!guide) throw new UserError("That guide no longer exists.", "gone");
++  if (!(await canViewGuide(guide, user.id))) throw new UserError("You don't have access to this guide.", "forbidden");
++  if ((await hiddenUserIds(user.id)).has(guide.ownerId)) throw new UserError("You can't comment on this guide.", "forbidden");
+ 
+   await db.insert(placeComments).values({ id: newId(), placeId, authorId: user.id, body: text, createdAt: new Date() });
+ 
+@@ -47,10 +48,10 @@ export async function editPlaceComment(commentId: string, body: string): Promise
+   const user = await getCurrentUser();
+   if (!user) redirect("/login");
+   const text = body.trim().slice(0, 500);
+-  if (!text) throw new Error("Say something first.");
++  if (!text) throw new UserError("Say something first.", "invalid");
+   const db = await getDb();
+   const comment = await db.query.placeComments.findFirst({ where: eq(placeComments.id, commentId) });
+-  if (!comment || comment.authorId !== user.id) throw new Error("You can only edit your own comments.");
++  if (!comment || comment.authorId !== user.id) throw new UserError("You can only edit your own comments.", "forbidden");
+   await db.update(placeComments).set({ body: text, editedAt: new Date() }).where(eq(placeComments.id, commentId));
+   const place = await db.query.places.findFirst({ where: eq(places.id, comment.placeId) });
+   if (place) {
+diff --git a/src/lib/actions/guides.ts b/src/lib/actions/guides.ts
+index dd330a0..1c91a78 100644
+--- a/src/lib/actions/guides.ts
++++ b/src/lib/actions/guides.ts
+@@ -1,5 +1,6 @@
+ "use server";
+ 
++import { UserError } from "../userError";
+ import { and, eq, sql } from "drizzle-orm";
+ import { tidyCity } from "@/lib/places/cityName";
+ import { revalidatePath } from "next/cache";
+@@ -24,19 +25,19 @@ import { normaliseInstagram, normaliseReserve, normaliseWebsite, normaliseWhatsa
+ /** Owner or invited co-editor. Use for editing places, notes, tips and guide details. */
+ async function requireOwner(guideId: string): Promise<{ guide: Guide; userId: string }> {
+   const user = await getCurrentUser();
+-  if (!user) throw new Error("Please log in.");
++  if (!user) throw new UserError("Please log in.", "auth");
+   const guide = await getGuideById(guideId);
+-  if (!guide) throw new Error("That guide no longer exists.");
+-  if (guide.ownerId !== user.id && !(await isCollaborator(guide.id, user.id))) throw new Error("You can only edit your own guides.");
++  if (!guide) throw new UserError("That guide no longer exists.", "gone");
++  if (guide.ownerId !== user.id && !(await isCollaborator(guide.id, user.id))) throw new UserError("You can only edit your own guides.", "forbidden");
+   return { guide, userId: user.id };
+ }
+ 
+ /** The guide's owner only: publishing, deleting, sharing and managing co-editors. */
+ async function requireTrueOwner(guideId: string): Promise<{ guide: Guide; userId: string }> {
+   const user = await getCurrentUser();
+-  if (!user) throw new Error("Please log in.");
++  if (!user) throw new UserError("Please log in.", "auth");
+   const guide = await getGuideById(guideId);
+-  if (!guide || guide.ownerId !== user.id) throw new Error("Only the guide's creator can do that.");
++  if (!guide || guide.ownerId !== user.id) throw new UserError("Only the guide's creator can do that.", "forbidden");
+   return { guide, userId: user.id };
+ }
+ 
+@@ -210,7 +211,7 @@ export async function updateGuideMeta(
+ 
+ export type CoverChoice =
+   | { kind: "unsplash"; photoId: string }
+-  | { kind: "google"; placeId: string; ref: string };
++  | { kind: "google"; placeId: string; ref: string; author?: string };
+ 
+ export interface CoverResult {
+   coverMediaId: null;
+@@ -227,14 +228,20 @@ export async function setExternalCover(guideId: string, choice: CoverChoice): Pr
+   let result: CoverResult;
+   if (choice.kind === "unsplash") {
+     const photo = await claimUnsplashPhoto(choice.photoId);
+-    if (!photo) throw new Error("That photo isn't available any more. Try another one.");
++    if (!photo) throw new UserError("That photo isn't available any more. Try another one.", "google");
+     result = { coverMediaId: null, coverUrl: photo.url, coverSource: "unsplash", coverCredit: photo.author, coverCreditUrl: photo.authorUrl };
+   } else {
+     const place = await db.query.places.findFirst({ where: and(eq(places.id, choice.placeId), eq(places.guideId, guide.id)) });
+-    if (!place?.googlePlaceId) throw new Error("That place isn't in this guide.");
+-    const photos = await getPlacePhotos(place.googlePlaceId, 10);
+-    const photo = photos.find((p) => p.ref === choice.ref);
+-    if (!photo) throw new Error("That photo isn't available any more. Try another one.");
++    if (!place?.googlePlaceId) throw new UserError("That place isn't in this guide.", "invalid");
++    // Google hands out a different photo name on every lookup, so an exact match against a fresh list
++    // almost never works (that was the "From places" cover error). Check the photo belongs to this place instead.
++    if (!choice.ref.startsWith(`places/${place.googlePlaceId}/photos/`)) throw new UserError("That photo isn't from one of your places. Try another one.", "google");
++    const fresh = await getPlacePhotos(place.googlePlaceId, 10).catch(() => []);
++    const photo = fresh.find((p) => p.ref === choice.ref) ?? {
++      ref: choice.ref,
++      author: (choice.author ?? "").trim().slice(0, 120) || "Google Maps contributor",
++      authorUrl: null,
++    };
+     result = {
+       coverMediaId: null,
+       coverUrl: `/api/places/photo?ref=${encodeURIComponent(photo.ref)}&w=1600`,
+@@ -251,7 +258,7 @@ export async function setExternalCover(guideId: string, choice: CoverChoice): Pr
+ /** Remove any cover photo and go back to the generated title card. */
+ export async function clearCover(guideId: string): Promise<void> {
+   const { guide } = await requireOwner(guideId);
+-  if (guide.publishedAt) throw new Error("Published guides need a cover photo — pick a new one instead.");
++  if (guide.publishedAt) throw new UserError("Published guides need a cover photo — pick a new one instead.", "invalid");
+   const db = await getDb();
+   await db
+     .update(guides)
+@@ -262,7 +269,7 @@ export async function clearCover(guideId: string): Promise<void> {
+ 
+ export async function publishGuide(guideId: string, visibility: "public" | "private"): Promise<void> {
+   const { guide } = await requireTrueOwner(guideId);
+-  if (!guide.coverMediaId && !guide.coverUrl) throw new Error("Add a cover photo before publishing.");
++  if (!guide.coverMediaId && !guide.coverUrl) throw new UserError("Add a cover photo before publishing.", "invalid");
+   const db = await getDb();
+   await db
+     .update(guides)
+@@ -307,8 +314,8 @@ export async function deleteGuide(guideId: string): Promise<void> {
+ export async function addPinnedPlace(guideId: string, input: { name: string; lat: number; lng: number; category?: string }): Promise<Place> {
+   const { guide, userId } = await requireOwner(guideId);
+   const name = input.name.trim().slice(0, 120);
+-  if (!name) throw new Error("Give the spot a name.");
+-  if (!validPin(input.lat, input.lng)) throw new Error("That pin isn't on the map.");
++  if (!name) throw new UserError("Give the spot a name.", "invalid");
++  if (!validPin(input.lat, input.lng)) throw new UserError("That pin isn't on the map.", "invalid");
+   const db = await getDb();
+   const where = await reverseGeocode(input.lat, input.lng);
+   const [{ min }] = await db.select({ min: sql<number>`coalesce(min(${places.position}), 1)` }).from(places).where(eq(places.guideId, guideId));
+@@ -335,7 +342,7 @@ export async function addPinnedPlace(guideId: string, input: { name: string; lat
+ /** Turn an existing place into a dropped pin (e.g. it couldn't be matched, or Google has it in the wrong spot). */
+ export async function setPlacePin(guideId: string, placeId: string, input: { lat: number; lng: number }): Promise<Place> {
+   const { guide } = await requireOwner(guideId);
+-  if (!validPin(input.lat, input.lng)) throw new Error("That pin isn't on the map.");
++  if (!validPin(input.lat, input.lng)) throw new UserError("That pin isn't on the map.", "invalid");
+   const db = await getDb();
+   const where = await reverseGeocode(input.lat, input.lng);
+   await db
+@@ -363,7 +370,7 @@ export async function setPlacePin(guideId: string, placeId: string, input: { lat
+ async function getPlaceInGuide(guideId: string, placeId: string): Promise<Place> {
+   const db = await getDb();
+   const p = await db.query.places.findFirst({ where: and(eq(places.id, placeId), eq(places.guideId, guideId)) });
+-  if (!p) throw new Error("That place isn't in this guide any more.");
++  if (!p) throw new UserError("That place isn't in this guide any more.", "gone");
+   return p;
+ }
+ 
+@@ -421,7 +428,7 @@ export async function addBranches(
+   let note = place.note;
+ 
+   if (input.pin) {
+-    if (!validPin(input.pin.lat, input.pin.lng)) throw new Error("That pin isn't on the map.");
++    if (!validPin(input.pin.lat, input.pin.lng)) throw new UserError("That pin isn't on the map.", "invalid");
+     const where = await reverseGeocode(input.pin.lat, input.pin.lng);
+     rows.push({ id: newId(), placeId, name: input.pin.name.trim().slice(0, 120) || place.name, address: where?.area ?? "", lat: input.pin.lat, lng: input.pin.lng, googlePlaceId: null, position: position++, createdAt: now });
+   }
+@@ -574,7 +581,7 @@ export async function updatePlace(
+   if (patch.website !== undefined || patch.instagram !== undefined || patch.whatsapp !== undefined || patch.reserveUrl !== undefined) {
+     const current = await db.query.places.findFirst({ where: and(eq(places.id, placeId), eq(places.guideId, guideId)), columns: { country: true } });
+     const take = (r: Normalised): string | null => {
+-      if (!r.ok) throw new Error(r.error);
++      if (!r.ok) throw new UserError(r.error);
+       return r.value;
+     };
+     if (patch.website !== undefined) set.website = take(normaliseWebsite(patch.website));
+@@ -592,14 +599,14 @@ export async function updatePlace(
+ async function requirePlaceInGuide(guideId: string, placeId: string): Promise<void> {
+   const db = await getDb();
+   const place = await db.query.places.findFirst({ where: and(eq(places.id, placeId), eq(places.guideId, guideId)) });
+-  if (!place) throw new Error("That place isn't in this guide.");
++  if (!place) throw new UserError("That place isn't in this guide.", "invalid");
+ }
+ 
+ /** A tip's place must belong to the given guide — throws otherwise (guards against a tipId from another guide). */
+ async function requireTipInGuide(guideId: string, tipId: string): Promise<PlaceTip> {
+   const db = await getDb();
+   const tip = await db.query.placeTips.findFirst({ where: eq(placeTips.id, tipId) });
+-  if (!tip) throw new Error("That tip no longer exists.");
++  if (!tip) throw new UserError("That tip no longer exists.", "gone");
+   await requirePlaceInGuide(guideId, tip.placeId);
+   return tip;
+ }
+@@ -608,7 +615,7 @@ async function requireTipInGuide(guideId: string, tipId: string): Promise<PlaceT
+ export async function addPlaceTip(guideId: string, placeId: string, body: string): Promise<PlaceTip> {
+   const { guide } = await requireOwner(guideId);
+   const text = body.trim();
+-  if (!text) throw new Error("Tip can't be empty.");
++  if (!text) throw new UserError("Tip can't be empty.", "invalid");
+   await requirePlaceInGuide(guideId, placeId);
+   const db = await getDb();
+   const [{ max }] = await db.select({ max: sql<number>`coalesce(max(${placeTips.position}), -1)` }).from(placeTips).where(eq(placeTips.placeId, placeId));
+@@ -622,7 +629,7 @@ export async function addPlaceTip(guideId: string, placeId: string, body: string
+ export async function updatePlaceTip(guideId: string, tipId: string, body: string): Promise<void> {
+   const { guide } = await requireOwner(guideId);
+   const text = body.trim();
+-  if (!text) throw new Error("Tip can't be empty.");
++  if (!text) throw new UserError("Tip can't be empty.", "invalid");
+   await requireTipInGuide(guideId, tipId);
+   const db = await getDb();
+   await db.update(placeTips).set({ body: text }).where(eq(placeTips.id, tipId));
+@@ -663,9 +670,9 @@ export async function forkGuide(guideId: string, shareKey?: string | null): Prom
+   if (!user) redirect("/login");
+   const db = await getDb();
+   const source = await getGuideById(guideId);
+-  if (!source) throw new Error("Guide not found.");
+-  if (!(await canViewGuide(source, user.id, shareKey))) throw new Error("You don't have access to this guide.");
+-  if (source.ownerId === user.id) throw new Error("This is already your guide.");
++  if (!source) throw new UserError("Guide not found.", "gone");
++  if (!(await canViewGuide(source, user.id, shareKey))) throw new UserError("You don't have access to this guide.", "forbidden");
++  if (source.ownerId === user.id) throw new UserError("This is already your guide.", "forbidden");
+ 
+   const sourcePlaces = await db.select().from(places).where(eq(places.guideId, guideId)).orderBy(places.position);
+   const id = newId();
+@@ -757,11 +764,11 @@ export async function addCollaborator(guideId: string, username: string): Promis
+ 
+ export async function removeCollaborator(guideId: string, collaboratorId: string): Promise<void> {
+   const user = await getCurrentUser();
+-  if (!user) throw new Error("Please log in.");
++  if (!user) throw new UserError("Please log in.", "auth");
+   const guide = await getGuideById(guideId);
+   if (!guide) return;
+   // The owner can remove anyone; a co-editor can remove themselves ("Leave").
+-  if (guide.ownerId !== user.id && collaboratorId !== user.id) throw new Error("Only the guide's creator can do that.");
++  if (guide.ownerId !== user.id && collaboratorId !== user.id) throw new UserError("Only the guide's creator can do that.", "forbidden");
+   const db = await getDb();
+   await db.delete(guideCollaborators).where(and(eq(guideCollaborators.guideId, guideId), eq(guideCollaborators.userId, collaboratorId)));
+   revalidateGuide(guide.slug);
+diff --git a/src/lib/actions/record.ts b/src/lib/actions/record.ts
+index db986eb..bb4bfcd 100644
+--- a/src/lib/actions/record.ts
++++ b/src/lib/actions/record.ts
+@@ -1,5 +1,6 @@
+ "use server";
+ 
++import { UserError } from "../userError";
+ import { and, eq, sql } from "drizzle-orm";
+ import { revalidatePath } from "next/cache";
+ import { redirect } from "next/navigation";
+@@ -73,7 +74,7 @@ export async function saveRecordedPlace(input: RecordPlaceInput): Promise<{ guid
+ 
+   let resolved: PlaceResult | null = null;
+   if (input.pin) {
+-    if (!validPin(input.pin.lat, input.pin.lng)) throw new Error("That pin isn't on the map.");
++    if (!validPin(input.pin.lat, input.pin.lng)) throw new UserError("That pin isn't on the map.", "invalid");
+     const where = await reverseGeocode(input.pin.lat, input.pin.lng);
+     resolved = {
+       providerId: "",
+@@ -105,7 +106,7 @@ export async function saveRecordedPlace(input: RecordPlaceInput): Promise<{ guid
+   let editing = false;
+   if (input.guideId) {
+     const g = await getGuideById(input.guideId);
+-    if (!g || g.ownerId !== user.id) throw new Error("You can only add to your own guides.");
++    if (!g || g.ownerId !== user.id) throw new UserError("You can only add to your own guides.", "forbidden");
+     guide = g;
+   } else if (input.newGuideTitle?.trim()) {
+     const known = findCity(resolved?.city || input.cityHint);
+diff --git a/src/lib/db/schema.ts b/src/lib/db/schema.ts
+index 4db929d..ea91dc6 100644
+--- a/src/lib/db/schema.ts
++++ b/src/lib/db/schema.ts
+@@ -435,6 +435,22 @@ export const feedback = sqliteTable("feedback", {
+   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+ });
+ 
++/** Unexpected errors people hit in the app (reported by the browser; shown on Admin). */
++export const appErrors = sqliteTable(
++  "app_errors",
++  {
++    id: text("id").primaryKey(),
++    userId: text("user_id").references(() => users.id, { onDelete: "set null" }),
++    /** What they were doing ("Couldn't set the cover photo"). */
++    context: text("context").notNull(),
++    message: text("message").notNull(),
++    digest: text("digest"),
++    page: text("page"),
++    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
++  },
++  (t) => [index("app_errors_created_idx").on(t.createdAt)],
++);
++
+ /** Web Push subscriptions (one per browser/device). */
+ export const pushSubscriptions = sqliteTable(
+   "push_subscriptions",
+diff --git a/src/lib/errorText.ts b/src/lib/errorText.ts
+new file mode 100644
+index 0000000..5d0afb8
+--- /dev/null
++++ b/src/lib/errorText.ts
+@@ -0,0 +1,43 @@
++import { readUserError } from "./userError";
++
++/**
++ * The one way to turn a caught error into words on screen. Never shows raw technical text
++ * ("Minified React error", stack traces, status codes). See claude/error-messages.md in the project.
++ *
++ *   ours (UserError)        → our message
++ *   no connection           → "You're offline — check your connection and try again."
++ *   anything else           → `fallback` ("Couldn't set the cover photo.") + "Try again…", and it's reported
++ */
++export const OFFLINE_TEXT = "You’re offline — check your connection and try again.";
++export const LOGGED_OUT_TEXT = "You’ve been logged out. Log in again to carry on.";
++
++export function errorText(e: unknown, fallback: string): string {
++  const mine = readUserError(e);
++  if (mine) return mine.code === "auth" ? LOGGED_OUT_TEXT : mine.message;
++  if (isOffline(e)) return OFFLINE_TEXT;
++  reportError(e, fallback);
++  return `${fallback.replace(/[.!]?\s*$/, ".")} Try again — if it keeps happening, tell us.`;
++}
++
++/** True for errors that are really "no internet" (fetch failures, offline browser). */
++export function isOffline(e: unknown): boolean {
++  if (typeof navigator !== "undefined" && navigator.onLine === false) return true;
++  const msg = e instanceof Error ? e.message : String(e ?? "");
++  return e instanceof TypeError && /fetch|network|load failed|internet/i.test(msg);
++}
++
++/** Tell the admin page about an unexpected error (best effort, never throws). */
++export function reportError(e: unknown, context: string): void {
++  if (typeof window === "undefined") return;
++  try {
++    const err = e instanceof Error ? e : new Error(String(e));
++    const body = JSON.stringify({
++      context: context.slice(0, 200),
++      message: err.message.slice(0, 500),
++      digest: String((e as { digest?: unknown })?.digest ?? "").slice(0, 120) || null,
++      page: window.location.pathname + window.location.search,
++    });
++    if (navigator.sendBeacon) navigator.sendBeacon("/api/client-error", new Blob([body], { type: "application/json" }));
++    else void fetch("/api/client-error", { method: "POST", headers: { "Content-Type": "application/json" }, body, keepalive: true }).catch(() => {});
++  } catch {}
++}
+diff --git a/src/lib/stats.ts b/src/lib/stats.ts
+index b9f799d..5cd0a0b 100644
+--- a/src/lib/stats.ts
++++ b/src/lib/stats.ts
+@@ -1,6 +1,6 @@
+ import { and, desc, eq, gt, inArray, sql } from "drizzle-orm";
+ import { getDb } from "./db";
+-import { events, feedback, follows, guides, placeReactions, places, reports, savedGuides, savedPlaces, users } from "./db/schema";
++import { events, feedback, follows, guides, placeReactions, places, reports, savedGuides, savedPlaces, users, appErrors } from "./db/schema";
+ import { TAP_TYPES } from "./track";
+ 
+ export interface GuideStats {
+@@ -111,6 +111,8 @@ export interface PilotStats {
+   weekly: Array<{ week: string; views: number; visitors: number; signups: number }>;
+   topGuides: Array<{ slug: string; title: string; views: number }>;
+   feedback: Array<{ id: string; message: string; page: string | null; who: string | null; at: Date }>;
++  /** Unexpected errors people hit (newest first). */
++  errors: Array<{ id: string; context: string; message: string; page: string | null; who: string | null; at: Date }>;
+   reports: Array<{ id: string; targetType: string; targetId: string; reason: string; details: string | null; who: string | null; at: Date }>;
+ }
+ 
+@@ -163,6 +165,7 @@ export async function pilotStats(): Promise<PilotStats> {
+     .filter((t) => t.g)
+     .map((t) => ({ slug: t.g!.slug, title: t.g!.title, views: t.views }));
+ 
++  const errRows = await db.select({ e: appErrors, u: users }).from(appErrors).leftJoin(users, eq(users.id, appErrors.userId)).orderBy(desc(appErrors.createdAt)).limit(30);
+   const fb = await db.select({ f: feedback, u: users }).from(feedback).leftJoin(users, eq(users.id, feedback.userId)).orderBy(desc(feedback.createdAt)).limit(30);
+   const rp = await db.select({ r: reports, u: users }).from(reports).leftJoin(users, eq(users.id, reports.reporterId)).orderBy(desc(reports.createdAt)).limit(30);
+ 
+@@ -182,6 +185,7 @@ export async function pilotStats(): Promise<PilotStats> {
+     shares7d: s7,
+     weekly,
+     topGuides,
++    errors: errRows.map((x) => ({ id: x.e.id, context: x.e.context, message: x.e.message, page: x.e.page, who: x.u ? `@${x.u.username}` : null, at: x.e.createdAt })),
+     feedback: fb.map((x) => ({ id: x.f.id, message: x.f.message, page: x.f.page, who: x.u ? `@${x.u.username}` : null, at: x.f.createdAt })),
+     reports: rp.map((x) => ({ id: x.r.id, targetType: x.r.targetType, targetId: x.r.targetId, reason: x.r.reason, details: x.r.details, who: x.u ? `@${x.u.username}` : null, at: x.r.createdAt })),
+   };
+diff --git a/src/lib/userError.ts b/src/lib/userError.ts
+new file mode 100644
+index 0000000..0b885c2
+--- /dev/null
++++ b/src/lib/userError.ts
+@@ -0,0 +1,32 @@
++/**
++ * Errors we mean people to see ("That place isn't in this guide.").
++ *
++ * In production Next.js hides the message of anything thrown in a server action (people saw
++ * "Minified React error #441…"). It does keep an error's `digest`, so a UserError carries its
++ * message there too ("MGU|code|message"), and errorText() on the client reads it back.
++ * Usable on the server and in the browser.
++ */
++export type UserErrorCode = "auth" | "forbidden" | "gone" | "invalid" | "google" | "upload" | "user";
++
++export const USER_ERROR_PREFIX = "MGU|";
++
++export class UserError extends Error {
++  readonly code: UserErrorCode;
++  readonly digest: string;
++  constructor(message: string, code: UserErrorCode = "user") {
++    super(message);
++    this.name = "UserError";
++    this.code = code;
++    this.digest = `${USER_ERROR_PREFIX}${code}|${message}`;
++  }
++}
++
++/** The code and message from a UserError, whether thrown here or passed through a server action. */
++export function readUserError(e: unknown): { code: UserErrorCode; message: string } | null {
++  const digest = (e as { digest?: unknown } | null)?.digest;
++  if (typeof digest !== "string" || !digest.startsWith(USER_ERROR_PREFIX)) return null;
++  const rest = digest.slice(USER_ERROR_PREFIX.length);
++  const bar = rest.indexOf("|");
++  if (bar < 0) return null;
++  return { code: rest.slice(0, bar) as UserErrorCode, message: rest.slice(bar + 1) };
++}

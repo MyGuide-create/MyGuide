@@ -1,0 +1,1438 @@
+diff --git a/drizzle/0022_guide_requests.sql b/drizzle/0022_guide_requests.sql
+new file mode 100644
+index 0000000..f79c016
+--- /dev/null
++++ b/drizzle/0022_guide_requests.sql
+@@ -0,0 +1,32 @@
++CREATE TABLE `guide_requests` (
++	`id` text PRIMARY KEY NOT NULL,
++	`token` text NOT NULL,
++	`requester_id` text NOT NULL,
++	`recipient_id` text,
++	`wish_id` text,
++	`city` text NOT NULL,
++	`country` text DEFAULT '' NOT NULL,
++	`lat` real,
++	`lng` real,
++	`note` text DEFAULT '' NOT NULL,
++	`channel` text NOT NULL,
++	`status` text DEFAULT 'sent' NOT NULL,
++	`guide_id` text,
++	`opened_at` integer,
++	`responded_at` integer,
++	`created_at` integer NOT NULL,
++	FOREIGN KEY (`requester_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE cascade,
++	FOREIGN KEY (`recipient_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE cascade,
++	FOREIGN KEY (`wish_id`) REFERENCES `guide_wishes`(`id`) ON UPDATE no action ON DELETE set null,
++	FOREIGN KEY (`guide_id`) REFERENCES `guides`(`id`) ON UPDATE no action ON DELETE set null
++);
++--> statement-breakpoint
++CREATE UNIQUE INDEX `guide_requests_token_unique` ON `guide_requests` (`token`);
++--> statement-breakpoint
++CREATE INDEX `guide_requests_requester_idx` ON `guide_requests` (`requester_id`,`created_at`);
++--> statement-breakpoint
++CREATE INDEX `guide_requests_recipient_idx` ON `guide_requests` (`recipient_id`,`status`);
++--> statement-breakpoint
++CREATE INDEX `guide_requests_guide_idx` ON `guide_requests` (`guide_id`);
++--> statement-breakpoint
++ALTER TABLE `notifications` ADD `request_id` text;
+diff --git a/drizzle/meta/_journal.json b/drizzle/meta/_journal.json
+index bc70dc3..1041fba 100644
+--- a/drizzle/meta/_journal.json
++++ b/drizzle/meta/_journal.json
+@@ -155,6 +155,13 @@
+       "when": 1791470000000,
+       "tag": "0021_app_errors",
+       "breakpoints": true
++    },
++    {
++      "idx": 22,
++      "version": "6",
++      "when": 1791480000000,
++      "tag": "0022_guide_requests",
++      "breakpoints": true
+     }
+   ]
+ }
+diff --git a/src/app/api/auth/[provider]/callback/route.ts b/src/app/api/auth/[provider]/callback/route.ts
+index 813cc5a..d11ddf3 100644
+--- a/src/app/api/auth/[provider]/callback/route.ts
++++ b/src/app/api/auth/[provider]/callback/route.ts
+@@ -52,7 +52,8 @@ async function finish(req: Request, provider: string, fields: { code: string | n
+     const { user, isNew } = await userForProvider(provider, profile);
+     if (isNew) after(() => notifyUserJoined(user.id));
+     const next = pending.next || "/";
+-    const dest = isNew ? `/welcome?new=1${next !== "/" ? `&next=${encodeURIComponent(next)}` : ""}` : next;
++    // Came from a friend's "make me a guide" link: straight back to it, no intro.
++    const dest = isNew && !next.startsWith("/ask/") ? `/welcome?new=1${next !== "/" ? `&next=${encodeURIComponent(next)}` : ""}` : next;
+     const res = NextResponse.redirect(new URL(dest, origin), 303);
+     await setSessionOn(res, user.id);
+     res.cookies.set(OAUTH_COOKIE, "", { ...oauthCookieOptions(), maxAge: 0 });
+diff --git a/src/app/api/users/search/route.ts b/src/app/api/users/search/route.ts
+index 5b5bd55..6111fbb 100644
+--- a/src/app/api/users/search/route.ts
++++ b/src/app/api/users/search/route.ts
+@@ -1,11 +1,23 @@
++import { and, eq, inArray } from "drizzle-orm";
+ import { NextResponse } from "next/server";
+ import { getCurrentUser } from "@/lib/auth";
++import { hiddenUserIds } from "@/lib/blocks";
++import { getDb } from "@/lib/db";
++import { follows } from "@/lib/db/schema";
+ import { searchUsers } from "@/lib/guides";
+ 
++/** People search for pickers (share with, co-editors, ask for a guide): people you follow first. */
+ export async function GET(req: Request) {
+   const user = await getCurrentUser();
+   if (!user) return NextResponse.json({ users: [] }, { status: 401 });
+   const q = (new URL(req.url).searchParams.get("q") ?? "").trim();
+   if (q.length < 1) return NextResponse.json({ users: [] });
+-  return NextResponse.json({ users: await searchUsers(q, user.id) });
++  const [found, hidden] = await Promise.all([searchUsers(q, user.id, 12), hiddenUserIds(user.id)]);
++  const visible = found.filter((u) => !hidden.has(u.id));
++  if (!visible.length) return NextResponse.json({ users: [] });
++  const db = await getDb();
++  const mine = await db.select({ id: follows.followingId }).from(follows).where(and(eq(follows.followerId, user.id), inArray(follows.followingId, visible.map((u) => u.id))));
++  const followed = new Set(mine.map((m) => m.id));
++  visible.sort((a, b) => Number(followed.has(b.id)) - Number(followed.has(a.id)));
++  return NextResponse.json({ users: visible.slice(0, 8) });
+ }
+diff --git a/src/app/ask/[token]/page.tsx b/src/app/ask/[token]/page.tsx
+new file mode 100644
+index 0000000..b484555
+--- /dev/null
++++ b/src/app/ask/[token]/page.tsx
+@@ -0,0 +1,137 @@
++import Link from "next/link";
++import { and, eq, isNotNull, sql } from "drizzle-orm";
++import { AppShell, Wordmark } from "@/components/AppShell";
++import { AskActions } from "@/components/AskActions";
++import { AskForGuideButton } from "@/components/AskForGuide";
++import { CheckIcon, SparkleIcon } from "@/components/Icons";
++import { Avatar, LinkButton } from "@/components/ui";
++import { getCurrentUser } from "@/lib/auth";
++import { getDb } from "@/lib/db";
++import { guides } from "@/lib/db/schema";
++import { claimRequest, getRequestByToken, STATUS_LABEL, type RequestStatus } from "@/lib/requests";
++
++export const dynamic = "force-dynamic";
++export const metadata = { title: "A guide request" };
++
++/**
++ * Where an ask lands — the WhatsApp link, or "Hisham asked you for a Tashkent guide" in Activity.
++ * Signed out: who's asking and one button that signs you up straight into making the guide.
++ * Signed in: make the guide, send one you've already made, or say you can't help.
++ */
++export default async function AskPage({ params }: { params: Promise<{ token: string }> }) {
++  const { token } = await params;
++  const found = await getRequestByToken(token);
++  const viewer = await getCurrentUser();
++
++  if (!found) {
++    return (
++      <AppShell nav={!!viewer}>
++        <div className="px-6 py-24 text-center">
++          <p className="font-display text-[30px]">This ask isn’t here any more.</p>
++          <p className="mt-2 text-[13.5px] text-ink-muted">The person who sent it may have removed it, or the link is cut short — ask them to send it again.</p>
++          <div className="mt-6"><LinkButton href="/">Go to MyGuide</LinkButton></div>
++        </div>
++      </AppShell>
++    );
++  }
++
++  const { requester } = found;
++  const first = requester.displayName.split(" ")[0];
++  const self = `/ask/${token}`;
++  let req = found.req;
++
++  // The asker opening their own link: where it stands, and a way to send it again.
++  if (viewer?.id === requester.id) {
++    return (
++      <AppShell>
++        <div className="px-6 pt-10 pb-10 flex flex-col gap-4">
++          <p className="text-[12px] font-semibold uppercase tracking-[0.08em] text-terracotta">Your ask</p>
++          <h1 className="font-display text-[32px] leading-[1.05]">A {req.city} guide</h1>
++          {req.note && <p className="text-[14px] italic text-ink-muted">“{req.note}”</p>}
++          <p className="text-[14px]">Status: <b>{req.recipientId ? STATUS_LABEL[req.status as RequestStatus] : "not opened yet"}</b></p>
++          <p className="text-[13px] text-ink-muted">This is the link your friend gets. Follow every ask on your wish list.</p>
++          <div className="flex gap-2.5">
++            <LinkButton href={`/u/${requester.username}#wishes`} variant="outline">Your wish list</LinkButton>
++            <AskForGuideButton city={{ city: req.city, country: req.country, lat: req.lat, lng: req.lng }} label="Ask someone else" variant="primary" size="md" />
++          </div>
++        </div>
++      </AppShell>
++    );
++  }
++
++  if (viewer) {
++    const claimed = await claimRequest(req, viewer);
++    if (!claimed) {
++      return (
++        <AppShell>
++          <div className="px-6 py-24 text-center">
++            <p className="font-display text-[28px]">This ask was for someone else.</p>
++            <p className="mt-2 text-[13.5px] text-ink-muted">{first} sent it to another friend. Know {req.city} well? You can still make {first} a guide from their wish list.</p>
++            <div className="mt-6"><LinkButton href={`/u/${requester.username}#wishes`}>See {first}’s wish list</LinkButton></div>
++          </div>
++        </AppShell>
++      );
++    }
++    req = claimed;
++  }
++
++  const db = await getDb();
++  const [guide, mine] = viewer
++    ? await Promise.all([
++        req.guideId ? db.query.guides.findFirst({ where: eq(guides.id, req.guideId) }) : Promise.resolve(undefined),
++        db
++          .select({ id: guides.id, title: guides.title })
++          .from(guides)
++          .where(and(eq(guides.ownerId, viewer.id), isNotNull(guides.publishedAt), sql`lower(${guides.city}) = ${req.city.toLowerCase()}`)),
++      ])
++    : [undefined, []];
++
++  const makeHref = `/create?ask=${req.id}`;
++
++  return (
++    <AppShell nav={!!viewer}>
++      <div className="px-6 pt-10 pb-12 flex flex-col">
++        {!viewer && <Wordmark />}
++        <div className={viewer ? "" : "mt-8"}>
++          <div className="flex items-center gap-3">
++            <Avatar user={requester} size={56} />
++            <div className="min-w-0">
++              <p className="text-[12px] font-semibold uppercase tracking-[0.08em] text-terracotta inline-flex items-center gap-1.5"><SparkleIcon size={12} /> Guide request</p>
++              <p className="text-[15px] font-semibold truncate">{requester.displayName}</p>
++            </div>
++          </div>
++          <h1 className="mt-5 font-display text-[32px] leading-[1.08]">
++            {first} is going to {req.city} and asked for your recommendations.
++          </h1>
++          {req.note && <p className="mt-3 rounded-2xl bg-paper border border-line px-4 py-3 text-[14.5px] italic leading-relaxed">“{req.note}”</p>}
++        </div>
++
++        {!viewer ? (
++          <div className="mt-7 flex flex-col gap-3">
++            <p className="text-[14px] text-ink-muted leading-relaxed">
++              MyGuide is where friends share the places they actually love. Make {first} a {req.city} guide — paste a list from Google Maps or WhatsApp, or add places one by one. It takes a few minutes, and {first} gets it the moment you publish.
++            </p>
++            <LinkButton href={`/signup?why=ask&next=${encodeURIComponent(self)}`} size="lg" className="mt-2">Make {first} a guide</LinkButton>
++            <p className="text-center text-[13px] text-ink-muted">
++              Already on MyGuide? <Link href={`/login?next=${encodeURIComponent(self)}`} className="font-semibold text-terracotta">Log in</Link>
++            </p>
++          </div>
++        ) : req.status === "done" && guide ? (
++          <div className="mt-7 rounded-2xl bg-sage-tint px-4 py-4 flex gap-3 items-start">
++            <CheckIcon size={20} className="text-sage shrink-0 mt-0.5" />
++            <div className="text-[14px] leading-snug">
++              You sent {first} <Link href={`/g/${guide.slug}`} className="font-semibold underline underline-offset-2">{guide.title}</Link>. Thank you!
++            </div>
++          </div>
++        ) : req.status === "making" && guide ? (
++          <div className="mt-7 flex flex-col gap-3">
++            <p className="text-[14px] text-ink-muted">You started <b className="text-ink">{guide.title}</b> for {first}. It’s sent to them as soon as you publish.</p>
++            <LinkButton href={`/g/${guide.slug}/edit`} size="lg">Carry on with the guide</LinkButton>
++          </div>
++        ) : (
++          <AskActions requestId={req.id} firstName={first} city={req.city} makeHref={makeHref} myGuides={mine} declined={req.status === "declined"} />
++        )}
++      </div>
++    </AppShell>
++  );
++}
+diff --git a/src/app/city/page.tsx b/src/app/city/page.tsx
+index bf1e54b..cd6bc11 100644
+--- a/src/app/city/page.tsx
++++ b/src/app/city/page.tsx
+@@ -2,7 +2,7 @@ import Link from "next/link";
+ import { AppShell, TopBar } from "@/components/AppShell";
+ import { GuideCard } from "@/components/GuideCard";
+ import { PlusIcon, SparkleIcon } from "@/components/Icons";
+-import { WishForCityButton } from "@/components/WishList";
++import { AskForGuideButton } from "@/components/AskForGuide";
+ import { EmptyState, LinkButton } from "@/components/ui";
+ import { getCurrentUser, toPublicUser } from "@/lib/auth";
+ import { listFeed } from "@/lib/guides";
+@@ -32,6 +32,7 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
+   const seen = new Set(mine.map((g) => g.guide.id));
+   const others = everyone.filter((g) => !seen.has(g.guide.id));
+   const total = mine.length + others.length;
++  const askCity = { city, country, lat: lat ? Number(lat) : null, lng: lng ? Number(lng) : null };
+ 
+   const startQs = new URLSearchParams({ city, ...(country ? { country } : {}), ...(lat && lng ? { lat, lng } : {}) }).toString();
+   const startHref = user ? `/create?${startQs}` : `/signup?next=${encodeURIComponent(`/create?${startQs}`)}&why=create`;
+@@ -59,17 +60,17 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
+         {city && total === 0 && (
+           <EmptyState
+             title={`No guides for ${city} yet`}
+-            body={`Going soon? Start one now and add places when you get there — or put ${city} on your wish list so friends who know it can make you one.`}
++            body={`Know someone who's been? Ask them to make you one — on MyGuide or by WhatsApp. Or start your own and add places when you get there.`}
+             action={
+               <span className="flex flex-col items-center gap-3">
+                 <LinkButton href={startHref}>
+                   <PlusIcon size={15} /> Start a guide for {city}
+                 </LinkButton>
+                 {user ? (
+-                  <WishForCityButton city={city} />
++                  <AskForGuideButton city={askCity} label="Ask a friend who knows it" variant="outline" size="md" />
+                 ) : (
+                   <Link href={`/signup?next=${encodeURIComponent(`/city?${new URLSearchParams(sp as Record<string, string>).toString()}`)}`} className="text-[13px] font-medium text-terracotta">
+-                    <SparkleIcon size={13} className="inline -mt-0.5" /> Sign up to wish for a {city} guide
++                    <SparkleIcon size={13} className="inline -mt-0.5" /> Sign up to ask a friend for a {city} guide
+                   </Link>
+                 )}
+               </span>
+@@ -77,6 +78,12 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
+           />
+         )}
+ 
++        {city && total > 0 && user && (
++          <div className="rounded-2xl bg-terracotta-tint/50 px-4 py-3 flex items-center justify-between gap-3">
++            <span className="text-[13px] leading-snug">Know someone who&apos;s been to {city}?</span>
++            <AskForGuideButton city={askCity} label="Ask them" variant="primary" />
++          </div>
++        )}
+         {mine.length > 0 && (
+           <section className="flex flex-col gap-3">
+             <h2 className="px-1 text-[12px] font-medium uppercase tracking-[0.08em] text-ink-muted">From people you follow</h2>
+diff --git a/src/app/create/page.tsx b/src/app/create/page.tsx
+index f116587..0f0a41c 100644
+--- a/src/app/create/page.tsx
++++ b/src/app/create/page.tsx
+@@ -2,6 +2,10 @@ import { AppShell, TopBar } from "@/components/AppShell";
+ import { VoiceCreate } from "@/components/VoiceCreate";
+ import { requireUser } from "@/lib/auth";
+ import { wishesForMaking } from "@/lib/wishes";
++import { getRequestById } from "@/lib/requests";
++import { getDb } from "@/lib/db";
++import { users } from "@/lib/db/schema";
++import { eq } from "drizzle-orm";
+ import { SparkleIcon } from "@/components/Icons";
+ import { namesSentence } from "@/lib/utils";
+ 
+@@ -13,30 +17,45 @@ export const metadata = { title: "Create a guide" };
+ export default async function CreatePage({ searchParams }: PageProps<"/create">) {
+   const sp = await searchParams;
+   const wishParam = typeof sp.wish === "string" ? sp.wish : "";
+-  const keep = new URLSearchParams(Object.entries(sp).filter((e): e is [string, string] => typeof e[1] === "string" && ["wish", "city", "country", "lat", "lng", "import"].includes(e[0]))).toString();
++  const keep = new URLSearchParams(Object.entries(sp).filter((e): e is [string, string] => typeof e[1] === "string" && ["wish", "city", "country", "lat", "lng", "import", "ask"].includes(e[0]))).toString();
+   const user = await requireUser(`/create${keep ? `?${keep}` : ""}`);
++  // "Make Hisham a guide" from an ask: the asker's wish, their city and a title are filled in.
++  const askId = typeof sp.ask === "string" ? sp.ask : "";
++  const ask = askId ? await getRequestById(askId) : null;
++  const myAsk = ask && ask.recipientId === user.id && ask.status !== "done" ? ask : null;
++  const asker = myAsk ? await (await getDb()).query.users.findFirst({ where: eq(users.id, myAsk.requesterId) }) : null;
+   // "Make this guide" from someone's wish list: who it's for, sent to them when published.
+-  const wanted = wishParam ? await wishesForMaking(wishParam.split(","), user.id) : [];
++  const wishIds = [...(wishParam ? wishParam.split(",") : []), ...(myAsk?.wishId ? [myAsk.wishId] : [])];
++  const wanted = wishIds.length ? await wishesForMaking(wishIds, user.id) : [];
+   const forWish = wanted.length
+     ? { ids: wanted.map((w) => w.wish.id), city: wanted[0].wish.city, names: wanted.map((w) => w.user.displayName.split(" ")[0]) }
+     : null;
+   // From a city page ("Start a guide for Tashkent"): the city arrives already picked.
+   const one = (v: unknown) => (typeof v === "string" ? v.trim().slice(0, 80) : "");
+-  const initialCity = one(sp.city)
+-    ? { city: one(sp.city), country: one(sp.country), lat: Number(one(sp.lat) || NaN), lng: Number(one(sp.lng) || NaN), label: [one(sp.city), one(sp.country)].filter(Boolean).join(", ") }
+-    : null;
++  const initialCity = myAsk
++    ? { city: myAsk.city, country: myAsk.country, lat: myAsk.lat ?? NaN, lng: myAsk.lng ?? NaN, label: [myAsk.city, myAsk.country].filter(Boolean).join(", ") }
++    : one(sp.city)
++      ? { city: one(sp.city), country: one(sp.country), lat: Number(one(sp.lat) || NaN), lng: Number(one(sp.lng) || NaN), label: [one(sp.city), one(sp.country)].filter(Boolean).join(", ") }
++      : null;
++  const askerFirst = asker?.displayName.split(" ")[0];
+   return (
+     <AppShell nav={false}>
+-      <TopBar back={forWish ? "/wishes" : "/"} title="Create a guide" />
++      <TopBar back={myAsk ? `/ask/${myAsk.token}` : forWish ? "/wishes" : "/"} title="Create a guide" />
+       {forWish && (
+         <div className="mx-4 mt-3 rounded-2xl bg-terracotta-tint/70 px-4 py-3 text-[13px] leading-snug flex gap-2.5 items-start">
+           <SparkleIcon size={16} className="shrink-0 mt-0.5 text-terracotta" />
+           <span>
+-            <b className="font-semibold">A {forWish.city} guide for {namesSentence(forWish.names, 2)}</b> — from their wish list. It&apos;s shared with {forWish.names.length === 1 ? "them" : "them all"} the moment you publish.
++            <b className="font-semibold">A {forWish.city} guide for {namesSentence(forWish.names, 2)}</b> — {myAsk ? `${askerFirst ?? "they"} asked you for it` : "from their wish list"}. It&apos;s shared with {forWish.names.length === 1 ? "them" : "them all"} the moment you publish.
+           </span>
+         </div>
+       )}
+-      <VoiceCreate forWish={forWish} initialCity={initialCity} startWithImport={sp.import === "1"} />
++      <VoiceCreate
++        forWish={forWish}
++        initialCity={initialCity}
++        startWithImport={sp.import === "1"}
++        askId={myAsk?.id}
++        initialTitle={myAsk && askerFirst ? `${myAsk.city} for ${askerFirst}` : undefined}
++      />
+     </AppShell>
+   );
+ }
+diff --git a/src/app/notifications/page.tsx b/src/app/notifications/page.tsx
+index d4504b2..d6a78b9 100644
+--- a/src/app/notifications/page.tsx
++++ b/src/app/notifications/page.tsx
+@@ -7,7 +7,8 @@ import { Avatar, Button, EmptyState, LinkButton } from "@/components/ui";
+ import { respondToFollowRequest } from "@/lib/actions/social";
+ import { requireUser, toPublicUser } from "@/lib/auth";
+ import { getDb } from "@/lib/db";
+-import { follows, guides, notifications, places, users } from "@/lib/db/schema";
++import { follows, guideRequests, guides, notifications, places, users } from "@/lib/db/schema";
++import { pendingAsksFor } from "@/lib/requests";
+ import { listSharedWithUser } from "@/lib/guides";
+ import { timeAgo } from "@/lib/utils";
+ import { PushToggle } from "@/components/PushToggle";
+@@ -41,6 +42,12 @@ export default async function NotificationsPage() {
+   const guideMap = new Map(guideRows.map((g) => [g.id, g]));
+   const placeMap = new Map(placeRows.map((p) => [p.id, p]));
+   const shared = await listSharedWithUser(user.id);
++  const requestIds = [...new Set(rows.map((r) => r.requestId).filter((x): x is string => !!x))];
++  const [reqRows, asks] = await Promise.all([
++    requestIds.length ? db.select().from(guideRequests).where(inArray(guideRequests.id, requestIds)) : Promise.resolve([]),
++    pendingAsksFor(user.id),
++  ]);
++  const reqMap = new Map(reqRows.map((q) => [q.id, q]));
+ 
+   // Opening the Notification Centre is itself "seeing" them — mark everything read now
+   // so the bell badge clears immediately, instead of waiting for a separate action.
+@@ -56,6 +63,25 @@ export default async function NotificationsPage() {
+       <TopBar title="Activity" avatarUser={toPublicUser(user)} />
+       <main className="px-4 pt-3 pb-6 flex flex-col gap-3">
+         <PushToggle publicKey={pushPublicKey()} compact />
++        {asks.length > 0 && (
++          <section className="rounded-2xl border border-terracotta-soft bg-terracotta-tint/40 p-3">
++            <h2 className="px-1 font-display text-[20px] inline-flex items-center gap-2"><SparkleIcon size={16} className="text-terracotta" /> Guide requests</h2>
++            <ul className="mt-2 flex flex-col gap-2">
++              {asks.map(({ req: q, requester }) => (
++                <li key={q.id}>
++                  <Link href={`/ask/${q.token}`} className="flex items-center gap-3 rounded-xl bg-paper px-3 py-2.5 hover:bg-cream-deep/40">
++                    <Avatar user={requester} size={34} />
++                    <span className="flex-1 min-w-0">
++                      <span className="block text-[13.5px] leading-snug"><b className="font-semibold">{requester.displayName}</b> wants a <b className="font-semibold">{q.city}</b> guide</span>
++                      {q.note ? <span className="block text-[12px] text-ink-muted italic truncate">“{q.note}”</span> : <span className="block text-[12px] text-ink-muted">{q.status === "making" ? "You’re working on it" : "Tap to make it or send one"}</span>}
++                    </span>
++                    <span className="text-[12.5px] font-semibold text-terracotta shrink-0">{q.status === "making" ? "Continue →" : "Reply →"}</span>
++                  </Link>
++                </li>
++              ))}
++            </ul>
++          </section>
++        )}
+         {rows.length === 0 && (
+           <EmptyState title="Nothing here yet" body="New guides and places from people you follow, guides shared with you, and new followers all land here." action={<LinkButton href="/" size="sm" variant="outline">Browse the feed</LinkButton>} />
+         )}
+@@ -126,6 +152,22 @@ export default async function NotificationsPage() {
+                       {who} used {n.count} {n.count === 1 ? "place" : "places"} from <span className="font-display text-[16px]">“{rawGuide.title}”</span> in their own guide, with your notes credited.
+                     </>
+                   )}
++                  {n.type === "guide_request" && (
++                    <>
++                      {who} asked you for a <b className="font-semibold">{reqMap.get(n.requestId ?? "")?.city ?? ""}</b> guide.
++                      {reqMap.get(n.requestId ?? "")?.note ? <span className="block text-[12.5px] text-ink-muted italic">“{reqMap.get(n.requestId ?? "")!.note}”</span> : null}
++                    </>
++                  )}
++                  {n.type === "request_joined" && (
++                    <>
++                      {who} joined MyGuide from your {reqMap.get(n.requestId ?? "")?.city ?? ""} ask. You now follow each other.
++                    </>
++                  )}
++                  {n.type === "request_declined" && (
++                    <>
++                      {who} can&apos;t help with {reqMap.get(n.requestId ?? "")?.city ?? "that city"}. <span className="text-ink-muted">Ask someone else from your wish list.</span>
++                    </>
++                  )}
+                   {n.type === "collab_invite" && rawGuide && (
+                     <>
+                       {who} invited you to edit <span className="font-display text-[16px]">“{rawGuide.title}”</span> with them.
+@@ -141,10 +183,14 @@ export default async function NotificationsPage() {
+                     {n.type === "guide_published" && <PlusIcon size={12} />}
+                     {n.type === "places_added" && <PinIcon size={12} />}
+                     {n.type === "guide_used" && <ForkIcon size={12} />}
+-                    {n.type === "wish_granted" && <SparkleIcon size={12} />}
++                    {(n.type === "wish_granted" || n.type === "guide_request" || n.type === "request_declined") && <SparkleIcon size={12} />}
++                    {n.type === "request_joined" && <UserIcon size={12} />}
+                     {timeAgo(n.createdAt)}
+                   </span>
+                   {n.type === "wish_granted" && rawGuide && <Link href={`/g/${rawGuide.slug}`} className="font-medium text-terracotta">Open your guide →</Link>}
++                  {n.type === "guide_request" && reqMap.get(n.requestId ?? "") && <Link href={`/ask/${reqMap.get(n.requestId ?? "")!.token}`} className="font-medium text-terracotta">Reply →</Link>}
++                  {n.type === "request_joined" && actor && <Link href={`/u/${actor.username}`} className="font-medium text-terracotta">View profile →</Link>}
++                  {n.type === "request_declined" && <Link href={`/u/${user.username}#wishes`} className="font-medium text-terracotta">Your wish list →</Link>}
+                   {n.type === "collab_invite" && rawGuide && <Link href={`/g/${rawGuide.slug}/edit`} className="font-medium text-terracotta">Start editing →</Link>}
+                   {guide && n.type !== "place_comment" && n.type !== "places_added" && n.type !== "collab_invite" && n.type !== "guide_used" && n.type !== "wish_granted" && <Link href={`/g/${guide.slug}`} className="font-medium text-terracotta">Open guide →</Link>}
+                   {guide && n.type === "places_added" && (
+diff --git a/src/app/u/[username]/page.tsx b/src/app/u/[username]/page.tsx
+index 5555008..45ebba4 100644
+--- a/src/app/u/[username]/page.tsx
++++ b/src/app/u/[username]/page.tsx
+@@ -6,7 +6,8 @@ import { FollowButton } from "@/components/FollowButton";
+ import { GuideCard } from "@/components/GuideCard";
+ import { HeartIcon, LockIcon } from "@/components/Icons";
+ import { Avatar, EmptyState, LinkButton } from "@/components/ui";
+-import { getCurrentUser } from "@/lib/auth";
++import { getCurrentUser, toPublicUser } from "@/lib/auth";
++import { AskForGuideButton } from "@/components/AskForGuide";
+ import { getFollowStats, getUserByUsername, listGuidesByOwner } from "@/lib/guides";
+ import { hiddenUserIds, viewerBlocked } from "@/lib/blocks";
+ import { BlockButton } from "@/components/BlockButton";
+@@ -83,6 +84,13 @@ export default async function ProfilePage({ params, searchParams }: PageProps<"/
+               </div>
+             )
+           )}
++          {!own && !hiddenFromMe && (
++            viewer ? (
++              <AskForGuideButton person={toPublicUser(profile)} className="mt-2.5" />
++            ) : (
++              <LinkButton href={`/signup?next=${encodeURIComponent(`/u/${profile.username}`)}`} size="sm" variant="outline" className="mt-2.5">Ask {profile.displayName.split(" ")[0]} for a guide</LinkButton>
++            )
++          )}
+         </div>
+       </div>
+ 
+diff --git a/src/components/AskActions.tsx b/src/components/AskActions.tsx
+new file mode 100644
+index 0000000..03ca1bd
+--- /dev/null
++++ b/src/components/AskActions.tsx
+@@ -0,0 +1,73 @@
++"use client";
++
++import { useRouter } from "next/navigation";
++import { useState, useTransition } from "react";
++import { answerAskWithGuide, declineAsk } from "@/lib/actions/requests";
++import { errorText } from "@/lib/errorText";
++import { Button, LinkButton, Spinner } from "./ui";
++
++/** What the person asked can do: make the guide, send one they've made, or say they can't help. */
++export function AskActions({
++  requestId,
++  firstName,
++  city,
++  makeHref,
++  myGuides,
++  declined,
++}: {
++  requestId: string;
++  firstName: string;
++  city: string;
++  makeHref: string;
++  myGuides: Array<{ id: string; title: string }>;
++  declined: boolean;
++}) {
++  const router = useRouter();
++  const [pending, start] = useTransition();
++  const [error, setError] = useState<string | null>(null);
++  const [saidNo, setSaidNo] = useState(declined);
++
++  const act = (fn: () => Promise<void>, fallback: string) =>
++    start(async () => {
++      setError(null);
++      try {
++        await fn();
++        router.refresh();
++      } catch (e) {
++        setError(errorText(e, fallback));
++      }
++    });
++
++  return (
++    <div className="mt-7 flex flex-col gap-3">
++      {saidNo && <p className="rounded-2xl bg-cream-deep/60 px-4 py-3 text-[13.5px] text-ink-muted">You told {firstName} you can’t help with {city}. Changed your mind? You can still make the guide.</p>}
++      <LinkButton href={makeHref} size="lg">Make {firstName} a {city} guide</LinkButton>
++      <p className="-mt-1 text-center text-[12.5px] text-ink-muted">Paste a list from Google Maps or WhatsApp, or add places one by one.</p>
++
++      {myGuides.length > 0 && (
++        <div className="mt-2 rounded-2xl border border-line bg-paper p-3.5">
++          <p className="text-[13px] font-semibold">Already made one?</p>
++          <div className="mt-2 flex flex-col gap-2">
++            {myGuides.map((g) => (
++              <Button key={g.id} variant="outline" size="sm" disabled={pending} onClick={() => act(() => answerAskWithGuide(requestId, g.id), "Couldn't send that guide.")}>
++                {pending ? <Spinner /> : `Send ${firstName} “${g.title}”`}
++              </Button>
++            ))}
++          </div>
++        </div>
++      )}
++
++      {!saidNo && (
++        <button
++          type="button"
++          disabled={pending}
++          onClick={() => act(async () => { await declineAsk(requestId); setSaidNo(true); }, "Couldn't send your reply.")}
++          className="mt-2 text-[13.5px] font-medium text-ink-muted hover:text-ink"
++        >
++          I don’t know {city} well enough
++        </button>
++      )}
++      {error && <p className="text-[12.5px] text-danger text-center">{error}</p>}
++    </div>
++  );
++}
+diff --git a/src/components/AskForGuide.tsx b/src/components/AskForGuide.tsx
+new file mode 100644
+index 0000000..5f258c7
+--- /dev/null
++++ b/src/components/AskForGuide.tsx
+@@ -0,0 +1,233 @@
++"use client";
++
++import { useEffect, useRef, useState } from "react";
++import { askOnMyGuide, createAskLink } from "@/lib/actions/requests";
++import type { PublicUser } from "@/lib/auth";
++import { errorText } from "@/lib/errorText";
++import { CityPicker, type PickedCity } from "./CityPicker";
++import { CheckIcon, SparkleIcon, WhatsAppIcon, XIcon } from "./Icons";
++import { Sheet } from "./ShareSheet";
++import { Avatar, Button, Label, Spinner, Textarea, cx } from "./ui";
++
++type City = { city: string; country?: string; lat?: number | null; lng?: number | null };
++
++/**
++ * "Ask a friend for a guide": pick the city, pick people on MyGuide and/or send a link on WhatsApp.
++ * People on MyGuide get a notification; anyone else gets a personal link that signs them up
++ * straight into making the guide. Either way the finished guide comes back through your wish list.
++ */
++export function AskForGuideButton({
++  city,
++  person,
++  label,
++  variant = "outline",
++  size = "sm",
++  className,
++}: {
++  city?: City | null;
++  /** Asking a specific person (from their profile). */
++  person?: PublicUser | null;
++  label?: string;
++  variant?: "primary" | "outline" | "secondary" | "ghost";
++  size?: "sm" | "md" | "lg";
++  className?: string;
++}) {
++  const [open, setOpen] = useState(false);
++  return (
++    <>
++      <Button variant={variant} size={size} onClick={() => setOpen(true)} className={className}>
++        <SparkleIcon size={14} /> {label ?? (person ? `Ask ${person.displayName.split(" ")[0]} for a guide` : city ? `Ask a friend for a ${city.city} guide` : "Ask a friend for a guide")}
++      </Button>
++      {open && <AskSheet city={city ?? null} person={person ?? null} onClose={() => setOpen(false)} />}
++    </>
++  );
++}
++
++function AskSheet({ city: initialCity, person, onClose }: { city: City | null; person: PublicUser | null; onClose: () => void }) {
++  const [city, setCity] = useState<City | null>(initialCity);
++  const [picked, setPicked] = useState<PublicUser[]>(person ? [person] : []);
++  const [note, setNote] = useState("");
++  const [busy, setBusy] = useState<null | "app" | "link">(null);
++  const [error, setError] = useState<string | null>(null);
++  const [sentTo, setSentTo] = useState<string[] | null>(null);
++  const [linkSent, setLinkSent] = useState(false);
++  const [copied, setCopied] = useState(false);
++
++  const input = () => ({ city: city!.city, country: city!.country ?? "", lat: city!.lat ?? null, lng: city!.lng ?? null, note });
++
++  const sendApp = async () => {
++    if (!city || !picked.length) return;
++    setBusy("app");
++    setError(null);
++    try {
++      await askOnMyGuide({ ...input(), userIds: picked.map((p) => p.id) });
++      setSentTo(picked.map((p) => p.displayName.split(" ")[0]));
++    } catch (e) {
++      setError(errorText(e, "Couldn't send your ask."));
++    } finally {
++      setBusy(null);
++    }
++  };
++
++  /** WhatsApp straight away on phones; the share sheet (or copy) as a fallback. */
++  const sendLink = async (how: "whatsapp" | "other") => {
++    if (!city) return;
++    setBusy("link");
++    setError(null);
++    try {
++      const { message } = await createAskLink(input());
++      setLinkSent(true);
++      if (how === "whatsapp") {
++        // wa.me opens the WhatsApp app on phones (and WhatsApp Web on a computer) with the message ready.
++        window.location.href = `https://wa.me/?text=${encodeURIComponent(message)}`;
++      } else if (typeof navigator.share === "function") {
++        await navigator.share({ text: message }).catch(() => {});
++      } else {
++        await navigator.clipboard.writeText(message).catch(() => {});
++        setCopied(true);
++      }
++    } catch (e) {
++      setError(errorText(e, "Couldn't make your ask link."));
++    } finally {
++      setBusy(null);
++    }
++  };
++
++  if (sentTo || linkSent) {
++    return (
++      <Sheet title="Ask sent" onClose={onClose}>
++        <div className="flex flex-col items-center text-center gap-3 py-4">
++          <span className="w-14 h-14 rounded-full bg-sage-tint text-sage flex items-center justify-center"><CheckIcon size={26} /></span>
++          <p className="text-[15px] leading-snug">
++            {sentTo ? <>Asked <b>{sentTo.join(", ")}</b> for a {city?.city} guide.</> : copied ? <>Message copied — paste it to your friend.</> : <>Your {city?.city} ask is on its way.</>}
++          </p>
++          <p className="text-[13px] text-ink-muted leading-relaxed">We&apos;ll tell you when they open it and when your guide is ready. You can follow it on your wish list.</p>
++          <div className="mt-2 flex flex-col gap-2 w-full">
++            {sentTo && <Button variant="outline" onClick={() => setSentTo(null)}>Ask someone else too</Button>}
++            {linkSent && <Button variant="outline" onClick={() => setLinkSent(false)}>Ask someone else too</Button>}
++            <Button variant="ghost" onClick={onClose}>Done</Button>
++          </div>
++        </div>
++      </Sheet>
++    );
++  }
++
++  return (
++    <Sheet title="Ask for a guide" onClose={onClose}>
++      <div className="flex flex-col gap-5">
++        <div>
++          <Label htmlFor="ask-city">Where are you going?</Label>
++          {city ? (
++            <div className="flex items-center justify-between rounded-xl border border-line bg-paper px-3.5 h-12">
++              <span className="text-[15px] font-medium">{[city.city, city.country].filter(Boolean).join(", ")}</span>
++              {!initialCity && <button type="button" onClick={() => setCity(null)} className="text-[13px] font-medium text-terracotta">Change</button>}
++            </div>
++          ) : (
++            <CityPicker id="ask-city" autoFocus onPick={(c: PickedCity) => setCity(c)} onFreeText={(t) => setCity({ city: t })} />
++          )}
++        </div>
++
++        <div>
++          <Label>Who knows it?</Label>
++          {picked.length > 0 && (
++            <div className="mb-2 flex flex-wrap gap-2">
++              {picked.map((p) => (
++                <span key={p.id} className="inline-flex items-center gap-1.5 rounded-full bg-terracotta-tint pl-1 pr-2 py-1 text-[13px] font-medium">
++                  <Avatar user={p} size={22} /> {p.displayName}
++                  {p.id !== person?.id && (
++                    <button type="button" aria-label={`Remove ${p.displayName}`} onClick={() => setPicked((x) => x.filter((y) => y.id !== p.id))} className="text-ink-muted"><XIcon size={13} /></button>
++                  )}
++                </span>
++              ))}
++            </div>
++          )}
++          <PeopleSearch exclude={picked.map((p) => p.id)} onPick={(u) => setPicked((x) => [...x, u])} />
++        </div>
++
++        <div>
++          <Label htmlFor="ask-note">A note (optional)</Label>
++          <Textarea id="ask-note" rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Going next week with the boys — mostly food and nightlife" />
++        </div>
++
++        {error && <p className="text-[12.5px] text-danger">{error}</p>}
++
++        <div className="flex flex-col gap-2.5">
++          {picked.length > 0 && (
++            <Button size="lg" disabled={!city || !!busy} onClick={sendApp}>
++              {busy === "app" ? <Spinner /> : `Send to ${picked.length === 1 ? picked[0].displayName.split(" ")[0] : `${picked.length} people`} on MyGuide`}
++            </Button>
++          )}
++          <div className={cx("rounded-2xl border border-line bg-paper p-3.5", picked.length ? "" : "border-terracotta-soft")}>
++            <p className="text-[13px] font-semibold">Friend not on MyGuide?</p>
++            <p className="text-[12px] text-ink-muted leading-snug">Send them a personal link — they sign up in a minute and land straight in your guide.</p>
++            <div className="mt-2.5 flex gap-2">
++              <Button size="sm" disabled={!city || !!busy} onClick={() => sendLink("whatsapp")} className="flex-1 bg-[#25D366]! hover:bg-[#1ebe5b]! text-white! border-transparent!">
++                {busy === "link" ? <Spinner /> : <><WhatsAppIcon size={15} /> WhatsApp</>}
++              </Button>
++              <Button size="sm" variant="outline" disabled={!city || !!busy} onClick={() => sendLink("other")} className="flex-1">Other apps</Button>
++            </div>
++          </div>
++          {!city && <p className="text-[12px] text-ink-faint text-center">Pick the city first.</p>}
++        </div>
++      </div>
++    </Sheet>
++  );
++}
++
++/** People on MyGuide: the ones you follow come up first as you type. */
++function PeopleSearch({ exclude, onPick }: { exclude: string[]; onPick: (u: PublicUser) => void }) {
++  const [q, setQ] = useState("");
++  const [items, setItems] = useState<PublicUser[]>([]);
++  const [loading, setLoading] = useState(false);
++  const abort = useRef<AbortController | null>(null);
++  useEffect(() => {
++    if (q.trim().length < 1) return;
++    abort.current?.abort();
++    const ctrl = new AbortController();
++    abort.current = ctrl;
++    const t = setTimeout(async () => {
++      setLoading(true);
++      try {
++        const res = await fetch(`/api/users/search?q=${encodeURIComponent(q.trim())}`, { signal: ctrl.signal });
++        const data = (await res.json()) as { users: PublicUser[] };
++        setItems(data.users ?? []);
++      } catch {
++        /* aborted */
++      } finally {
++        setLoading(false);
++      }
++    }, 180);
++    return () => clearTimeout(t);
++  }, [q]);
++  const shown = q.trim() ? items.filter((u) => !exclude.includes(u.id)) : [];
++  return (
++    <div>
++      <div className="relative">
++        <input
++          value={q}
++          onChange={(e) => { setQ(e.target.value); if (!e.target.value.trim()) setItems([]); }}
++          placeholder="Search people on MyGuide"
++          autoComplete="off"
++          className="w-full h-12 rounded-xl border border-line bg-paper px-3.5 text-[15px] outline-none placeholder:text-ink-faint focus:border-terracotta-soft"
++        />
++        {loading && <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-ink-faint"><Spinner /></span>}
++      </div>
++      {shown.length > 0 && (
++        <ul className="mt-1.5 rounded-2xl border border-line bg-paper overflow-hidden">
++          {shown.slice(0, 6).map((u) => (
++            <li key={u.id}>
++              <button type="button" onClick={() => { onPick(u); setQ(""); setItems([]); }} className="w-full text-left px-3.5 py-2.5 flex items-center gap-3 hover:bg-cream-deep/50">
++                <Avatar user={u} size={32} />
++                <span className="min-w-0">
++                  <span className="block text-[14px] font-medium truncate">{u.displayName}</span>
++                  <span className="block text-[12px] text-ink-muted truncate">@{u.username}</span>
++                </span>
++              </button>
++            </li>
++          ))}
++        </ul>
++      )}
++      {q.trim().length > 1 && !loading && shown.length === 0 && <p className="mt-1.5 text-[12px] text-ink-muted">Nobody by that name yet — send them a link below.</p>}
++    </div>
++  );
++}
+diff --git a/src/components/VoiceCreate.tsx b/src/components/VoiceCreate.tsx
+index c0db771..ada96bd 100644
+--- a/src/components/VoiceCreate.tsx
++++ b/src/components/VoiceCreate.tsx
+@@ -47,7 +47,21 @@ export interface ForWish {
+ /** A real-sounding example beats "What's this guide for?" (Raad's suggestion). */
+ const TITLE_EXAMPLE = "Weekend away with the boys";
+ 
+-export function VoiceCreate({ forWish, initialCity, startWithImport }: { forWish?: ForWish | null; initialCity?: PickedCity | null; /** Open straight on "Import your places" (+ → Import a Google Maps list). */ startWithImport?: boolean }) {
++export function VoiceCreate({
++  forWish,
++  initialCity,
++  startWithImport,
++  askId,
++  initialTitle,
++}: {
++  forWish?: ForWish | null;
++  initialCity?: PickedCity | null;
++  /** Open straight on "Import your places" (+ → Import a Google Maps list). */
++  startWithImport?: boolean;
++  /** Making a guide for an "Ask a friend" request. */
++  askId?: string;
++  initialTitle?: string;
++}) {
+   const router = useRouter();
+   const [stage, setStage] = useState<Stage>(startWithImport ? "paste" : "typed");
+   const [picked, setPicked] = useState<PickedCity | null>(initialCity ?? null);
+@@ -55,7 +69,7 @@ export function VoiceCreate({ forWish, initialCity, startWithImport }: { forWish
+   const [pastedList, setPastedList] = useState("");
+   const [result, setResult] = useState<ParsedPlacesResponse | null>(null);
+   const [draft, setDraft] = useState<DraftPlace[]>([]);
+-  const [title, setTitle] = useState("");
++  const [title, setTitle] = useState(initialTitle ?? "");
+   const [city, setCity] = useState(forWish?.city ?? "");
+   const [error, setError] = useState<string | null>(null);
+   const [creating, setCreating] = useState(false);
+@@ -189,6 +203,7 @@ export function VoiceCreate({ forWish, initialCity, startWithImport }: { forWish
+         city: city || result?.city,
+         country: result?.country,
+         wishIds: forWish?.ids,
++        askId,
+         places: kept.map((p) => ({
+           name: p.resolved?.name ?? p.name,
+           providerId: p.resolved?.providerId ?? null,
+@@ -216,6 +231,7 @@ export function VoiceCreate({ forWish, initialCity, startWithImport }: { forWish
+         lat: picked && Number.isFinite(picked.lat) ? picked.lat : null,
+         lng: picked && Number.isFinite(picked.lng) ? picked.lng : null,
+         wishIds: forWish?.ids,
++        askId,
+       });
+       router.push(`/g/${slug}/edit?start=1`);
+     } catch (e) {
+diff --git a/src/components/WishList.tsx b/src/components/WishList.tsx
+index a32d49e..9227f1c 100644
+--- a/src/components/WishList.tsx
++++ b/src/components/WishList.tsx
+@@ -1,12 +1,15 @@
+ "use client";
+ 
+ import Link from "next/link";
++import { AskForGuideButton } from "./AskForGuide";
++import type { AskView } from "@/lib/requests";
++import { STATUS_LABEL } from "@/lib/requestStatus";
+ import { useState, useTransition } from "react";
+ import { addWish, removeWish, sendGuideForWish } from "@/lib/actions/wishes";
+ import type { WishView } from "@/lib/wishes";
+-import { CheckIcon, PinIcon, PlusIcon, SparkleIcon, TrashIcon } from "./Icons";
++import { CheckIcon, PinIcon, PlusIcon, SparkleIcon, TrashIcon, WhatsAppIcon } from "./Icons";
+ import { Sheet } from "./ShareSheet";
+-import { Button, Input, LinkButton, Spinner, cx } from "./ui";
++import { Avatar, Button, Input, LinkButton, Spinner, cx } from "./ui";
+ 
+ /** "Add a city" form for your own wish list. */
+ export function AddWishForm({ onAdded, compact }: { onAdded?: () => void; compact?: boolean }) {
+@@ -114,7 +117,7 @@ export function WishList({ wishes, own, ownerName, ownerUsername, signedIn }: {
+       </div>
+       <p className="mt-1.5 text-[12.5px] text-ink-muted leading-snug">
+         {own
+-          ? "Cities you'd love a guide to. Anyone who sees your profile can make one for you — you'll get it the moment they publish."
++          ? "Cities you'd love a guide to. Ask a friend who knows one — on MyGuide or by WhatsApp — and you'll get the guide the moment they publish."
+           : `Cities ${first} wants a guide to. Know one? Make it for ${first} — it's sent to them when you publish.`}
+       </p>
+ 
+@@ -127,6 +130,10 @@ export function WishList({ wishes, own, ownerName, ownerUsername, signedIn }: {
+                 <div className="text-[15px] font-semibold leading-tight">{w.wish.city}{w.wish.country ? <span className="font-normal text-ink-muted">, {w.wish.country}</span> : null}</div>
+                 {w.wish.note && <div className="text-[12.5px] text-ink-muted italic leading-snug">{w.wish.note}</div>}
+                 <GrantedLinks granted={w.granted} />
++                {own && <AskStatus asks={w.asks ?? []} />}
++                {own && w.granted.length === 0 && (
++                  <AskForGuideButton city={{ city: w.wish.city, country: w.wish.country }} label={(w.asks ?? []).length ? "Ask someone else" : "Ask a friend"} className="mt-2" />
++                )}
+                 {!own && (
+                   <div className="mt-2 flex flex-wrap items-center gap-2">
+                     {signedIn ? (
+@@ -167,6 +174,25 @@ export function WishList({ wishes, own, ownerName, ownerUsername, signedIn }: {
+   );
+ }
+ 
++/** Who you asked for this city, and where each ask stands. */
++function AskStatus({ asks }: { asks: AskView[] }) {
++  if (!asks.length) return null;
++  return (
++    <ul className="mt-1.5 flex flex-col gap-1">
++      {asks.map((a) => (
++        <li key={a.id} className="flex items-center gap-2 text-[12.5px]">
++          {a.recipient ? <Avatar user={a.recipient} size={20} /> : <span className="w-5 h-5 rounded-full bg-[#25D366]/15 text-[#128C4B] flex items-center justify-center"><WhatsAppIcon size={11} /></span>}
++          <span className="font-medium truncate">{a.recipient ? a.recipient.displayName.split(" ")[0] : "Link sent"}</span>
++          <span className={a.status === "done" ? "text-sage font-medium" : a.status === "declined" ? "text-ink-faint" : "text-ink-muted"}>
++            · {a.recipient ? STATUS_LABEL[a.status] : "not opened yet"}
++          </span>
++          {a.status === "done" && a.guideSlug && <Link href={`/g/${a.guideSlug}`} className="text-terracotta font-medium">Open</Link>}
++        </li>
++      ))}
++    </ul>
++  );
++}
++
+ /** One-tap "Add Lisbon to my wish list" (Search with no guides for a city). */
+ export function WishForCityButton({ city }: { city: string }) {
+   const [done, setDone] = useState(false);
+diff --git a/src/lib/actions/auth.ts b/src/lib/actions/auth.ts
+index 120845e..107db3a 100644
+--- a/src/lib/actions/auth.ts
++++ b/src/lib/actions/auth.ts
+@@ -48,6 +48,8 @@ export async function signUp(_prev: AuthState, formData: FormData): Promise<Auth
+   await createSession(id);
+   // "X just joined MyGuide" — after the response, so sign-up isn't slowed by pushes.
+   after(() => notifyUserJoined(id));
++  // Came from a friend's "make me a guide" link: straight back to it — the intro can wait.
++  if (next.startsWith("/ask/")) redirect(next);
+   // New people first see a short welcome with people to follow, then continue where they were going.
+   redirect(`/welcome${next && next !== "/" ? `?next=${encodeURIComponent(next)}` : ""}`);
+ }
+diff --git a/src/lib/actions/guides.ts b/src/lib/actions/guides.ts
+index 1c91a78..df2ffd6 100644
+--- a/src/lib/actions/guides.ts
++++ b/src/lib/actions/guides.ts
+@@ -7,7 +7,7 @@ import { revalidatePath } from "next/cache";
+ import { redirect } from "next/navigation";
+ import { getCurrentUser } from "../auth";
+ import { getDb } from "../db";
+-import { guideCollaborators, guideShares, guides, media, notifications, placeComments, placeLocations, placePhotos, placeTips, places, users, wishGrants, type Guide, type Place, type PlaceLocation, type PlaceTip } from "../db/schema";
++import { guideCollaborators, guideRequests, guideShares, guides, media, notifications, placeComments, placeLocations, placePhotos, placeTips, places, users, wishGrants, type Guide, type Place, type PlaceLocation, type PlaceTip } from "../db/schema";
+ import { canViewGuide, getGuideById, isCollaborator } from "../guides";
+ import { notifyGuidePublished, notifyPlacesAdded } from "../notify";
+ import { sendWishGrants, wishesForMaking } from "../wishes";
+@@ -78,7 +78,7 @@ export interface DraftPlaceInput {
+ const CREATE_CONCURRENCY = 6;
+ 
+ /** Create a guide (optionally with already-resolved places) and go to the editor. */
+-export async function createGuide(input: { title: string; city?: string; country?: string; lat?: number | null; lng?: number | null; places?: DraftPlaceInput[]; wishIds?: string[] }): Promise<string> {
++export async function createGuide(input: { title: string; city?: string; country?: string; lat?: number | null; lng?: number | null; places?: DraftPlaceInput[]; wishIds?: string[]; /** Made for an "Ask a friend" request. */ askId?: string }): Promise<string> {
+   const user = await getCurrentUser();
+   if (!user) redirect("/login?next=/create");
+   const db = await getDb();
+@@ -136,6 +136,14 @@ export async function createGuide(input: { title: string; city?: string; country
+   if (!known && !input.country?.trim() && derivedCity) {
+     await db.update(guides).set({ city: derivedCity.city, country: derivedCity.country }).where(eq(guides.id, id));
+   }
++  // Made for an ask: the ask now points at this guide ("working on it"), and its wish gets the guide on publish.
++  if (input.askId) {
++    const ask = await db.query.guideRequests.findFirst({ where: eq(guideRequests.id, input.askId) });
++    if (ask && ask.recipientId === user.id) {
++      await db.update(guideRequests).set({ guideId: id, status: "making" }).where(eq(guideRequests.id, ask.id));
++      if (ask.wishId && !(input.wishIds ?? []).includes(ask.wishId)) input.wishIds = [...(input.wishIds ?? []), ask.wishId];
++    }
++  }
+   // Made from someone's wish list: remember who it's for; it's sent to them when published.
+   if (input.wishIds?.length) {
+     const wanted = await wishesForMaking(input.wishIds, user.id);
+diff --git a/src/lib/actions/requests.ts b/src/lib/actions/requests.ts
+new file mode 100644
+index 0000000..4877bf3
+--- /dev/null
++++ b/src/lib/actions/requests.ts
+@@ -0,0 +1,113 @@
++"use server";
++
++import { and, eq, inArray } from "drizzle-orm";
++import { revalidatePath } from "next/cache";
++import { headers } from "next/headers";
++import { getCurrentUser } from "../auth";
++import { hiddenUserIds } from "../blocks";
++import { getDb } from "../db";
++import { guideRequests, guides, users, wishGrants } from "../db/schema";
++import { addNotifications } from "../notifications";
++import { tidyCity } from "../places/cityName";
++import { validPin } from "../places/pins";
++import { askMessage, ensureWish, getRequestById } from "../requests";
++import { UserError } from "../userError";
++import { appUrl, newId, newToken } from "../utils";
++import { sendWishGrants } from "../wishes";
++
++export interface AskInput {
++  city: string;
++  country?: string;
++  lat?: number | null;
++  lng?: number | null;
++  note?: string;
++}
++
++async function requireUserOrThrow() {
++  const user = await getCurrentUser();
++  if (!user) throw new UserError("Please log in.", "auth");
++  return user;
++}
++
++function cleanAsk(input: AskInput) {
++  const city = tidyCity(input.city ?? "").slice(0, 80);
++  if (city.length < 2) throw new UserError("Pick the city you want a guide to.", "invalid");
++  const ok = validPin(input.lat ?? NaN, input.lng ?? NaN);
++  return {
++    city,
++    country: (input.country ?? "").trim().slice(0, 80),
++    lat: ok ? input.lat! : null,
++    lng: ok ? input.lng! : null,
++    note: (input.note ?? "").trim().replace(/\s+/g, " ").slice(0, 200),
++  };
++}
++
++function refresh(username: string) {
++  revalidatePath("/wishes");
++  revalidatePath(`/u/${username}`);
++  revalidatePath("/notifications");
++}
++
++/** Ask people already on MyGuide: one request each, a notification (and push) each. */
++export async function askOnMyGuide(input: AskInput & { userIds: string[] }): Promise<{ sent: number }> {
++  const user = await requireUserOrThrow();
++  const a = cleanAsk(input);
++  const hidden = await hiddenUserIds(user.id);
++  const ids = [...new Set(input.userIds)].filter((id) => id && id !== user.id && !hidden.has(id)).slice(0, 20);
++  if (!ids.length) throw new UserError("Pick at least one person to ask.", "invalid");
++  const db = await getDb();
++  const real = await db.select({ id: users.id }).from(users).where(inArray(users.id, ids));
++  if (!real.length) throw new UserError("Those people aren’t on MyGuide any more.", "gone");
++  const wishId = await ensureWish(user.id, a.city, a.country);
++  const now = new Date();
++  const rows = real.map((r) => ({ id: newId(), token: newToken(), requesterId: user.id, recipientId: r.id, wishId, ...a, channel: "app", status: "sent", createdAt: now }));
++  await db.insert(guideRequests).values(rows);
++  await addNotifications(rows.map((r) => ({ id: newId(), userId: r.recipientId, type: "guide_request", actorId: user.id, requestId: r.id, createdAt: now })));
++  refresh(user.username);
++  return { sent: rows.length };
++}
++
++/** An ask to send on WhatsApp (or any app): a personal link plus the message to go with it. */
++export async function createAskLink(input: AskInput): Promise<{ url: string; message: string }> {
++  const user = await requireUserOrThrow();
++  const a = cleanAsk(input);
++  const wishId = await ensureWish(user.id, a.city, a.country);
++  const db = await getDb();
++  const token = newToken();
++  await db.insert(guideRequests).values({ id: newId(), token, requesterId: user.id, recipientId: null, wishId, ...a, channel: "link", status: "sent", createdAt: new Date() });
++  const h = await headers();
++  const origin = appUrl() || `${h.get("x-forwarded-proto") ?? "https"}://${h.get("host")}`;
++  const url = `${origin}/ask/${token}`;
++  refresh(user.username);
++  return { url, message: askMessage(user.displayName.split(" ")[0], a.city, a.note, url) };
++}
++
++/** The person asked can't help: the asker hears so they can ask someone else. */
++export async function declineAsk(requestId: string): Promise<void> {
++  const user = await requireUserOrThrow();
++  const req = await getRequestById(requestId);
++  if (!req || req.recipientId !== user.id) throw new UserError("That ask isn’t there any more.", "gone");
++  if (req.status === "declined" || req.status === "done") return;
++  const db = await getDb();
++  await db.update(guideRequests).set({ status: "declined", respondedAt: new Date() }).where(eq(guideRequests.id, req.id));
++  await addNotifications([{ id: newId(), userId: req.requesterId, type: "request_declined", actorId: user.id, requestId: req.id, createdAt: new Date() }]);
++  revalidatePath(`/ask/${req.token}`);
++  revalidatePath("/notifications");
++}
++
++/** Answer an ask with a guide you've already published: it's shared with the asker straight away. */
++export async function answerAskWithGuide(requestId: string, guideId: string): Promise<void> {
++  const user = await requireUserOrThrow();
++  const req = await getRequestById(requestId);
++  if (!req || req.recipientId !== user.id) throw new UserError("That ask isn’t there any more.", "gone");
++  const db = await getDb();
++  const guide = await db.query.guides.findFirst({ where: and(eq(guides.id, guideId), eq(guides.ownerId, user.id)) });
++  if (!guide) throw new UserError("You can only send your own guides.", "forbidden");
++  if (!guide.publishedAt) throw new UserError("Publish that guide first, then send it.", "invalid");
++  if (req.wishId) await db.insert(wishGrants).values({ wishId: req.wishId, guideId: guide.id, grantedById: user.id, createdAt: new Date() }).onConflictDoNothing();
++  await db.update(guideRequests).set({ guideId: guide.id, status: "making" }).where(eq(guideRequests.id, req.id));
++  // Shares it, tells the asker ("Omar made you a Tashkent guide") and marks the ask done.
++  await sendWishGrants(guide);
++  revalidatePath(`/ask/${req.token}`);
++  revalidatePath("/notifications");
++}
+diff --git a/src/lib/authContext.ts b/src/lib/authContext.ts
+index 83788de..2d0e58c 100644
+--- a/src/lib/authContext.ts
++++ b/src/lib/authContext.ts
+@@ -1,5 +1,5 @@
+ /** Why someone landed on the login / sign-up screen, so we can tell them. */
+-export type AuthReason = "follow" | "fork" | "create" | "record" | "notifications" | "comment" | "following" | "save";
++export type AuthReason = "follow" | "fork" | "create" | "record" | "notifications" | "comment" | "following" | "save" | "ask";
+ 
+ export const SUPPORT_CONTACT = "Hisham";
+ 
+@@ -12,6 +12,7 @@ const REASONS: Record<AuthReason, string> = {
+   comment: "Create a free account to comment on places.",
+   following: "Sign up or log in to see guides from people you follow.",
+   save: "Create a free account to keep favourite places in your own shortlist.",
++  ask: "Create a free account to make your friend their guide — it takes a minute, then you’re straight in.",
+ };
+ 
+ export function parseReason(v: unknown): AuthReason | null {
+diff --git a/src/lib/db/schema.ts b/src/lib/db/schema.ts
+index ea91dc6..f164f74 100644
+--- a/src/lib/db/schema.ts
++++ b/src/lib/db/schema.ts
+@@ -274,12 +274,14 @@ export const notifications = sqliteTable(
+     userId: text("user_id")
+       .notNull()
+       .references(() => users.id, { onDelete: "cascade" }),
+-    /** "guide_shared" | "new_follower" | "follow_request" | "follow_accepted" | "place_comment" | "guide_published" | "places_added" | "guide_used" | "collab_invite" | "user_joined" | "wish_granted" */
++    /** "guide_shared" | "new_follower" | "follow_request" | "follow_accepted" | "place_comment" | "guide_published" | "places_added" | "guide_used" | "collab_invite" | "user_joined" | "wish_granted" | "guide_request" | "request_joined" | "request_declined" */
+     type: text("type").notNull(),
+     actorId: text("actor_id").references(() => users.id, { onDelete: "cascade" }),
+     guideId: text("guide_id").references(() => guides.id, { onDelete: "cascade" }),
+     /** Soft reference to a place, for deep-linking a place_comment notification — not a hard FK, matching forkedFromGuideId's pattern. */
+     placeId: text("place_id"),
++    /** Soft reference to a guide request ("Hisham asked you for a Tashkent guide"). */
++    requestId: text("request_id"),
+     readAt: integer("read_at", { mode: "timestamp_ms" }),
+     /** How many things this notification covers (e.g. places added in one batch). */
+     count: integer("count").notNull().default(1),
+@@ -549,5 +551,43 @@ export const wishGrants = sqliteTable(
+   (t) => [primaryKey({ columns: [t.wishId, t.guideId] }), index("wish_grants_guide_idx").on(t.guideId)],
+ );
+ 
++/**
++ * "Ask a friend for a guide": someone asks a person who knows a city to make them a guide.
++ * In the app (recipientId set when sent) or as a WhatsApp/share link (token; recipientId set when someone opens it signed in).
++ * Linked to the asker's wish for that city, so the finished guide is sent through the wish list (wishGrants).
++ */
++export const guideRequests = sqliteTable(
++  "guide_requests",
++  {
++    id: text("id").primaryKey(),
++    /** Secret for the /ask/<token> link. */
++    token: text("token").notNull().unique(),
++    requesterId: text("requester_id")
++      .notNull()
++      .references(() => users.id, { onDelete: "cascade" }),
++    recipientId: text("recipient_id").references(() => users.id, { onDelete: "cascade" }),
++    wishId: text("wish_id").references(() => guideWishes.id, { onDelete: "set null" }),
++    city: text("city").notNull(),
++    country: text("country").notNull().default(""),
++    lat: real("lat"),
++    lng: real("lng"),
++    note: text("note").notNull().default(""),
++    /** "app" | "link" */
++    channel: text("channel").notNull(),
++    /** "sent" | "opened" | "making" | "declined" | "done" */
++    status: text("status").notNull().default("sent"),
++    guideId: text("guide_id").references(() => guides.id, { onDelete: "set null" }),
++    openedAt: integer("opened_at", { mode: "timestamp_ms" }),
++    respondedAt: integer("responded_at", { mode: "timestamp_ms" }),
++    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
++  },
++  (t) => [
++    index("guide_requests_requester_idx").on(t.requesterId, t.createdAt),
++    index("guide_requests_recipient_idx").on(t.recipientId, t.status),
++    index("guide_requests_guide_idx").on(t.guideId),
++  ],
++);
++export type GuideRequest = typeof guideRequests.$inferSelect;
++
+ export type GuideWish = typeof guideWishes.$inferSelect;
+ export type WishGrant = typeof wishGrants.$inferSelect;
+diff --git a/src/lib/notifications.ts b/src/lib/notifications.ts
+index 549b0fd..5e992e9 100644
+--- a/src/lib/notifications.ts
++++ b/src/lib/notifications.ts
+@@ -1,6 +1,6 @@
+ import { and, eq, inArray } from "drizzle-orm";
+ import { getDb } from "./db";
+-import { follows, guides, notifications, places, users } from "./db/schema";
++import { follows, guideRequests, guides, notifications, places, users } from "./db/schema";
+ import { sendPush, type PushMessage } from "./push";
+ 
+ type NewNotification = typeof notifications.$inferInsert;
+@@ -14,6 +14,9 @@ export async function addNotifications(rows: NewNotification[]): Promise<void> {
+     const actorIds = [...new Set(rows.map((r) => r.actorId).filter((x): x is string => !!x))];
+     const guideIds = [...new Set(rows.map((r) => r.guideId).filter((x): x is string => !!x))];
+     const placeIds = [...new Set(rows.map((r) => r.placeId).filter((x): x is string => !!x))];
++    const requestIds = [...new Set(rows.map((r) => r.requestId).filter((x): x is string => !!x))];
++    const reqRows = requestIds.length ? await db.select().from(guideRequests).where(inArray(guideRequests.id, requestIds)) : [];
++    const request = new Map(reqRows.map((q) => [q.id, q]));
+     const [actors, gs, ps] = await Promise.all([
+       actorIds.length ? db.select().from(users).where(inArray(users.id, actorIds)) : [],
+       guideIds.length ? db.select().from(guides).where(inArray(guides.id, guideIds)) : [],
+@@ -27,6 +30,7 @@ export async function addNotifications(rows: NewNotification[]): Promise<void> {
+         const a = r.actorId ? actor.get(r.actorId) : undefined;
+         const g = r.guideId ? guide.get(r.guideId) : undefined;
+         const p = r.placeId ? place.get(r.placeId) : undefined;
++        const q = r.requestId ? request.get(r.requestId) : undefined;
+         const who = a?.displayName ?? "Someone";
+         const n = r.count ?? 1;
+         let title = "MyGuide";
+@@ -93,6 +97,21 @@ export async function addNotifications(rows: NewNotification[]): Promise<void> {
+               extra = { actions: [{ action: "follow-back", title: "Follow" }], followUserId: a.id };
+             }
+             break;
++          case "guide_request":
++            title = `${who} asked you for a ${q?.city ?? ""} guide`.replace("a  guide", "a guide");
++            body = q?.note || "You know it — tap to make them a guide or send one you've made.";
++            if (q) url = `/ask/${q.token}`;
++            break;
++          case "request_joined":
++            title = `${shortName(who)} joined MyGuide from your ask`;
++            body = q ? `You now follow each other. They can make your ${q.city} guide.` : "You now follow each other.";
++            if (a) url = `/u/${a.username}`;
++            break;
++          case "request_declined":
++            title = `${shortName(who)} can't help with ${q?.city ?? "that city"}`;
++            body = "Ask someone else who knows it?";
++            url = "/wishes";
++            break;
+           case "collab_invite":
+             title = `${who} invited you to edit a guide`;
+             body = g?.title ?? "";
+diff --git a/src/lib/requestStatus.ts b/src/lib/requestStatus.ts
+new file mode 100644
+index 0000000..20187c0
+--- /dev/null
++++ b/src/lib/requestStatus.ts
+@@ -0,0 +1,10 @@
++/** Shared by server and browser: where a guide request ("Ask a friend for a guide") stands. */
++export type RequestStatus = "sent" | "opened" | "making" | "declined" | "done";
++
++export const STATUS_LABEL: Record<RequestStatus, string> = {
++  sent: "asked",
++  opened: "opened it",
++  making: "working on it",
++  declined: "can’t help",
++  done: "guide sent ✓",
++};
+diff --git a/src/lib/requests.ts b/src/lib/requests.ts
+new file mode 100644
+index 0000000..3b4f7ab
+--- /dev/null
++++ b/src/lib/requests.ts
+@@ -0,0 +1,144 @@
++import { and, desc, eq, inArray, sql } from "drizzle-orm";
++import { toPublicUser, type PublicUser } from "./auth";
++import { getDb } from "./db";
++import { follows, guideRequests, guideWishes, guides, users, type GuideRequest, type User } from "./db/schema";
++import { addNotifications } from "./notifications";
++import { newId } from "./utils";
++
++/**
++ * "Ask a friend for a guide" — the read side and helpers shared by the actions and pages.
++ * One request = one person asked (in the app) or one link sent (WhatsApp / share sheet).
++ * Status: sent → opened → making → done, or declined.
++ */
++
++import type { RequestStatus } from "./requestStatus";
++export { STATUS_LABEL, type RequestStatus } from "./requestStatus";
++
++/** The asker's wish for this city (created if missing), so the finished guide comes back through the wish list. */
++export async function ensureWish(userId: string, city: string, country: string): Promise<string> {
++  const db = await getDb();
++  const existing = await db.query.guideWishes.findFirst({ where: and(eq(guideWishes.userId, userId), sql`lower(${guideWishes.city}) = ${city.toLowerCase()}`) });
++  if (existing) {
++    if (!existing.country && country) await db.update(guideWishes).set({ country }).where(eq(guideWishes.id, existing.id));
++    return existing.id;
++  }
++  const id = newId();
++  await db.insert(guideWishes).values({ id, userId, city, country, note: "", createdAt: new Date() });
++  return id;
++}
++
++export async function getRequestByToken(token: string): Promise<{ req: GuideRequest; requester: PublicUser } | null> {
++  if (!/^[A-Za-z0-9]{10,40}$/.test(token)) return null;
++  const db = await getDb();
++  const rows = await db.select({ r: guideRequests, u: users }).from(guideRequests).innerJoin(users, eq(users.id, guideRequests.requesterId)).where(eq(guideRequests.token, token)).limit(1);
++  return rows[0] ? { req: rows[0].r, requester: toPublicUser(rows[0].u) } : null;
++}
++
++export async function getRequestById(id: string): Promise<GuideRequest | null> {
++  const db = await getDb();
++  return (await db.query.guideRequests.findFirst({ where: eq(guideRequests.id, id) })) ?? null;
++}
++
++/**
++ * Someone signed in opened an ask: link-sent asks become theirs, and it's marked opened.
++ * If they joined MyGuide through this link, they and the asker follow each other and the asker hears about it.
++ * Returns the updated request, or null if it was meant for someone else.
++ */
++export async function claimRequest(req: GuideRequest, viewer: User): Promise<GuideRequest | null> {
++  if (viewer.id === req.requesterId) return req;
++  if (req.recipientId && req.recipientId !== viewer.id) return null;
++  const db = await getDb();
++  const now = new Date();
++  const set: Partial<typeof guideRequests.$inferInsert> = {};
++  if (!req.recipientId) set.recipientId = viewer.id;
++  if (req.status === "sent") {
++    set.status = "opened";
++    set.openedAt = now;
++  }
++  if (Object.keys(set).length) await db.update(guideRequests).set(set).where(eq(guideRequests.id, req.id));
++
++  const joinedThroughLink = !req.recipientId && req.channel === "link" && viewer.createdAt.getTime() >= req.createdAt.getTime();
++  if (joinedThroughLink) {
++    // Mutual follow — they came because of each other. No "started following you" noise; one clear notification instead.
++    await db
++      .insert(follows)
++      .values([
++        { followerId: viewer.id, followingId: req.requesterId, status: "accepted", createdAt: now },
++        { followerId: req.requesterId, followingId: viewer.id, status: "accepted", createdAt: now },
++      ])
++      .onConflictDoNothing();
++    await addNotifications([{ id: newId(), userId: req.requesterId, type: "request_joined", actorId: viewer.id, requestId: req.id, createdAt: now }]);
++  }
++  return { ...req, ...set } as GuideRequest;
++}
++
++export interface AskView {
++  id: string;
++  token: string;
++  status: RequestStatus;
++  channel: "app" | "link";
++  recipient: PublicUser | null;
++  guideSlug: string | null;
++  createdAt: Date;
++}
++
++/** The asks made for each of these wishes (the asker's own view on their wish list). */
++export async function asksForWishes(wishIds: string[]): Promise<Record<string, AskView[]>> {
++  if (!wishIds.length) return {};
++  const db = await getDb();
++  const rows = await db
++    .select({ r: guideRequests, u: users, g: guides })
++    .from(guideRequests)
++    .leftJoin(users, eq(users.id, guideRequests.recipientId))
++    .leftJoin(guides, eq(guides.id, guideRequests.guideId))
++    .where(inArray(guideRequests.wishId, wishIds))
++    .orderBy(desc(guideRequests.createdAt));
++  const out: Record<string, AskView[]> = {};
++  for (const { r, u, g } of rows) {
++    if (!r.wishId) continue;
++    // A link nobody opened yet, sent again and again, would clutter the list: keep the newest unopened link only.
++    if (!r.recipientId && (out[r.wishId] ?? []).some((a) => !a.recipient)) continue;
++    (out[r.wishId] ??= []).push({
++      id: r.id,
++      token: r.token,
++      status: r.status as RequestStatus,
++      channel: r.channel as "app" | "link",
++      recipient: u ? toPublicUser(u) : null,
++      guideSlug: g?.slug ?? null,
++      createdAt: r.createdAt,
++    });
++  }
++  return out;
++}
++
++export interface IncomingAsk {
++  req: GuideRequest;
++  requester: PublicUser;
++}
++
++/** Asks waiting for this person (Activity's "Guide requests"). */
++export async function pendingAsksFor(userId: string): Promise<IncomingAsk[]> {
++  const db = await getDb();
++  const rows = await db
++    .select({ r: guideRequests, u: users })
++    .from(guideRequests)
++    .innerJoin(users, eq(users.id, guideRequests.requesterId))
++    .where(and(eq(guideRequests.recipientId, userId), inArray(guideRequests.status, ["sent", "opened", "making"])))
++    .orderBy(desc(guideRequests.createdAt))
++    .limit(20);
++  return rows.map(({ r, u }) => ({ req: r, requester: toPublicUser(u) }));
++}
++
++/** A guide made for an ask was published and sent: those asks are done. */
++export async function markAsksDone(guideId: string): Promise<void> {
++  const db = await getDb();
++  await db.update(guideRequests).set({ status: "done", respondedAt: new Date() }).where(and(eq(guideRequests.guideId, guideId), inArray(guideRequests.status, ["opened", "making", "sent"])));
++}
++
++/** The text that goes with an ask link on WhatsApp. */
++export function askMessage(requesterFirstName: string, city: string, note: string, url: string): string {
++  const lines = [`Hi! I'm going to ${city} and would love your recommendations 🙏`];
++  if (note.trim()) lines.push(note.trim());
++  lines.push(`Could you make me a quick guide on MyGuide? You can paste a list from Google Maps or WhatsApp — takes a few minutes:`, url, `— ${requesterFirstName}`);
++  return lines.join("\n\n");
++}
+diff --git a/src/lib/wishes.ts b/src/lib/wishes.ts
+index ec5c0c3..68ed540 100644
+--- a/src/lib/wishes.ts
++++ b/src/lib/wishes.ts
+@@ -1,4 +1,5 @@
+ import { and, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
++import { asksForWishes, markAsksDone, type AskView } from "./requests";
+ import { getDb } from "./db";
+ import { follows, guideShares, guideWishes, guides, users, wishGrants, type Guide, type GuideWish } from "./db/schema";
+ import { toPublicUser, type PublicUser } from "./auth";
+@@ -22,6 +23,8 @@ export interface WishView {
+   viewerGuides: Array<{ id: string; slug: string; title: string }>;
+   /** Viewer's guides already sent for this wish. */
+   viewerSent: string[];
++  /** Your own wishes only: who you asked for this city and where each ask stands. */
++  asks?: AskView[];
+ }
+ 
+ const sameCity = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+@@ -83,8 +86,14 @@ export async function listWishesFor(owner: { id: string; profileVisibility: stri
+   if (!(await canSeeWishesOf(owner, viewerId))) return null;
+   const db = await getDb();
+   const wishList = await db.select().from(guideWishes).where(eq(guideWishes.userId, owner.id)).orderBy(desc(guideWishes.createdAt));
+-  const [granted, mine, sent] = await Promise.all([grantedFor(wishList, viewerId), owner.id === viewerId ? Promise.resolve([]) : viewerCityGuides(viewerId), viewerSentFor(wishList.map((w) => w.id), viewerId)]);
++  const [granted, mine, sent, asks] = await Promise.all([
++    grantedFor(wishList, viewerId),
++    owner.id === viewerId ? Promise.resolve([]) : viewerCityGuides(viewerId),
++    viewerSentFor(wishList.map((w) => w.id), viewerId),
++    owner.id === viewerId ? asksForWishes(wishList.map((w) => w.id)) : Promise.resolve({} as Record<string, AskView[]>),
++  ]);
+   return wishList.map((w) => ({
++    asks: asks[w.id] ?? [],
+     wish: w,
+     granted: granted.get(w.id) ?? [],
+     viewerGuides: mine.filter((g) => sameCity(g.city, w.city)).map((g) => ({ id: g.id, slug: g.slug, title: g.title })),
+@@ -167,6 +176,8 @@ export async function pendingWishPeople(guideId: string): Promise<PublicUser[]>
+  */
+ export async function sendWishGrants(guide: Guide): Promise<number> {
+   if (!guide.publishedAt) return 0;
++  // Asks answered with this guide ("Ask a friend for a guide") are done once it's out.
++  await markAsksDone(guide.id);
+   const db = await getDb();
+   const pending = await db
+     .select({ wishId: wishGrants.wishId, wisherId: guideWishes.userId })

@@ -1,5 +1,6 @@
 "use client";
 
+import { titleSize } from "@/lib/utils";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
@@ -141,7 +142,7 @@ export function CombineFlow({ tripId, city, guides, places, existing }: { tripId
                   >
                     <span className={cx("w-6 h-6 rounded-full border flex items-center justify-center shrink-0", on ? "bg-terracotta border-terracotta text-white" : "border-line")}>{on && <CheckIcon size={14} />}</span>
                     <span className="flex-1 min-w-0">
-                      <span className="block font-display text-[19px] leading-tight truncate">{g.title}</span>
+                      <span className="block font-display leading-tight break-words" style={{ fontSize: titleSize(g.title, 19) }}>{g.title}</span>
                       <span className="block text-[12px] text-ink-muted truncate">
                         {[`@${g.owner.username}`, `${g.placeCount} ${g.placeCount === 1 ? "place" : "places"}`, WHY[g.why]].filter(Boolean).join(" · ")}
                       </span>

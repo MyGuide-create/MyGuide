@@ -1,0 +1,1115 @@
+diff --git a/src/app/create/page.tsx b/src/app/create/page.tsx
+index fd29132..30e1b3e 100644
+--- a/src/app/create/page.tsx
++++ b/src/app/create/page.tsx
+@@ -12,11 +12,8 @@ export const metadata = { title: "Create a guide" };
+ 
+ export default async function CreatePage({ searchParams }: PageProps<"/create">) {
+   const sp = await searchParams;
+-  // Land on the typed "name your guide" page by default — it has the voice
+-  // option right there via "Or say your places instead". Pass ?mode=voice to
+-  // deep-link straight into the voice flow instead.
+   const wishParam = typeof sp.wish === "string" ? sp.wish : "";
+-  const user = await requireUser(`/create${sp.mode === "voice" ? "?mode=voice" : wishParam ? `?wish=${encodeURIComponent(wishParam)}` : ""}`);
++  const user = await requireUser(`/create${wishParam ? `?wish=${encodeURIComponent(wishParam)}` : ""}`);
+   // "Make this guide" from someone's wish list: who it's for, sent to them when published.
+   const wanted = wishParam ? await wishesForMaking(wishParam.split(","), user.id) : [];
+   const forWish = wanted.length
+@@ -33,7 +30,7 @@ export default async function CreatePage({ searchParams }: PageProps<"/create">)
+           </span>
+         </div>
+       )}
+-      <VoiceCreate initialMode={sp.mode === "voice" ? "voice" : "type"} forWish={forWish} />
++      <VoiceCreate forWish={forWish} />
+     </AppShell>
+   );
+ }
+diff --git a/src/app/privacy/page.tsx b/src/app/privacy/page.tsx
+index 4078b17..63399c4 100644
+--- a/src/app/privacy/page.tsx
++++ b/src/app/privacy/page.tsx
+@@ -12,7 +12,7 @@ export default function PrivacyPage() {
+       <ul>
+         <li><b>Account:</b> your name, username, email and a securely hashed password. Optional bio, photo, Instagram and website.</li>
+         <li><b>What you create:</b> guides, places, notes, tips, photos, voice notes, comments, favourites, reactions and trips.</li>
+-        <li><b>Location — only when you ask:</b> &ldquo;Record a place&rdquo; and &ldquo;my location&rdquo; on the map use your position once to find nearby places. We don&apos;t track you in the background or store your location history.</li>
++        <li><b>Location — only when you ask:</b> &ldquo;Add a place&rdquo; and &ldquo;my location&rdquo; on the map use your position once to find nearby places. We don&apos;t track you in the background or store your location history.</li>
+         <li><b>Usage:</b> simple counts such as guide views, shares, saves and taps on directions, so creators can see how their guides are used and we can improve the app. Signed-out visitors get an anonymous browser id.</li>
+         <li><b>Phone alerts:</b> if you turn them on, a technical address for your device so we can send notifications.</li>
+       </ul>
+diff --git a/src/app/record/page.tsx b/src/app/record/page.tsx
+index 3a37df9..8a3017b 100644
+--- a/src/app/record/page.tsx
++++ b/src/app/record/page.tsx
+@@ -4,7 +4,7 @@ import { requireUser } from "@/lib/auth";
+ import { listGuidesByOwner } from "@/lib/guides";
+ 
+ export const dynamic = "force-dynamic";
+-export const metadata = { title: "Record a place" };
++export const metadata = { title: "Add a place" };
+ 
+ export default async function RecordPage() {
+   const user = await requireUser("/record");
+diff --git a/src/app/search/page.tsx b/src/app/search/page.tsx
+index 87f65f6..fa7ed9c 100644
+--- a/src/app/search/page.tsx
++++ b/src/app/search/page.tsx
+@@ -28,7 +28,7 @@ const CATEGORY_PHRASES: Record<string, (city: string) => string> = {
+   Stay: (c) => `Where to stay in ${c}`,
+ };
+ 
+-/** "Try saying" examples built from what's actually on MyGuide, so every one returns something. */
++/** "Try searching" examples built from what's actually on MyGuide, so every one returns something. */
+ async function buildExamples(cities: string[], signedIn: boolean): Promise<string[]> {
+   const out: string[] = [];
+   for (const city of cities.slice(0, 2)) {
+@@ -51,14 +51,30 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
+   // "See all" on the People section: just the people, no guide search.
+   const allPeople = sp.people === "all";
+   const here = `/search?q=${encodeURIComponent(q)}${allPeople ? "&people=all" : ""}`;
+-  const people = q ? await searchPeople(q, user?.id, allPeople ? 50 : 3) : { hits: [], total: 0 };
+   const intent = q && !allPeople ? await interpretSearch(q) : null;
++  // A city search ("Paris") is about places: people only show on a whole-word name match, and below the guides.
++  const placeSearch = !!(intent && (intent.city || intent.country) && !intent.byUsername);
++  const people = q ? await searchPeople(q, user?.id, allPeople ? 50 : 3, { wholeWord: placeSearch }) : { hits: [], total: 0 };
+   const [results, placeHits] = intent ? await Promise.all([searchGuides(intent, user?.id), searchPlaces(intent, user?.id)]) : [[], []];
+   const cities = q ? [] : await listFeedCities();
+   const examples = q ? [] : await buildExamples(cities, !!user);
+   const wanted = q ? [] : (await listAllWishes(user?.id)).slice(0, 3);
+   const suggested = q ? null : await peopleToFollow(user?.id, 8);
+ 
++  const peopleSection = people.hits.length > 0 && (
++    <section>
++      <div className="flex items-baseline justify-between px-1 mb-2">
++        <h2 className="text-[12px] font-medium uppercase tracking-[0.08em] text-ink-muted">People</h2>
++        {people.total > people.hits.length && (
++          <Link href={`/search?q=${encodeURIComponent(q)}&people=all`} className="text-[12.5px] font-medium text-terracotta">See all {people.total} →</Link>
++        )}
++      </div>
++      <ul className="flex flex-col gap-2">
++        {people.hits.map((h) => <PersonRow key={h.user.id} hit={h} signedIn={!!user} next={here} />)}
++      </ul>
++    </section>
++  );
++
+   return (
+     <AppShell>
+       <TopBar title="Search" avatarUser={user ? toPublicUser(user) : null} />
+@@ -70,7 +86,7 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
+         <div className="px-5 pt-5 flex flex-col gap-5">
+           {examples.length > 0 && (
+           <div>
+-            <h2 className="text-[12px] font-medium uppercase tracking-[0.08em] text-ink-muted mb-2">Try saying</h2>
++            <h2 className="text-[12px] font-medium uppercase tracking-[0.08em] text-ink-muted mb-2">Try searching</h2>
+             <div className="flex flex-col gap-1.5">
+               {examples.map((e) => (
+                 <Link key={e} href={`/search?q=${encodeURIComponent(e)}`} className="text-[15px] font-display leading-snug text-ink hover:text-terracotta">“{e}”</Link>
+@@ -140,19 +156,7 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
+           {intent.scope === "following" && !user && (
+             <EmptyState title="Log in to search your people" body="“By people I'm following” needs to know who you follow." action={<LinkButton href={`/login?next=${encodeURIComponent(`/search?q=${q}`)}`} size="sm">Log in</LinkButton>} />
+           )}
+-          {people.hits.length > 0 && (
+-            <section>
+-              <div className="flex items-baseline justify-between px-1 mb-2">
+-                <h2 className="text-[12px] font-medium uppercase tracking-[0.08em] text-ink-muted">People</h2>
+-                {people.total > people.hits.length && (
+-                  <Link href={`/search?q=${encodeURIComponent(q)}&people=all`} className="text-[12.5px] font-medium text-terracotta">See all {people.total} →</Link>
+-                )}
+-              </div>
+-              <ul className="flex flex-col gap-2">
+-                {people.hits.map((h) => <PersonRow key={h.user.id} hit={h} signedIn={!!user} next={here} />)}
+-              </ul>
+-            </section>
+-          )}
++          {!placeSearch && peopleSection}
+           {placeHits.length > 0 && (
+             <section>
+               <h2 className="px-1 text-[12px] font-medium uppercase tracking-[0.08em] text-ink-muted mb-2">Places</h2>
+@@ -190,6 +194,7 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
+             />
+           )}
+           {results.map((g) => <GuideCard key={g.guide.id} data={g} />)}
++          {placeSearch && peopleSection}
+         </main>
+       )}
+     </AppShell>
+diff --git a/src/app/u/[username]/page.tsx b/src/app/u/[username]/page.tsx
+index ff99a14..5555008 100644
+--- a/src/app/u/[username]/page.tsx
++++ b/src/app/u/[username]/page.tsx
+@@ -106,7 +106,7 @@ export default async function ProfilePage({ params, searchParams }: PageProps<"/
+               </>
+             )}
+             {published.length === 0 && (
+-              <EmptyState title={own ? "No guides yet" : `${profile.displayName.split(" ")[0]} hasn't published a guide yet`} body={own ? "Say the places you love and we'll build the first one." : undefined} action={own ? <LinkButton href="/create" size="sm">Create by voice</LinkButton> : undefined} />
++              <EmptyState title={own ? "No guides yet" : `${profile.displayName.split(" ")[0]} hasn't published a guide yet`} body={own ? "Add the places you love, or paste a list you already have." : undefined} action={own ? <LinkButton href="/create" size="sm">Create a guide</LinkButton> : undefined} />
+             )}
+             {published.map((c) => <GuideCard key={c.guide.id} data={c} showOwner={false} />)}
+           </>
+diff --git a/src/app/welcome/page.tsx b/src/app/welcome/page.tsx
+index e4a923a..b3fe72c 100644
+--- a/src/app/welcome/page.tsx
++++ b/src/app/welcome/page.tsx
+@@ -54,6 +54,7 @@ export default async function WelcomePage({ searchParams }: { searchParams: Prom
+         samples={samples}
+         finish={finishOnboarding.bind(null, next)}
+         pushPublicKey={pushPublicKey()}
++        initialStep={typeof sp.step === "string" ? sp.step : undefined}
+       />
+     </AppShell>
+   );
+diff --git a/src/components/AppShell.tsx b/src/components/AppShell.tsx
+index 87689b0..9208026 100644
+--- a/src/components/AppShell.tsx
++++ b/src/components/AppShell.tsx
+@@ -1,10 +1,11 @@
+ import Link from "next/link";
+-import type { ReactNode } from "react";
++import { Suspense, type ReactNode } from "react";
+ import type { PublicUser } from "@/lib/auth";
+ import { getCurrentUser } from "@/lib/auth";
+ import { unreadNotificationCount } from "@/lib/guides";
+ import { pushPublicKey } from "@/lib/push";
+ import { AlertsNudge } from "./AlertsNudge";
++import { BackButton, NavTrail } from "./BackButton";
+ import { VisitPing } from "./VisitPing";
+ import { BottomNav } from "./BottomNav";
+ import { ChevronLeft } from "./Icons";
+@@ -31,6 +32,7 @@ export async function AppShell({
+         {children}
+       </div>
+       {nav && <BottomNav signedIn={!!user} username={user?.username ?? null} unread={unread} />}
++      <Suspense fallback={null}><NavTrail /></Suspense>
+       {user && <VisitPing userId={user.id} />}
+       {user && nav && <AlertsNudge publicKey={pushPublicKey()} />}
+     </div>
+@@ -59,16 +61,15 @@ export function TopBar({
+       )}
+     >
+       {back ? (
+-        <Link
++        <BackButton
+           href={back}
+-          aria-label="Back"
+           className={cx(
+             "w-10 h-10 -ml-1 flex items-center justify-center rounded-full text-ink",
+             transparent ? "bg-cream/90 backdrop-blur shadow-sm border border-line/60" : "hover:bg-cream-deep/60",
+           )}
+         >
+           <ChevronLeft size={22} />
+-        </Link>
++        </BackButton>
+       ) : (
+         <div className="w-2" />
+       )}
+diff --git a/src/components/BackButton.tsx b/src/components/BackButton.tsx
+new file mode 100644
+index 0000000..12498c7
+--- /dev/null
++++ b/src/components/BackButton.tsx
+@@ -0,0 +1,67 @@
++"use client";
++
++import Link from "next/link";
++import { usePathname, useRouter, useSearchParams } from "next/navigation";
++import { useEffect, type ReactNode } from "react";
++
++/**
++ * Back arrows return you to the screen you came from (like a native app), instead of a fixed page.
++ * We keep a small trail of in-app screens in sessionStorage; when there's no in-app screen to go
++ * back to (opened from a shared link, fresh tab) the arrow falls back to its `href`.
++ */
++const KEY = "mg_trail";
++const MAX = 30;
++/** Screens it makes no sense to step back into (one-off flows) — fall back to `href` instead. */
++const SKIP = [/^\/create/, /^\/record/, /^\/welcome/, /^\/login/, /^\/signup/, /^\/g\/[^/]+\/edit/];
++
++function read(): string[] {
++  try {
++    const v = JSON.parse(sessionStorage.getItem(KEY) ?? "[]");
++    return Array.isArray(v) ? v.filter((x) => typeof x === "string") : [];
++  } catch {
++    return [];
++  }
++}
++function write(trail: string[]) {
++  try {
++    sessionStorage.setItem(KEY, JSON.stringify(trail.slice(-MAX)));
++  } catch {}
++}
++const pathOnly = (u: string) => u.split("?")[0];
++
++/** Mounted once per page (in AppShell): records each screen visited. */
++export function NavTrail() {
++  const pathname = usePathname();
++  const search = useSearchParams();
++  const qs = search.toString();
++  useEffect(() => {
++    const here = pathname + (qs ? `?${qs}` : "");
++    const trail = read();
++    const last = trail[trail.length - 1];
++    if (last && pathOnly(last) === pathname) trail[trail.length - 1] = here; // same screen, new filters
++    else if (trail.length >= 2 && pathOnly(trail[trail.length - 2]) === pathname) trail.pop(); // went back
++    else trail.push(here);
++    write(trail);
++  }, [pathname, qs]);
++  return null;
++}
++
++export function BackButton({ href, className, children }: { href: string; className?: string; children: ReactNode }) {
++  const router = useRouter();
++  return (
++    <Link
++      href={href}
++      aria-label="Back"
++      className={className}
++      onClick={(e) => {
++        const trail = read();
++        const prev = trail[trail.length - 2];
++        if (!prev || SKIP.some((r) => r.test(pathOnly(prev)))) return; // follow href
++        e.preventDefault();
++        router.back();
++      }}
++    >
++      {children}
++    </Link>
++  );
++}
+diff --git a/src/components/BottomNav.tsx b/src/components/BottomNav.tsx
+index 35e7ac6..51f3242 100644
+--- a/src/components/BottomNav.tsx
++++ b/src/components/BottomNav.tsx
+@@ -3,7 +3,7 @@
+ import Link from "next/link";
+ import { usePathname } from "next/navigation";
+ import { useState } from "react";
+-import { BellIcon, HomeIcon, MicIcon, PinIcon, PlusIcon, SearchIcon, UserIcon, XIcon } from "./Icons";
++import { BellIcon, HomeIcon, ListIcon, PinIcon, PlusIcon, SearchIcon, UserIcon, XIcon } from "./Icons";
+ import { cx } from "./ui";
+ 
+ export function BottomNav({ signedIn, username, unread }: { signedIn: boolean; username: string | null; unread: number }) {
+@@ -33,16 +33,16 @@ export function BottomNav({ signedIn, username, unread }: { signedIn: boolean; u
+             </div>
+             <div className="flex flex-col gap-2.5">
+               <Link href="/create" onClick={() => setCreating(false)} className="flex items-center gap-3 rounded-2xl border border-line bg-paper px-4 py-3.5 hover:border-terracotta-soft">
+-                <span className="w-10 h-10 rounded-full bg-terracotta text-white flex items-center justify-center shrink-0"><MicIcon size={19} /></span>
++                <span className="w-10 h-10 rounded-full bg-terracotta text-white flex items-center justify-center shrink-0"><ListIcon size={19} /></span>
+                 <span className="min-w-0">
+                   <span className="block font-semibold text-[14.5px]">Create a guide</span>
+-                  <span className="block text-[12px] text-ink-muted">Say or type the places you love in a city — we&apos;ll build the guide.</span>
++                  <span className="block text-[12px] text-ink-muted">Add the places you love in a city, or paste a list you already have.</span>
+                 </span>
+               </Link>
+               <Link href="/record" onClick={() => setCreating(false)} className="flex items-center gap-3 rounded-2xl border border-line bg-paper px-4 py-3.5 hover:border-terracotta-soft">
+                 <span className="w-10 h-10 rounded-full bg-sage text-white flex items-center justify-center shrink-0"><PinIcon size={19} /></span>
+                 <span className="min-w-0">
+-                  <span className="block font-semibold text-[14.5px]">Record a place</span>
++                  <span className="block font-semibold text-[14.5px]">Add a place</span>
+                   <span className="block text-[12px] text-ink-muted">At a spot right now? Add it to one of your guides in a few taps.</span>
+                 </span>
+               </Link>
+diff --git a/src/components/GuideEditor.tsx b/src/components/GuideEditor.tsx
+index 79f4d69..b822909 100644
+--- a/src/components/GuideEditor.tsx
++++ b/src/components/GuideEditor.tsx
+@@ -186,7 +186,7 @@ export function GuideEditor({ detail, justForked, justCreated, viewerId, wishFor
+           <span>
+             {justForked
+               ? `This is your private copy of @${detail.forkedFrom?.username ?? "their"}'s guide. Remove what you don't like, add what you found, then publish it as your own.`
+-              : "Your places are in and saved as a draft — only you can see it. Add a description to each one (typed or spoken), swap in your own photos, and publish when it\u2019s ready."}
++              : "Your places are in and saved as a draft — only you can see it. Add a description to each one, swap in your own photos, and publish when it\u2019s ready."}
+           </span>
+         </div>
+       )}
+diff --git a/src/components/HomeScreenStep.tsx b/src/components/HomeScreenStep.tsx
+index 649e2d2..ca3bc59 100644
+--- a/src/components/HomeScreenStep.tsx
++++ b/src/components/HomeScreenStep.tsx
+@@ -11,6 +11,7 @@ import {
+   type PushState,
+ } from "@/lib/pushClient";
+ import { BellIcon, CheckIcon, PlusIcon, ShareIcon } from "./Icons";
++import { Logo } from "./Logo";
+ import { Spinner, cx } from "./ui";
+ 
+ const bigButton = "h-14 w-full rounded-full text-[17px] font-semibold inline-flex items-center justify-center transition-colors disabled:opacity-60";
+@@ -26,10 +27,13 @@ export function HomeScreenStep({
+   platform,
+   publicKey,
+   onDone,
++  stepLabel,
+ }: {
+   platform: InstallPlatform;
+   publicKey: string | null;
+   onDone: () => Promise<void> | void;
++  /** e.g. "Step 3 of 3" in the intro. */
++  stepLabel?: string;
+ }) {
+   const [finishing, startFinish] = useTransition();
+   const done = () => startFinish(async () => onDone());
+@@ -37,15 +41,16 @@ export function HomeScreenStep({
+ 
+   return (
+     <div className="flex-1 flex flex-col px-6 pt-12">
+-      <div className="flex items-center justify-between min-h-11">
+-        <span className="font-display text-[26px] font-semibold text-terracotta leading-none">M.</span>
++      <div className="flex items-center justify-center min-h-11">
++        <Logo />
+       </div>
+ 
+       {platform === "standalone" ? (
+         <AlertsOnly publicKey={publicKey} />
+       ) : (
+         <>
+-          <div className="mt-4 flex flex-col gap-2">
++          <div className="mt-6 flex flex-col gap-2 text-center">
++            {stepLabel && <span className="text-[13px] font-semibold uppercase tracking-[0.08em] text-terracotta">{stepLabel}</span>}
+             <h1 className="font-display text-[30px] leading-[1.15] font-semibold">Add MyGuide to your home screen</h1>
+             <p className="text-[17px] leading-normal text-ink-muted">
+               {ios
+@@ -83,8 +88,8 @@ function IOSSteps({ platform }: { platform: InstallPlatform }) {
+         title={<>Tap the <b className="text-terracotta">Share</b> button</>}
+         body={
+           chrome
+-            ? "It’s the square with an arrow pointing up, at the top right next to the web address."
+-            : "It’s the square with an arrow pointing up. Don’t see it? Tap ⋯ at the bottom right of Safari first."
++            ? "The square with an arrow pointing up — at the top right, next to the web address. Not there? Tap ⋯ at the bottom right first."
++            : "The square with an arrow pointing up, at the bottom of Safari. On newer iPhones, tap ⋯ at the bottom right first, then Share."
+         }
+         art={chrome ? <ChromeBarArt /> : <SafariBarArt />}
+       />
+@@ -96,8 +101,8 @@ function IOSSteps({ platform }: { platform: InstallPlatform }) {
+       />
+       <Step
+         n={3}
+-        title={<>Keep <b className="text-terracotta">Open as Web App</b> on, then tap <b className="text-terracotta">Add</b></>}
+-        body="MyGuide now sits on your home screen like any other app."
++        title={<>Tap <b className="text-terracotta">Add</b> at the top right</>}
++        body="Not Cancel. If you see “Open as Web App”, leave it switched on. MyGuide now sits on your home screen like any other app."
+         art={<AddSheetArt />}
+       />
+       <Step
+@@ -217,10 +222,10 @@ function AddSheetArt() {
+   return (
+     <div className="w-full max-w-[280px] rounded-[14px] bg-paper overflow-hidden text-[15px]">
+       <div className="px-3.5 py-2.5 flex items-center justify-between border-b border-line">
+-        <span className="text-ink-muted/70">Cancel</span>
+-        <span className="font-semibold">Add to Home Screen</span>
++        <span className="text-ink-muted/50">Cancel</span>
++        <span className="font-semibold text-[13px] text-ink-muted">Add to Home Screen</span>
+         <Hot round={false}>
+-          <span className="px-2 py-0.5 rounded-full ring-2 ring-terracotta text-terracotta font-semibold">Add</span>
++          <span className="px-3 py-1 rounded-full bg-terracotta text-white font-semibold">Add</span>
+         </Hot>
+       </div>
+       <div className="px-3.5 py-3 flex items-center gap-3 border-b border-line">
+@@ -229,7 +234,7 @@ function AddSheetArt() {
+       </div>
+       <div className="px-3.5 py-2.5 flex items-center justify-between">
+         <span>Open as Web App</span>
+-        <span className="w-[46px] h-7 rounded-full bg-[#34c759] p-0.5 flex justify-end ring-2 ring-terracotta ring-offset-2 ring-offset-paper">
++        <span className="w-[46px] h-7 rounded-full bg-[#34c759] p-0.5 flex justify-end">
+           <span className="w-6 h-6 rounded-full bg-white shadow" />
+         </span>
+       </div>
+diff --git a/src/components/Logo.tsx b/src/components/Logo.tsx
+new file mode 100644
+index 0000000..fcb209b
+--- /dev/null
++++ b/src/components/Logo.tsx
+@@ -0,0 +1,13 @@
++import { cx } from "./ui";
++
++/** The app icon + "MyGuide" wordmark, used at the top of the intro screens. */
++export function Logo({ className }: { className?: string }) {
++  return (
++    <span className={cx("inline-flex items-center gap-2", className)}>
++      <img src="/icons/icon-192.png" alt="" width={32} height={32} className="w-8 h-8 rounded-[8px]" />
++      <span className="font-display text-[22px] leading-none tracking-tight">
++        My<span className="text-terracotta">Guide</span>
++      </span>
++    </span>
++  );
++}
+diff --git a/src/components/NoteEditor.tsx b/src/components/NoteEditor.tsx
+index 2a2ac6e..fa22554 100644
+--- a/src/components/NoteEditor.tsx
++++ b/src/components/NoteEditor.tsx
+@@ -1,16 +1,14 @@
+ "use client";
+ 
+-import { useEffect, useRef, useState } from "react";
+-import { useRecorder, uploadMedia } from "@/hooks/useRecorder";
+-import { useSpeech } from "@/hooks/useSpeech";
+-import { formatDuration } from "@/lib/utils";
++import { useState } from "react";
+ import { AudioClip } from "./AudioClip";
+-import { MicIcon, SparkleIcon, StopIcon, TrashIcon } from "./Icons";
+-import { Button, Spinner, Textarea, cx } from "./ui";
++import { SparkleIcon, TrashIcon } from "./Icons";
++import { Button, Spinner, Textarea } from "./ui";
+ 
+ /**
+- * "My Recommendation" editor: type it, or dictate it. Dictation records the
+- * raw clip *and* transcribes it, so both the words and the voice are kept.
++ * "My Recommendation" editor: type the note (phones' own keyboard dictation works too).
++ * In-app voice recording was removed on 8 Oct 2026; older notes keep their voice clip,
++ * which can still be played or removed here.
+  */
+ export function NoteEditor({
+   placeName,
+@@ -29,59 +27,13 @@ export function NoteEditor({
+   const [polishing, setPolishing] = useState(false);
+   /** The note as it was before "Tidy up", so it can be put back. */
+   const [beforeTidy, setBeforeTidy] = useState<string | null>(null);
+-  const [uploading, setUploading] = useState(false);
+-  const speech = useSpeech({ continuous: true });
+-  const recorder = useRecorder();
+-  const baseRef = useRef(note);
+   const dirty = text !== note;
+ 
+-  // Stream the transcript into the textarea while dictating.
+-  useEffect(() => {
+-    if (!speech.listening && !speech.text) return;
+-    const live = [speech.text, speech.interim].filter(Boolean).join(" ").trim();
+-    if (live) setText((baseRef.current ? `${baseRef.current.trim()} ` : "") + live);
+-  }, [speech.text, speech.interim, speech.listening]);
+-
+-  // When the recording stops, upload the clip and attach it.
+-  useEffect(() => {
+-    if (!recorder.clip) return;
+-    const c = recorder.clip;
+-    (async () => {
+-      setUploading(true);
+-      try {
+-        const ext = c.mime.includes("mp4") ? "m4a" : c.mime.includes("ogg") ? "ogg" : "webm";
+-        const up = await uploadMedia(c.blob, `note.${ext}`, c.durationSec);
+-        setClip(up.id);
+-        await onSave({ noteClipMediaId: up.id });
+-      } catch (e) {
+-        console.warn(e);
+-      } finally {
+-        setUploading(false);
+-        recorder.discard();
+-      }
+-    })();
+-    // eslint-disable-next-line react-hooks/exhaustive-deps
+-  }, [recorder.clip]);
+-
+-  const startDictation = async () => {
+-    baseRef.current = text;
+-    speech.reset();
+-    speech.start();
+-    if (recorder.supported) await recorder.start();
+-  };
+-  const stopDictation = async () => {
+-    speech.stop();
+-    recorder.stop();
+-    // Persist the transcript once recognition settles.
+-    setTimeout(() => void save(), 400);
+-  };
+-
+   const save = async (override?: string) => {
+     const value = (override ?? text).trim();
+     setSaving(true);
+     try {
+       await onSave({ note: value });
+-      baseRef.current = value;
+     } finally {
+       setSaving(false);
+     }
+@@ -108,32 +60,20 @@ export function NoteEditor({
+     await onSave({ noteClipMediaId: null });
+   };
+ 
+-  const active = speech.listening || recorder.recording;
+-
+   return (
+     <div>
+       <Textarea
+         value={text}
+         onChange={(e) => { setText(e.target.value); setBeforeTidy(null); }}
+-        onBlur={() => { if (dirty && !active) void save(); }}
++        onBlur={() => { if (dirty) void save(); }}
+         rows={3}
+         placeholder={`Why ${placeName}? What should a friend order, when should they go…`}
+-        className={cx(active && "border-terracotta ring-2 ring-terracotta/20")}
+       />
+       <div className="mt-2 flex items-center gap-2 flex-wrap">
+-        {active ? (
+-          <Button size="sm" variant="danger" onClick={stopDictation}>
+-            <StopIcon size={14} /> Stop {recorder.recording ? `· ${formatDuration(recorder.elapsed)}` : ""}
+-          </Button>
+-        ) : (
+-          <Button size="sm" variant="outline" onClick={startDictation} disabled={uploading}>
+-            <MicIcon size={14} /> Say it
+-          </Button>
+-        )}
+-        <Button size="sm" variant="ghost" onClick={polish} disabled={polishing || !text.trim() || active} className="border border-line">
++        <Button size="sm" variant="ghost" onClick={polish} disabled={polishing || !text.trim()} className="border border-line">
+           {polishing ? <Spinner /> : <SparkleIcon size={14} />} Tidy up
+         </Button>
+-        {beforeTidy !== null && !active && (
++        {beforeTidy !== null && (
+           <button
+             type="button"
+             onClick={async () => {
+@@ -147,20 +87,16 @@ export function NoteEditor({
+             Undo tidy
+           </button>
+         )}
+-        {dirty && !active && (
++        {dirty && (
+           <Button size="sm" variant="secondary" onClick={() => save()} disabled={saving}>{saving ? <Spinner /> : "Save note"}</Button>
+         )}
+-        {uploading && <span className="text-[11.5px] text-ink-muted inline-flex items-center gap-1"><Spinner /> Saving clip…</span>}
+-        {clip && !uploading && (
++        {clip && (
+           <span className="inline-flex items-center gap-2">
+             <AudioClip mediaId={clip} />
+             <button type="button" onClick={removeClip} aria-label="Remove voice clip" className="text-ink-muted hover:text-danger w-8 h-8 flex items-center justify-center"><TrashIcon size={17} /></button>
+           </span>
+         )}
+       </div>
+-      {(speech.error || recorder.error) && <p className="mt-1.5 text-[11.5px] text-ink-muted">{speech.error ?? recorder.error}</p>}
+-      {active && speech.supported && <p className="mt-1.5 text-[11.5px] text-terracotta">Listening… speak naturally, then tap Stop.</p>}
+-      {active && !speech.supported && <p className="mt-1.5 text-[11.5px] text-terracotta">Recording your voice clip (live transcription isn&apos;t supported in this browser — type the note too).</p>}
+     </div>
+   );
+ }
+diff --git a/src/components/SearchBar.tsx b/src/components/SearchBar.tsx
+index c7014da..d98cd22 100644
+--- a/src/components/SearchBar.tsx
++++ b/src/components/SearchBar.tsx
+@@ -1,53 +1,29 @@
+ "use client";
+ 
+ import { useRouter } from "next/navigation";
+-import { useEffect, useState } from "react";
+-import { useSpeech } from "@/hooks/useSpeech";
+-import { MicIcon, SearchIcon, StopIcon } from "./Icons";
+-import { cx } from "./ui";
++import { useState } from "react";
++import { SearchIcon } from "./Icons";
+ 
+-/** Search box with true voice commands: "Show me guides to Athens by people I'm following". */
++/** Search box: "Athens", "gelato in Bali", "guides by people I follow". */
+ export function SearchBar({ initial }: { initial: string }) {
+   const router = useRouter();
+   const [q, setQ] = useState(initial);
+-  const speech = useSpeech({ continuous: false });
+-  const live = [speech.text, speech.interim].filter(Boolean).join(" ");
+-  const value = speech.listening ? live : q;
+-
+-  // When a spoken command finishes, run it straight away.
+-  useEffect(() => {
+-    if (!speech.listening && speech.text) {
+-      const t = speech.text.trim();
+-      speech.reset();
+-      router.push(`/search?q=${encodeURIComponent(t)}`);
+-    }
+-    // eslint-disable-next-line react-hooks/exhaustive-deps
+-  }, [speech.listening, speech.text]);
+ 
+   return (
+     <form
+       onSubmit={(e) => { e.preventDefault(); if (q.trim()) router.push(`/search?q=${encodeURIComponent(q.trim())}`); }}
+-      className={cx("flex items-center gap-2 rounded-2xl border bg-paper pl-4 pr-2 py-2", speech.listening ? "border-terracotta ring-2 ring-terracotta/15" : "border-line")}
++      className="flex items-center gap-2 rounded-2xl border border-line bg-paper pl-4 pr-2 py-2"
+     >
+       <SearchIcon size={18} className="text-ink-muted shrink-0" />
+       <input
+-        value={value}
++        value={q}
+         onChange={(e) => setQ(e.target.value)}
+-        placeholder={speech.listening ? "Listening…" : "Search a city, place or person…"}
+-        className="flex-1 min-w-0 bg-transparent outline-none text-[15px] placeholder:text-ink-faint"
++        placeholder="Search a city, place or person…"
++        className="flex-1 min-w-0 bg-transparent outline-none text-[15px] py-1.5 placeholder:text-ink-faint"
+         enterKeyHint="search"
++        type="search"
+         autoFocus={!initial}
+       />
+-      {speech.supported && (
+-        <button
+-          type="button"
+-          aria-label={speech.listening ? "Stop" : "Search by voice"}
+-          onClick={() => (speech.listening ? speech.stop() : speech.start())}
+-          className={cx("w-9 h-9 rounded-full text-white flex items-center justify-center shrink-0", speech.listening ? "bg-danger pulse-ring relative" : "bg-terracotta")}
+-        >
+-          {speech.listening ? <StopIcon size={16} /> : <MicIcon size={17} />}
+-        </button>
+-      )}
+     </form>
+   );
+ }
+diff --git a/src/components/VoiceCreate.tsx b/src/components/VoiceCreate.tsx
+index 88fcaee..acae2dd 100644
+--- a/src/components/VoiceCreate.tsx
++++ b/src/components/VoiceCreate.tsx
+@@ -1,9 +1,7 @@
+ "use client";
+ 
+-import Link from "next/link";
+ import { useRouter } from "next/navigation";
+-import { useEffect, useRef, useState } from "react";
+-import { useSpeech } from "@/hooks/useSpeech";
++import { useState } from "react";
+ import { createGuide } from "@/lib/actions/guides";
+ import type { ParsedPlacesResponse } from "@/app/api/ai/parse-places/route";
+ import type { PlaceResult } from "@/lib/places";
+@@ -11,12 +9,12 @@ import type { MapsListResult } from "@/lib/places/googleMapsList";
+ import { findMapsListLink, hasMapsLink, listTitleFromCaption, MAPS_LIST_FALLBACK } from "@/lib/places/importText";
+ import { formatCoords } from "@/lib/places/pins";
+ import { mapLimit } from "@/lib/utils";
+-import { CheckIcon, KeyboardIcon, ListIcon, MicIcon, PinIcon, StopIcon, XIcon } from "./Icons";
++import { CheckIcon, ListIcon, PinIcon, XIcon } from "./Icons";
+ import { PlaceSearch } from "./PlaceSearch";
+ import { ScreenshotImport } from "./ScreenshotImport";
+ import { Button, Input, Label, Spinner, Textarea, cx } from "./ui";
+ 
+-type Stage = "talk" | "structuring" | "importing" | "review" | "typed" | "paste";
++type Stage = "structuring" | "importing" | "review" | "typed" | "paste";
+ type DraftPlace = ParsedPlacesResponse["places"][number] & {
+   key: string;
+   removed?: boolean;
+@@ -31,10 +29,6 @@ const MATCH_BATCH = 20;
+ const MATCH_PARALLEL = 2;
+ const SINGLE_PLACE_MSG = "This looks like a single place, not a list. Paste it in the box below instead.";
+ 
+-/**
+- * Create a Guide by voice: name the places you want in one go, we structure
+- * them and pull in Maps data. Only the places you name, never suggestions.
+- */
+ export interface ForWish {
+   ids: string[];
+   city: string;
+@@ -42,11 +36,14 @@ export interface ForWish {
+   names: string[];
+ }
+ 
+-export function VoiceCreate({ initialMode, forWish }: { initialMode: "voice" | "type"; forWish?: ForWish | null }) {
++/**
++ * Create a guide: name it and add places one by one, or import a list
++ * (Google Maps lists, screenshots, WhatsApp, notes) and we structure it.
++ * Voice was removed on 8 Oct 2026 (unreliable; phones have their own dictation).
++ */
++export function VoiceCreate({ forWish }: { forWish?: ForWish | null }) {
+   const router = useRouter();
+-  const speech = useSpeech({ continuous: true });
+-  const [stage, setStage] = useState<Stage>(initialMode === "type" ? "typed" : "talk");
+-  const [typed, setTyped] = useState("");
++  const [stage, setStage] = useState<Stage>("typed");
+   const [pastedList, setPastedList] = useState("");
+   const [result, setResult] = useState<ParsedPlacesResponse | null>(null);
+   const [draft, setDraft] = useState<DraftPlace[]>([]);
+@@ -55,17 +52,12 @@ export function VoiceCreate({ initialMode, forWish }: { initialMode: "voice" | "
+   const [error, setError] = useState<string | null>(null);
+   const [creating, setCreating] = useState(false);
+   const [fixingKey, setFixingKey] = useState<string | null>(null);
+-  const [showTyped, setShowTyped] = useState(false);
+   const [importMsg, setImportMsg] = useState("");
+   const [fromList, setFromList] = useState(false);
+   const [listLink, setListLink] = useState("");
+   const [linkError, setLinkError] = useState<string | null>(null);
+-  const transcriptRef = useRef<HTMLDivElement | null>(null);
+ 
+-  const transcript = [speech.text, speech.interim].filter(Boolean).join(" ");
+-  useEffect(() => { transcriptRef.current?.scrollTo({ top: 1e6 }); }, [transcript]);
+-
+-  const structure = async (text: string, from: Stage = "talk") => {
++  const structure = async (text: string, from: Stage = "paste") => {
+     if (!text.trim()) { setError("Name at least one place first."); return; }
+     setStage("structuring");
+     setError(null);
+@@ -254,17 +246,6 @@ export function VoiceCreate({ initialMode, forWish }: { initialMode: "voice" | "
+               </span>
+             </span>
+           </button>
+-          <button
+-            type="button"
+-            onClick={() => { setStage("talk"); setError(null); }}
+-            className="text-left rounded-3xl border border-line bg-paper p-4 flex gap-4 items-start hover:border-terracotta-soft active:scale-[0.99] transition-transform"
+-          >
+-            <span className="w-12 h-12 rounded-2xl bg-terracotta text-white flex items-center justify-center shrink-0"><MicIcon size={22} /></span>
+-            <span className="min-w-0">
+-              <span className="block font-semibold text-[16px]">Say your places</span>
+-              <span className="block mt-0.5 text-[13px] text-ink-muted leading-snug">Just talk — &ldquo;Shelter for dinner, Ettore for gelato, Times Beach for sunset&rdquo; — and we&apos;ll build it.</span>
+-            </span>
+-          </button>
+         </div>
+       </div>
+     );
+@@ -425,7 +406,7 @@ export function VoiceCreate({ initialMode, forWish }: { initialMode: "voice" | "
+                       ? `${p.resolved.category} · ${p.resolved.address || p.resolved.city}`
+                       : p.pin
+                         ? `Dropped pin · ${p.pin.address || formatCoords(p.pin.lat, p.pin.lng)}`
+-                        : `Heard “${p.name}” — couldn't match it to a place`}
++                        : `“${p.name}” — couldn't match it to a place`}
+                   </div>
+                   {p.note && <div className="mt-1 text-[12px] text-ink-muted italic line-clamp-2">“{p.note}”</div>}
+                   {!p.removed && (
+@@ -469,7 +450,7 @@ export function VoiceCreate({ initialMode, forWish }: { initialMode: "voice" | "
+         {error && <p className="text-[12.5px] text-danger">{error}</p>}
+         <div className="fixed bottom-0 inset-x-0 z-30 flex justify-center pointer-events-none">
+           <div className="pointer-events-auto w-full max-w-[480px] safe-bottom bg-paper/95 backdrop-blur border-t border-line px-4 py-3 flex items-center gap-2">
+-            <button type="button" onClick={() => { setStage(fromList ? "paste" : "talk"); setFromList(false); setError(null); speech.reset(); }} className="text-[13px] font-medium text-ink-muted px-3 py-2">Start over</button>
++            <button type="button" onClick={() => { setStage("paste"); setFromList(false); setError(null); }} className="text-[13px] font-medium text-ink-muted px-3 py-2">Start over</button>
+             <div className="flex-1" />
+             <Button onClick={finish} disabled={creating || kept.length === 0}>{creating ? <Spinner /> : `Create guide · ${kept.length} place${kept.length === 1 ? "" : "s"}`}</Button>
+           </div>
+@@ -478,56 +459,8 @@ export function VoiceCreate({ initialMode, forWish }: { initialMode: "voice" | "
+     );
+   }
+ 
+-  /* ---------- talk ---------- */
+-  return (
+-    <div className="px-6 pt-4 pb-10 flex flex-col min-h-[calc(100dvh-56px)]">
+-      <h1 className="font-display text-[34px] leading-[1.05]">Say the places you want in your guide.</h1>
+-      <p className="mt-2 text-[13.5px] text-ink-muted leading-relaxed">
+-        All in one go, like you&apos;d tell a friend: <span className="italic text-ink">“Tsuta ramen, Yanaka Coffee Ten, Ichiran in Shinjuku…”</span>
+-      </p>
+-
+-      <div ref={transcriptRef} className={cx("mt-5 flex-1 min-h-[140px] max-h-[38dvh] overflow-y-auto rounded-3xl border px-4 py-3 text-[16px] leading-relaxed", speech.listening ? "border-terracotta bg-paper" : "border-line bg-paper/60")}>
+-        {transcript ? (
+-          <p>{speech.text}{speech.interim && <span className="text-ink-faint"> {speech.interim}</span>}</p>
+-        ) : (
+-          <p className="text-ink-faint">{speech.listening ? "Listening…" : "Your list will appear here."}</p>
+-        )}
+-      </div>
+-      {speech.error && <p className="mt-2 text-[12.5px] text-ink-muted">{speech.error}</p>}
+-      {error && <p className="mt-2 text-[12.5px] text-danger">{error}</p>}
+-
+-      {(!speech.supported || showTyped) && (
+-        <div className="mt-3">
+-          <Textarea value={typed} onChange={(e) => setTyped(e.target.value)} rows={3} autoFocus={showTyped} placeholder={speech.supported ? "Type your places, separated by commas." : "Voice isn't available in this browser. Type your places, separated by commas."} />
+-        </div>
+-      )}
+-
+-      <div className="mt-6 flex flex-col items-center gap-4">
+-        {speech.supported ? (
+-          <button
+-            type="button"
+-            onClick={() => (speech.listening ? speech.stop() : speech.start())}
+-            aria-label={speech.listening ? "Stop listening" : "Start listening"}
+-            className={cx("relative w-[84px] h-[84px] rounded-full text-white flex items-center justify-center transition-transform active:scale-95 shadow-float", speech.listening ? "bg-danger pulse-ring" : "bg-terracotta")}
+-          >
+-            {speech.listening ? <StopIcon size={30} /> : <MicIcon size={34} />}
+-          </button>
+-        ) : null}
+-        <p className="text-[12.5px] text-ink-muted">{speech.listening ? "Tap to stop when you're done." : speech.supported ? "Tap to talk." : ""}</p>
+-        <Button size="lg" onClick={() => structure([speech.text || transcript, typed].filter((t) => t.trim()).join(", "), "talk")} disabled={speech.listening || !(transcript.trim() || typed.trim())} className="w-full">
+-          Build my guide
+-        </Button>
+-        <div className="flex items-center gap-4 text-[13px] text-ink-muted">
+-          {speech.supported && transcript && !speech.listening && <button type="button" onClick={speech.reset} className="underline">Clear</button>}
+-          {speech.supported && !showTyped && <button type="button" onClick={() => setShowTyped(true)} className="inline-flex items-center gap-1.5"><KeyboardIcon size={15} /> Type your list</button>}
+-          <button type="button" onClick={() => setStage("typed")} className="inline-flex items-center gap-1.5">Add places one by one</button>
+-        </div>
+-      </div>
+-      <p className="mt-6 text-[11.5px] text-ink-faint text-center">
+-        Voice is handled by your browser. <Link href="/" className="underline">Cancel</Link>
+-      </p>
+-    </div>
+-  );
++  /* Anything else (e.g. review without a result) falls back to the typed start. */
++  return null;
+ }
+ 
+ function emptyResolved(name: string, city: string): NonNullable<ParsedPlacesResponse["places"][number]["resolved"]> {
+diff --git a/src/components/WelcomeFlow.tsx b/src/components/WelcomeFlow.tsx
+index 455cdcb..dcb6785 100644
+--- a/src/components/WelcomeFlow.tsx
++++ b/src/components/WelcomeFlow.tsx
+@@ -8,7 +8,8 @@ import { followMany, toggleFollow, type FollowStatus } from "@/lib/actions/socia
+ import { installPlatform, type InstallPlatform } from "@/lib/pushClient";
+ import { HomeScreenStep, needsHomeScreenStep } from "./HomeScreenStep";
+ import { GuideCover } from "./GuideCover";
+-import { CameraIcon, HeartIcon, ListIcon, MicIcon } from "./Icons";
++import { CameraIcon, HeartIcon, ListIcon, PinIcon } from "./Icons";
++import { Logo } from "./Logo";
+ import { UsernameForm } from "./UsernameForm";
+ import { Avatar, Spinner, cx } from "./ui";
+ 
+@@ -22,10 +23,12 @@ export type WelcomeSample = {
+ 
+ const SLIDES = [
+   { title: "Guides from people you trust", body: "Follow friends and see the places they actually love — not ads or top-10 lists." },
+-  { title: "Save as you go", body: "Heart the places and guides you like, then combine them into one guide for your trip." },
+-  { title: "Share your own in seconds", body: "Turn the list you already send friends into a guide — no typing addresses or hours." },
++  { title: "Save places you like", body: "Tap ♥ on any place and it’s kept for your next trip." },
++  { title: "Share your own in seconds", body: "Start from the list you already send friends." },
+ ];
+ 
++type Stage = "username" | "slides" | "follow" | "home";
++
+ const bigButton = "h-14 w-full rounded-full text-[17px] font-semibold inline-flex items-center justify-center transition-colors disabled:opacity-60";
+ 
+ /**
+@@ -43,6 +46,7 @@ export function WelcomeFlow({
+   samples,
+   finish,
+   pushPublicKey,
++  initialStep,
+ }: {
+   firstName: string;
+   askUsername: boolean;
+@@ -54,9 +58,25 @@ export function WelcomeFlow({
+   /** Marks onboarding done and redirects to `next` (bound server action). */
+   finish: () => Promise<void>;
+   pushPublicKey: string | null;
++  /** From ?step= — so going back (or returning from Safari's Share sheet) lands on the same step, not slide 1. */
++  initialStep?: string;
+ }) {
+   const router = useRouter();
+-  const [stage, setStage] = useState<"username" | "slides" | "follow" | "home">(askUsername && !tour ? "username" : "slides");
++  const [stage, setStageRaw] = useState<Stage>(() => {
++    if (initialStep === "follow" && !tour) return "follow";
++    if (initialStep === "home") return "home";
++    if (initialStep === "slides") return "slides";
++    return askUsername && !tour ? "username" : "slides";
++  });
++  // Keep the step in the address so back/refresh returns here instead of restarting the intro.
++  const setStage = (s: Stage) => {
++    setStageRaw(s);
++    // Through the router (not history.replaceState) so a server-action refresh doesn't drop it.
++    const params = new URLSearchParams(window.location.search);
++    params.set("step", s);
++    router.replace(`/welcome?${params.toString()}`, { scroll: false });
++    window.scrollTo({ top: 0 });
++  };
+   const [platform, setPlatform] = useState<InstallPlatform>("desktop");
+   const [showHome, setShowHome] = useState(false);
+   useEffect(() => {
+@@ -90,7 +110,7 @@ export function WelcomeFlow({
+       <Screen>
+         <Header />
+         <div className="flex-1 flex flex-col justify-center gap-5">
+-          <div>
++          <div className="text-center">
+             <h1 className="font-display text-[30px] leading-[1.15] font-semibold">Welcome, {firstName}.</h1>
+             <p className="mt-2 text-[17px] leading-normal text-ink-muted">First, check the name friends will find you by.</p>
+           </div>
+@@ -103,9 +123,17 @@ export function WelcomeFlow({
+     );
+   }
+ 
+-  if (stage === "follow") return <FollowStep people={people} finish={afterFollow} />;
++  const total = tour ? 2 : showHome ? 3 : 2;
++  if (stage === "follow") return <FollowStep people={people} finish={afterFollow} stepLabel={`Step 2 of ${total}`} />;
+   if (stage === "home")
+-    return <HomeScreenStep platform={platform} publicKey={pushPublicKey} onDone={tour ? () => router.push(exitHref) : finish} />;
++    return (
++      <HomeScreenStep
++        platform={platform}
++        publicKey={pushPublicKey}
++        stepLabel={`Step ${total} of ${total}`}
++        onDone={tour ? () => router.push(exitHref) : finish}
++      />
++    );
+ 
+   return (
+     <Screen>
+@@ -114,7 +142,7 @@ export function WelcomeFlow({
+           tour ? (
+             <Link href={exitHref} className="min-h-11 min-w-11 flex items-center justify-end text-[16px] font-medium text-ink-muted hover:text-ink">Close</Link>
+           ) : (
+-            <button type="button" onClick={() => setStage("follow")} className="min-h-11 min-w-11 flex items-center justify-end text-[16px] font-medium text-ink-muted hover:text-ink">Skip</button>
++            <button type="button" onClick={() => setStage("follow")} className="min-h-11 min-w-11 flex items-center justify-end text-[15px] font-medium text-ink-muted hover:text-ink whitespace-nowrap">Skip intro</button>
+           )
+         }
+       />
+@@ -131,16 +159,16 @@ export function WelcomeFlow({
+         {SLIDES.map((s, i) => (
+           <section key={s.title} aria-label={`${i + 1} of ${SLIDES.length}`} className="w-full shrink-0 snap-center px-6 flex flex-col gap-6">
+             <div className="flex-1 min-h-[300px] flex items-center justify-center py-2">
+-              {i === 0 ? <TrustArt samples={samples} /> : i === 1 ? <SaveArt people={people} /> : <ShareArt />}
++              {i === 0 ? <TrustArt samples={samples} /> : i === 1 ? <SaveArt /> : <ShareArt />}
+             </div>
+-            <div className="flex flex-col gap-2.5">
++            <div className="flex flex-col gap-2.5 text-center">
+               <h2 className="font-display text-[30px] leading-[1.15] font-semibold">{s.title}</h2>
+               <p className="text-[17px] leading-normal text-ink-muted">{s.body}</p>
+             </div>
+           </section>
+         ))}
+       </div>
+-      <div className="mt-6 flex gap-2 items-center" aria-hidden>
++      <div className="mt-6 flex gap-2 items-center justify-center" aria-hidden>
+         {SLIDES.map((s, i) => (
+           <span key={s.title} className={cx("h-2 rounded-full transition-all", i === index ? "w-6 bg-terracotta" : "w-2 bg-cream-line")} />
+         ))}
+@@ -160,11 +188,13 @@ function Screen({ children }: { children: ReactNode }) {
+   return <div className="flex-1 flex flex-col px-6 pt-12 pb-[max(2rem,env(safe-area-inset-bottom))] overflow-hidden">{children}</div>;
+ }
+ 
++/** Logo centred, with an optional action (Skip / Close) on the right. */
+ function Header({ right }: { right?: ReactNode }) {
+   return (
+-    <div className="flex items-center justify-between min-h-11">
+-      <span className="font-display text-[26px] font-semibold text-terracotta leading-none">M.</span>
+-      {right}
++    <div className="grid grid-cols-[1fr_auto_1fr] items-center min-h-11">
++      <span />
++      <Logo />
++      <span className="flex justify-end">{right}</span>
+     </div>
+   );
+ }
+@@ -203,40 +233,23 @@ function TrustArt({ samples }: { samples: WelcomeSample[] }) {
+   );
+ }
+ 
+-function SaveArt({ people }: { people: WelcomePerson[] }) {
+-  const faces = people.slice(0, 3);
++function SaveArt() {
+   return (
+-    <div className="flex flex-col items-center gap-3.5" aria-hidden>
+-      <div className={cx("w-[296px] rounded-[20px] bg-paper p-4 flex gap-3.5 items-center", cardShadow)}>
+-        <div className="w-16 h-16 rounded-[14px] bg-ochre-soft shrink-0" />
+-        <div className="flex-1 min-w-0 flex flex-col gap-1">
+-          <div className="text-[16px] font-semibold">Ettore Gelato</div>
+-          <div className="text-[13px] text-ink-muted">Canggu · In 2 guides</div>
+-          <span className="self-start text-[12px] px-2.5 py-0.5 rounded-full bg-cream-deep text-ink-muted">Food &amp; Drinks</span>
+-        </div>
+-        <span className="w-11 h-11 rounded-full bg-terracotta-tint text-terracotta flex items-center justify-center shrink-0">
+-          <HeartIcon size={22} filled />
++    <div className={cx("w-[296px] rounded-[20px] bg-paper overflow-hidden", cardShadow)} aria-hidden>
++      <div className="relative h-[150px] bg-[linear-gradient(135deg,oklch(86%_0.07_75),oklch(78%_0.09_45))]">
++        <span className="absolute top-3 right-3 w-12 h-12 rounded-full bg-paper text-terracotta flex items-center justify-center shadow-md">
++          <span className="pulse-ring absolute inset-0 rounded-full" />
++          <HeartIcon size={24} filled />
+         </span>
+       </div>
+-      <svg width="24" height="30" viewBox="0 0 24 30" fill="none" className="text-cream-line" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+-        <path d="M12 2v24" />
+-        <path d="M5 19l7 7 7-7" />
+-      </svg>
+-      <div className={cx("w-[296px] rounded-[20px] bg-paper overflow-hidden", cardShadow)}>
+-        <div className="h-[88px] bg-sage-soft" />
+-        <div className="px-4 py-3.5 flex flex-col gap-2">
+-          <div className="text-[17px] font-semibold">My Bali trip</div>
+-          <div className="text-[13px] text-ink-muted">Combined from 3 guides · 18 places</div>
+-          <div className="flex items-center">
+-            {faces.length >= 2
+-              ? faces.map((p, i) => (
+-                  <span key={p.id} className={cx("rounded-full ring-2 ring-paper", i > 0 && "-ml-2")}>
+-                    <Avatar user={p} size={28} />
+-                  </span>
+-                ))
+-              : ["bg-terracotta", "bg-sage", "bg-ochre"].map((c, i) => <span key={c} className={cx("w-7 h-7 rounded-full ring-2 ring-paper", c, i > 0 && "-ml-2")} />)}
+-          </div>
++      <div className="px-4 py-3.5 flex items-center gap-3">
++        <div className="flex-1 min-w-0">
++          <div className="text-[17px] font-semibold">Ettore Gelato</div>
++          <div className="text-[13px] text-ink-muted">Gelato · Canggu</div>
+         </div>
++        <span className="rounded-full bg-terracotta-tint text-terracotta px-3 py-1 text-[13px] font-semibold inline-flex items-center gap-1">
++          <HeartIcon size={14} filled /> Saved
++        </span>
+       </div>
+     </div>
+   );
+@@ -244,26 +257,23 @@ function SaveArt({ people }: { people: WelcomePerson[] }) {
+ 
+ function ShareArt() {
+   const tiles = [
+-    { icon: <ListIcon size={22} />, title: "Paste a list", body: "Google Maps links, notes, WhatsApp messages" },
+-    { icon: <CameraIcon size={22} />, title: "Upload screenshots", body: "We pick out the places for you" },
+-    { icon: <MicIcon size={22} />, title: "Record a place", body: "Say what's special while you're there" },
++    { icon: <ListIcon size={30} />, title: "Paste a list", tone: "bg-sage text-white" },
++    { icon: <CameraIcon size={30} />, title: "Screenshots", tone: "bg-ochre text-ink" },
++    { icon: <PinIcon size={30} />, title: "Add a place", tone: "bg-terracotta text-white" },
+   ];
+   return (
+-    <div className="w-full flex flex-col gap-3" aria-hidden>
++    <div className="w-full grid grid-cols-3 gap-3" aria-hidden>
+       {tiles.map((t) => (
+-        <div key={t.title} className="rounded-[18px] bg-paper p-4 flex gap-3.5 items-center shadow-[0_6px_20px_oklch(22%_0.02_60/0.08)]">
+-          <span className="w-12 h-12 rounded-full bg-terracotta-tint text-terracotta flex items-center justify-center shrink-0">{t.icon}</span>
+-          <div className="min-w-0">
+-            <div className="text-[16px] font-semibold">{t.title}</div>
+-            <div className="text-[14px] text-ink-muted">{t.body}</div>
+-          </div>
++        <div key={t.title} className={cx("rounded-[20px] bg-paper px-2 pt-5 pb-4 flex flex-col items-center gap-3", cardShadow)}>
++          <span className={cx("w-16 h-16 rounded-[18px] flex items-center justify-center", t.tone)}>{t.icon}</span>
++          <span className="text-[14px] font-semibold text-center leading-tight">{t.title}</span>
+         </div>
+       ))}
+     </div>
+   );
+ }
+ 
+-function FollowStep({ people, finish }: { people: WelcomePerson[]; finish: () => Promise<void> }) {
++function FollowStep({ people, finish, stepLabel }: { people: WelcomePerson[]; finish: () => Promise<void>; stepLabel: string }) {
+   const [status, setStatus] = useState<Record<string, FollowStatus>>(() => Object.fromEntries(people.map((p) => [p.id, p.status])));
+   const [busy, setBusy] = useState<Record<string, boolean>>({});
+   const [allPending, startAll] = useTransition();
+@@ -294,7 +304,9 @@ function FollowStep({ people, finish }: { people: WelcomePerson[]; finish: () =>
+ 
+   return (
+     <div className="flex-1 flex flex-col px-6 pt-12">
+-      <div className="flex flex-col gap-2">
++      <Header />
++      <div className="mt-6 flex flex-col gap-2 text-center">
++        <span className="text-[13px] font-semibold uppercase tracking-[0.08em] text-terracotta">{stepLabel}</span>
+         <h1 className="font-display text-[30px] leading-[1.15] font-semibold">Follow people you know</h1>
+         <p className="text-[17px] leading-normal text-ink-muted">Their guides show up on your Home, and you&apos;ll hear when they add something new.</p>
+       </div>
+@@ -314,7 +326,8 @@ function FollowStep({ people, finish }: { people: WelcomePerson[]; finish: () =>
+               const s = status[p.id];
+               return (
+                 <li key={p.id} className="rounded-[18px] bg-paper px-3.5 py-3 flex gap-3 items-center">
+-                  <Link href={`/u/${p.username}`} className="flex gap-3 items-center flex-1 min-w-0">
++                  {/* Tapping a name follows/unfollows — it doesn't leave the intro (going back used to restart it). */}
++                  <button type="button" onClick={() => toggle(p.id)} disabled={busy[p.id] || allPending} className="flex gap-3 items-center flex-1 min-w-0 text-left">
+                     <Avatar user={p} size={48} />
+                     <div className="min-w-0">
+                       <div className="text-[16px] font-semibold truncate">{p.displayName}</div>
+@@ -322,7 +335,7 @@ function FollowStep({ people, finish }: { people: WelcomePerson[]; finish: () =>
+                         @{p.username} · {p.guideCount ? `${p.guideCount} guide${p.guideCount === 1 ? "" : "s"}` : "New on MyGuide"}
+                       </div>
+                     </div>
+-                  </Link>
++                  </button>
+                   <button
+                     type="button"
+                     onClick={() => toggle(p.id)}
+@@ -341,7 +354,7 @@ function FollowStep({ people, finish }: { people: WelcomePerson[]; finish: () =>
+           </ul>
+         </>
+       ) : (
+-        <p className="mt-6 rounded-2xl bg-cream-deep/60 px-4 py-3.5 text-[14px] text-ink-muted leading-relaxed">
++        <p className="mt-6 rounded-2xl bg-cream-deep/60 px-4 py-3.5 text-[14px] text-ink-muted leading-relaxed text-center">
+           You&rsquo;re one of the first here. You can find people any time from Search.
+         </p>
+       )}
+diff --git a/src/lib/guides.ts b/src/lib/guides.ts
+index 7a22a6e..b2b5a90 100644
+--- a/src/lib/guides.ts
++++ b/src/lib/guides.ts
+@@ -510,7 +510,11 @@ export async function peopleToFollow(viewerId?: string | null, limit = 8): Promi
+   return { hits, followingCount: followed.size };
+ }
+ 
+-export async function searchPeople(q: string, viewerId?: string | null, limit = 3): Promise<{ hits: PersonHit[]; total: number }> {
++/**
++ * People whose name or @username matches `q`. With `wholeWord` (used when the search is a city, e.g. "Paris"),
++ * only whole-word name matches count, so "Paris" doesn't bring up "Naz Parish".
++ */
++export async function searchPeople(q: string, viewerId?: string | null, limit = 3, opts: { wholeWord?: boolean } = {}): Promise<{ hits: PersonHit[]; total: number }> {
+   const clean = q.replace(/^@/, "").trim().toLowerCase();
+   if (clean.length < 2) return { hits: [], total: 0 };
+   const db = await getDb();
+@@ -531,8 +535,11 @@ export async function searchPeople(q: string, viewerId?: string | null, limit =
+     if (un.startsWith(clean) || dn.startsWith(clean) || dn.split(/\s+/).some((w) => w.startsWith(clean))) return 2;
+     return 3;
+   };
++  const wholeWordMatch = (u: User) =>
++    u.username.toLowerCase() === clean || u.displayName.toLowerCase() === clean || u.displayName.toLowerCase().split(/\s+/).includes(clean);
+   const all = rows
+     .filter((r) => r.u.id !== viewerId && !hidden.has(r.u.id))
++    .filter((r) => !opts.wholeWord || wholeWordMatch(r.u))
+     .sort((a, b) => rank(a.u) - rank(b.u) || Number(b.n) - Number(a.n) || a.u.displayName.localeCompare(b.u.displayName));
+   const page = all.slice(0, limit);
+   const mine = new Map<string, "pending" | "accepted">();

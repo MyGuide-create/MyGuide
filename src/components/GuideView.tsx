@@ -11,10 +11,11 @@ import type { PublicUser } from "@/lib/auth";
 import { forkGuide } from "@/lib/actions/guides";
 import { orderedCategories } from "@/lib/places/order";
 import { placeArea } from "@/lib/places/neighbourhood";
-import { timeAgo } from "@/lib/utils";
+import { cityLine, timeAgo, titleSize } from "@/lib/utils";
 import { track } from "@/lib/track";
 import { FollowButton } from "./FollowButton";
 import { GuideCover } from "./GuideCover";
+import { CityLine } from "./GuideCard";
 import { coverCityLabel } from "@/lib/coverCity";
 import { GuideMap } from "./GuideMap";
 import { CheckIcon, EditIcon, ForkIcon, ListIcon, LockIcon, MapIcon, ShareIcon } from "./Icons";
@@ -48,6 +49,7 @@ export function GuideView({ detail, viewerId, viewer, shareUrl, shareKey }: { de
   const numberOf = new Map(visible.map((p, i) => [p.id, i]));
   const showHeadings = groups.length > 1;
   const isDraft = !guide.publishedAt;
+  const coverCity = cityLine(coverCityLabel(guide.city, places.map((p) => p.city)), guide);
 
   // Pilot analytics: one guide_view per page load (the API marks whether the viewer is the creator).
   useEffect(() => {
@@ -91,12 +93,12 @@ export function GuideView({ detail, viewerId, viewer, shareUrl, shareKey }: { de
 
   return (
     <>
-      <GuideCover guide={guide} ownerUsername={owner.username} className="aspect-[390/220]" bare creditLinks cityLabel={coverCityLabel(guide.city, places.map((p) => p.city))} />
+      <GuideCover guide={guide} ownerUsername={owner.username} className="aspect-[390/220]" bare creditLinks />
 
       <div className="px-5 pt-[18px]">
-        <h1 className="font-display text-[34px] leading-[1.05]">{guide.title}</h1>
+        {coverCity && <CityLine label={coverCity} className="text-[14px] mb-1" />}
+        <h1 className="font-display leading-[1.06] break-words" style={{ fontSize: titleSize(guide.title, 34) }}>{guide.title}</h1>
         <div className="mt-1.5 text-[12.5px] text-ink-muted flex flex-wrap items-center gap-x-1.5">
-          {[guide.city, guide.country].filter(Boolean).join(", ") && <span>{[guide.city, guide.country].filter(Boolean).join(", ")} ·</span>}
           <span>{places.length} place{places.length === 1 ? "" : "s"}</span>
           <span>·</span>
           <span>{isDraft ? "Not published yet" : `Updated ${timeAgo(guide.updatedAt)}`}</span>

@@ -1,8 +1,8 @@
 import Link from "next/link";
 import type { GuideCard as GuideCardData } from "@/lib/guides";
-import { timeAgo } from "@/lib/utils";
+import { timeAgo, titleSize } from "@/lib/utils";
 import { GuideCover } from "./GuideCover";
-import { ForkIcon, LockIcon } from "./Icons";
+import { ForkIcon, LockIcon, PinIcon } from "./Icons";
 import { Avatar, Tag, cx } from "./ui";
 import { SaveGuideButton } from "./SaveGuideButton";
 
@@ -24,7 +24,7 @@ export function GuideCard({ data, showOwner = true }: { data: GuideCardData; sho
           )}
           <div className="min-w-0 flex-1">
             {hasPhoto ? (
-              <Link href={`/g/${guide.slug}`} className="font-display text-[22px] leading-[1.05] block truncate">
+              <Link href={`/g/${guide.slug}`} className="font-display leading-[1.08] block break-words" style={{ fontSize: titleSize(guide.title, 22) }}>
                 {guide.title}
               </Link>
             ) : (
@@ -61,5 +61,15 @@ export function GuideCard({ data, showOwner = true }: { data: GuideCardData; sho
         </div>
       </div>
     </article>
+  );
+}
+
+/** "📍 DUBAI, UAE" — the city a guide is for, above its title. */
+export function CityLine({ label, className }: { label: string; className?: string }) {
+  return (
+    <div className={cx("flex items-center gap-1 text-[13px] font-bold uppercase tracking-[0.06em] text-terracotta-deep", className)}>
+      <PinIcon size={14} className="shrink-0" />
+      <span className="min-w-0 truncate">{label}</span>
+    </div>
   );
 }
