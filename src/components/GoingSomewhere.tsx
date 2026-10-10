@@ -4,9 +4,9 @@ import { useRouter } from "next/navigation";
 import { CityPicker } from "./CityPicker";
 
 /** Home's main action: pick a city → that city's guides (people you follow first) and Plan a trip. */
-export function GoingSomewhere() {
+export function GoingSomewhere({ basePath = "/city" }: { basePath?: string } = {}) {
   const router = useRouter();
-  const go = (q: Record<string, string>) => router.push(`/city?${new URLSearchParams(q).toString()}`);
+  const go = (q: Record<string, string>) => router.push(`${basePath}?${new URLSearchParams(q).toString()}`);
   return (
     <CityPicker
       big
