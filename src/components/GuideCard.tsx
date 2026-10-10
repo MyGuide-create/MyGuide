@@ -65,11 +65,18 @@ export function GuideCard({ data, showOwner = true }: { data: GuideCardData; sho
 }
 
 /** "📍 DUBAI, UAE" — the city a guide is for, above its title. */
-export function CityLine({ label, className }: { label: string; className?: string }) {
-  return (
-    <div className={cx("flex items-center gap-1 text-[13px] font-bold uppercase tracking-[0.06em] text-terracotta-deep", className)}>
+export function CityLine({ label, className, href }: { label: string; className?: string; href?: string }) {
+  const cls = cx("flex items-center gap-1 text-[13px] font-bold uppercase tracking-[0.06em] text-terracotta-deep", className);
+  const inner = (
+    <>
       <PinIcon size={14} className="shrink-0" />
       <span className="min-w-0 truncate">{label}</span>
-    </div>
+    </>
+  );
+  // Links to the city page (every guide for that city) when there is one.
+  return href ? (
+    <Link href={href} className={cx(cls, "w-fit max-w-full hover:underline underline-offset-2")}>{inner}</Link>
+  ) : (
+    <div className={cls}>{inner}</div>
   );
 }

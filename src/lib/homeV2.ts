@@ -7,8 +7,11 @@ import { getDb } from "./db";
 import { follows, guides, places, savedGuides, savedPlaces, trips, type Trip } from "./db/schema";
 import { listFeed, type GuideCard } from "./guides";
 import { listAllWishes, type CityWishes } from "./wishes";
+import { canonicalCity, cityNameVariants, findCityExact } from "./places/cities";
 
-const key = (city: string) => city.trim().toLowerCase();
+/** Grouping key: "Dubai Marina", "dubai " and "Dubai" are one city. */
+export const cityKey = (city: string) => canonicalCity(city).toLowerCase();
+const key = cityKey;
 
 /** People the viewer follows (accepted). */
 export async function followedIds(viewerId: string | null | undefined): Promise<Set<string>> {
@@ -45,12 +48,12 @@ export async function cityTiles(viewerId: string | null | undefined): Promise<{ 
   const [cards, followed] = await Promise.all([listFeed({ viewerId, limit: 300 }), followedIds(viewerId)]);
   const groups = new Map<string, { tile: CityTile; owners: Set<string> }>();
   for (const c of cards) {
-    const city = c.guide.city.trim();
-    if (!city) continue;
+    if (!c.guide.city.trim()) continue;
+    const city = canonicalCity(c.guide.city);
     const k = key(city);
     let g = groups.get(k);
     if (!g) {
-      g = { tile: { city, country: c.guide.country, guides: 0, friends: 0, cover: c }, owners: new Set() };
+      g = { tile: { city, country: findCityExact(city)?.country ?? c.guide.country, guides: 0, friends: 0, cover: c }, owners: new Set() };
       groups.set(k, g);
     }
     g.tile.guides++;
@@ -102,21 +105,21 @@ async function viewerPlaceCounts(viewerId: string, cities: string[]): Promise<Ma
   const out = new Map<string, number>();
   if (!cities.length) return out;
   const db = await getDb();
-  const keys = cities.map(key);
+  const keys = [...new Set(cities.flatMap(cityNameVariants))];
   const own = await db
-    .select({ city: sql<string>`lower(${guides.city})`, n: sql<number>`count(*)` })
+    .select({ city: sql<string>`lower(trim(${guides.city}))`, n: sql<number>`count(*)` })
     .from(places)
     .innerJoin(guides, eq(places.guideId, guides.id))
-    .where(and(eq(guides.ownerId, viewerId), inArray(sql`lower(${guides.city})`, keys)))
-    .groupBy(sql`lower(${guides.city})`);
+    .where(and(eq(guides.ownerId, viewerId), inArray(sql`lower(trim(${guides.city}))`, keys)))
+    .groupBy(sql`lower(trim(${guides.city}))`);
   const saved = await db
-    .select({ city: sql<string>`lower(${guides.city})`, n: sql<number>`count(*)` })
+    .select({ city: sql<string>`lower(trim(${guides.city}))`, n: sql<number>`count(*)` })
     .from(savedPlaces)
     .innerJoin(places, eq(savedPlaces.placeId, places.id))
     .innerJoin(guides, eq(places.guideId, guides.id))
-    .where(and(eq(savedPlaces.userId, viewerId), inArray(sql`lower(${guides.city})`, keys)))
-    .groupBy(sql`lower(${guides.city})`);
-  for (const r of [...own, ...saved]) out.set(r.city, (out.get(r.city) ?? 0) + Number(r.n));
+    .where(and(eq(savedPlaces.userId, viewerId), inArray(sql`lower(trim(${guides.city}))`, keys)))
+    .groupBy(sql`lower(trim(${guides.city}))`);
+  for (const r of [...own, ...saved]) out.set(key(r.city), (out.get(key(r.city)) ?? 0) + Number(r.n));
   return out;
 }
 

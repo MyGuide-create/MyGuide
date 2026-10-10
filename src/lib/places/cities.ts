@@ -114,6 +114,22 @@ export function findCityExact(input: string | undefined | null): CityInfo | unde
   return CITIES.find((c) => [c.city, ...(c.aliases ?? [])].some((n) => norm(n) === q));
 }
 
+/**
+ * The city as one name: a known city's proper name when this is it or one of its aliases
+ * ("dubai marina" → Dubai, "Lisboa" → Lisbon), else the text tidied (trimmed, single spaces).
+ */
+export function canonicalCity(input: string): string {
+  const known = findCityExact(input);
+  return known ? known.city : input.trim().replace(/\s+/g, " ");
+}
+
+/** Lower-case names a guide's city may be stored as for this city: the name plus a known city's aliases. */
+export function cityNameVariants(input: string): string[] {
+  const known = findCityExact(input);
+  const names = known ? [known.city, ...(known.aliases ?? [])] : [input];
+  return [...new Set(names.map((n) => n.trim().replace(/\s+/g, " ").toLowerCase()).filter(Boolean))];
+}
+
 /** Scan free text for any mention of a known city. */
 export function detectCityInText(text: string): CityInfo | undefined {
   const t = ` ${norm(text)} `;

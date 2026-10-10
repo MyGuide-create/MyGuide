@@ -5,7 +5,7 @@ import { GuideCover } from "@/components/GuideCover";
 import { Avatar, LinkButton } from "@/components/ui";
 import { getCurrentUser } from "@/lib/auth";
 import { listFeed, type GuideCard } from "@/lib/guides";
-import { cityTiles, nameList, nextTrip, wantedGuides, type CityTile } from "@/lib/homeV2";
+import { cityKey, cityTiles, nameList, nextTrip, wantedGuides, type CityTile } from "@/lib/homeV2";
 import { timeAgo } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -28,7 +28,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
     user ? listFeed({ viewerId: user.id, scope: "following", limit: 40 }) : Promise.resolve([] as GuideCard[]),
   ]);
   const latest = [...following].sort((a, b) => b.guide.updatedAt.getTime() - a.guide.updatedAt.getTime()).slice(0, 3);
-  const tripTile = trip ? byCity.get(trip.trip.city.trim().toLowerCase()) : undefined;
+  const tripTile = trip ? byCity.get(cityKey(trip.trip.city)) : undefined;
   const signupNext = (next: string, why?: string) => `/signup?next=${encodeURIComponent(next)}${why ? `&why=${why}` : ""}`;
   const makeHref = (ids: string) => (user ? `/create?wish=${ids}` : signupNext(`/create?wish=${ids}`, "create"));
 
@@ -159,7 +159,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
           {wanted.list.length > 0 && (
             <ul className="flex flex-col">
               {wanted.list.map((w) => {
-                const tile = byCity.get(w.group.city.trim().toLowerCase());
+                const tile = byCity.get(cityKey(w.group.city));
                 const extra = w.others.length - w.known.length;
                 const who = w.known.length
                   ? `${nameList(w.known.map((p) => p.user.displayName))}${extra > 0 ? ` + ${extra} more` : ""} ${w.others.length === 1 ? "wants" : "want"} this`

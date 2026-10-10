@@ -6,7 +6,7 @@ import { AskForGuideButton } from "@/components/AskForGuide";
 import { EmptyState, LinkButton, cx } from "@/components/ui";
 import { getCurrentUser, toPublicUser } from "@/lib/auth";
 import { listFeed, type GuideCard } from "@/lib/guides";
-import { guideSaveCounts, wantedGuides } from "@/lib/homeV2";
+import { cityKey, guideSaveCounts, wantedGuides } from "@/lib/homeV2";
 import { timeAgo } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -44,7 +44,7 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
       : (saves.get(b.guide.id) ?? 0) - (saves.get(a.guide.id) ?? 0) || b.guide.updatedAt.getTime() - a.guide.updatedAt.getTime(),
   );
   const friendCount = new Set(mine.map((g) => g.owner.id)).size;
-  const wish = [wanted.help, ...wanted.list].find((w) => w && w.group.city.trim().toLowerCase() === city.toLowerCase()) ?? null;
+  const wish = [wanted.help, ...wanted.list].find((w) => w && cityKey(w.group.city) === cityKey(city)) ?? null;
 
   const base = { name: city, ...(country ? { country } : {}), ...(lat && lng ? { lat, lng } : {}) };
   const sortHref = (s: "saved" | "new") => `/city?${new URLSearchParams({ ...base, ...(s === "new" ? { sort: "new" } : {}) }).toString()}`;

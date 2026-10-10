@@ -6,6 +6,7 @@ import { toPublicUser, type PublicUser } from "./auth";
 import type { SearchIntent } from "./ai";
 import { hiddenUserIds } from "./blocks";
 import { coverCityLabel } from "./coverCity";
+import { cityNameVariants } from "./places/cities";
 import { DESCRIBED_MIN_CHARS, feedScore, rankFeed, type GuideStats } from "./feedRank";
 
 export interface PlaceCommentView {
@@ -190,7 +191,7 @@ async function feedStats(rows: Guide[]): Promise<Map<string, GuideStats>> {
 export async function listFeed(opts: { viewerId?: string | null; scope?: "public" | "following"; city?: string; limit?: number }) {
   const db = await getDb();
   const conds: SQL[] = [publicPublished()!];
-  if (opts.city) conds.push(sql`lower(${guides.city}) = ${opts.city.trim().toLowerCase()}`);
+  if (opts.city) conds.push(inArray(sql`lower(trim(${guides.city}))`, cityNameVariants(opts.city)));
   if (opts.scope === "following") {
     if (!opts.viewerId) return [];
     const followed = await db.select({ id: follows.followingId }).from(follows).where(eq(follows.followerId, opts.viewerId));

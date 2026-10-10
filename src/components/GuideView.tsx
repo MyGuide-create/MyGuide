@@ -50,6 +50,8 @@ export function GuideView({ detail, viewerId, viewer, shareUrl, shareKey }: { de
   const showHeadings = groups.length > 1;
   const isDraft = !guide.publishedAt;
   const coverCity = cityLine(coverCityLabel(guide.city, places.map((p) => p.city)), guide);
+  // The guide's city page: friends' guides and every other guide for the same city.
+  const cityPage = guide.city.trim() && !isDraft ? `/city?${new URLSearchParams({ name: guide.city.trim(), ...(guide.country ? { country: guide.country } : {}) }).toString()}` : null;
 
   // Pilot analytics: one guide_view per page load (the API marks whether the viewer is the creator).
   useEffect(() => {
@@ -96,7 +98,7 @@ export function GuideView({ detail, viewerId, viewer, shareUrl, shareKey }: { de
       <GuideCover guide={guide} ownerUsername={owner.username} className="aspect-[390/220]" bare creditLinks />
 
       <div className="px-5 pt-[18px]">
-        {coverCity && <CityLine label={coverCity} className="text-[14px] mb-1" />}
+        {coverCity && <CityLine label={coverCity} href={cityPage ?? undefined} className="text-[14px] mb-1" />}
         <h1 className="font-display leading-[1.06] break-words" style={{ fontSize: titleSize(guide.title, 34) }}>{guide.title}</h1>
         <div className="mt-1.5 text-[12.5px] text-ink-muted flex flex-wrap items-center gap-x-1.5">
           <span>{places.length} place{places.length === 1 ? "" : "s"}</span>
@@ -233,6 +235,18 @@ export function GuideView({ detail, viewerId, viewer, shareUrl, shareKey }: { de
             </section>
           ))}
           {visible.some((p) => ratings[p.id]) && <p className="text-[10.5px] text-ink-faint">★ ratings and $ price levels from Google Maps</p>}
+        </div>
+      )}
+
+      {cityPage && (
+        <div className="px-4 pb-6">
+          <Link href={cityPage} className="flex items-center justify-between gap-3 rounded-2xl border border-line/80 bg-paper px-4 py-3.5 hover:border-terracotta-soft">
+            <span className="min-w-0">
+              <span className="block font-display text-[20px] leading-tight truncate">More {guide.city.trim()} guides</span>
+              <span className="block text-[12.5px] text-ink-muted">From people you follow first, then everyone</span>
+            </span>
+            <span aria-hidden className="text-[20px] text-terracotta">›</span>
+          </Link>
         </div>
       )}
 

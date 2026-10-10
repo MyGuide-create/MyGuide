@@ -12,6 +12,8 @@ import { SparkleIcon } from "@/components/Icons";
 import { listAllWishes } from "@/lib/wishes";
 import { PlaceTile } from "@/components/PlaceTile";
 import { placeArea } from "@/lib/places/neighbourhood";
+import { GuideCover } from "@/components/GuideCover";
+import { cityKey, cityTiles } from "@/lib/homeV2";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Search" };
@@ -61,6 +63,9 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
   const examples = q ? [] : await buildExamples(cities, !!user);
   const wanted = q ? [] : (await listAllWishes(user?.id)).slice(0, 3);
   const suggested = q ? null : await peopleToFollow(user?.id, 8);
+  // A search that names a city leads with that city's page (friends' guides, all guides, Plan a trip).
+  const cityTile = intent?.city ? (await cityTiles(user?.id)).byCity.get(cityKey(intent.city)) ?? null : null;
+  const cityHref = (name: string, country?: string) => `/city?${new URLSearchParams({ name, ...(country ? { country } : {}) }).toString()}`;
 
   const peopleSection = people.hits.length > 0 && (
     <section>
@@ -111,7 +116,7 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
               <h2 className="text-[12px] font-medium uppercase tracking-[0.08em] text-ink-muted mb-2">Cities with guides</h2>
               <div className="flex flex-wrap gap-2">
                 {cities.map((c) => (
-                  <Link key={c} href={`/search?q=${encodeURIComponent(`guides to ${c}`)}`} className="rounded-full border border-line px-[15px] py-[7px] text-[12.5px] font-medium text-ink-muted hover:border-terracotta-soft hover:text-ink">{c}</Link>
+                  <Link key={c} href={cityHref(c)} className="rounded-full border border-line px-[15px] py-[7px] text-[12.5px] font-medium text-ink-muted hover:border-terracotta-soft hover:text-ink">{c}</Link>
                 ))}
               </div>
             </div>
@@ -156,6 +161,19 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
           </div>
           {intent.scope === "following" && !user && (
             <EmptyState title="Sign up to search your people" body="“By people I'm following” needs to know who you follow." action={<LinkButton href={`/signup?why=following&next=${encodeURIComponent(`/search?q=${q}`)}`} size="sm">Sign up</LinkButton>} />
+          )}
+          {cityTile && (
+            <Link href={cityHref(cityTile.city, cityTile.country)} className="flex items-center gap-3 rounded-[20px] bg-ink text-cream p-3 hover:bg-ink/90">
+              <GuideCover guide={cityTile.cover.guide} ownerUsername={cityTile.cover.owner.username} bare className="w-16 h-16 rounded-xl shrink-0" />
+              <span className="flex-1 min-w-0">
+                <span className="block font-display text-[24px] leading-tight truncate">{cityTile.city}</span>
+                <span className="block text-[13px] text-cream-deep">
+                  {cityTile.guides} guide{cityTile.guides === 1 ? "" : "s"}
+                  {cityTile.friends > 0 ? ` · ${cityTile.friends} from friends` : ""}
+                </span>
+              </span>
+              <span className="shrink-0 text-[13px] font-semibold pr-1">Open <span aria-hidden>›</span></span>
+            </Link>
           )}
           {!placeSearch && peopleSection}
           {placeHits.length > 0 && (
