@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { PreviewNotAllowed } from "@/components/PreviewGate";
 import { AppShell, TopBar } from "@/components/AppShell";
 import { GuideCover } from "@/components/GuideCover";
 import { PlusIcon, SparkleIcon } from "@/components/Icons";
@@ -20,7 +21,8 @@ const one = (v: string | string[] | undefined) => (typeof v === "string" ? v.tri
 /** Admin-only preview of the slim city page: friends' guides, then every guide for the city with a sort. */
 export default async function CityV2Page({ searchParams }: { searchParams: Promise<SP> }) {
   const user = await getCurrentUser();
-  if (!user || !isAdmin(user)) redirect("/");
+  if (!user) redirect("/login?next=%2Fcity-v2");
+  if (!isAdmin(user)) return <PreviewNotAllowed username={user.username} />;
   const sp = await searchParams;
   const city = one(sp.name).slice(0, 80);
   const country = one(sp.country).slice(0, 80);

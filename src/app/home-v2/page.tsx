@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { PreviewNotAllowed } from "@/components/PreviewGate";
 import { AppShell, Wordmark } from "@/components/AppShell";
 import { GoingSomewhere } from "@/components/GoingSomewhere";
 import { GuideCover } from "@/components/GuideCover";
@@ -19,7 +20,8 @@ const cityHref = (t: { city: string; country?: string }) =>
 /** Admin-only preview of the city-first Home. The live Home (/) is unchanged. */
 export default async function HomeV2Page() {
   const user = await getCurrentUser();
-  if (!user || !isAdmin(user)) redirect("/");
+  if (!user) redirect("/login?next=%2Fhome-v2");
+  if (!isAdmin(user)) return <PreviewNotAllowed username={user.username} />;
 
   const [{ friendCities, moreCities, byCity }, trip, wanted, following] = await Promise.all([
     cityTiles(user.id),
