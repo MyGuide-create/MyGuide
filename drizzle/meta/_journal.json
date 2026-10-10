@@ -162,6 +162,13 @@
       "when": 1791480000000,
       "tag": "0022_guide_requests",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "6",
+      "when": 1791650000000,
+      "tag": "0023_trip_planned",
+      "breakpoints": true
     }
   ]
 }

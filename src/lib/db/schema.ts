@@ -501,6 +501,8 @@ export const trips = sqliteTable(
     endDate: text("end_date"),
     /** The private guide this trip's places were combined into ("My Lisbon trip"). */
     guideId: text("guide_id").references(() => guides.id, { onDelete: "set null" }),
+    /** True only when the person chose Plan a trip. Trips made behind the scenes ("Add to my guide" → trip guide) stay false and never show on Home. */
+    planned: integer("planned", { mode: "boolean" }).notNull().default(false),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   },
   (t) => [index("trips_user_idx").on(t.userId)],

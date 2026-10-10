@@ -36,6 +36,7 @@ export async function createTrip(_prev: TripState, formData: FormData): Promise<
     country: known?.country ?? "",
     startDate: start || null,
     endDate: end || null,
+    planned: true,
     createdAt: new Date(),
   });
   revalidatePath("/trips");

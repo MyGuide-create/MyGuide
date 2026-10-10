@@ -66,10 +66,13 @@ export async function cityTiles(viewerId: string | null | undefined): Promise<{ 
   return { friendCities, moreCities, byCity };
 }
 
-/** The trip to show on Home: the soonest upcoming dated trip, else the newest undated one from the last 60 days. */
+/**
+ * The trip to show on Home: only trips the person chose to plan (Plan a trip), never ones created
+ * behind the scenes by "Add to my guide". Soonest upcoming dated trip, else the newest undated one.
+ */
 export async function nextTrip(userId: string): Promise<{ trip: Trip; daysAway: number | null } | null> {
   const db = await getDb();
-  const mine = await db.select().from(trips).where(eq(trips.userId, userId)).orderBy(desc(trips.createdAt));
+  const mine = await db.select().from(trips).where(and(eq(trips.userId, userId), eq(trips.planned, true))).orderBy(desc(trips.createdAt));
   const today = new Date().toISOString().slice(0, 10);
   const upcoming = mine
     .filter((t) => t.startDate && (t.endDate ?? t.startDate) >= today)
@@ -79,7 +82,7 @@ export async function nextTrip(userId: string): Promise<{ trip: Trip; daysAway: 
     const days = Math.round((Date.parse(t.startDate!) - Date.parse(today)) / 86_400_000);
     return { trip: t, daysAway: days };
   }
-  const recent = mine.find((t) => !t.startDate && Date.now() - t.createdAt.getTime() < 60 * 86_400_000);
+  const recent = mine.find((t) => !t.startDate);
   return recent ? { trip: recent, daysAway: null } : null;
 }
 
