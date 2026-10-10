@@ -19,7 +19,8 @@ export default async function CreatePage({ searchParams }: PageProps<"/create">)
   const wishParam = typeof sp.wish === "string" ? sp.wish : "";
   const keep = new URLSearchParams(Object.entries(sp).filter((e): e is [string, string] => typeof e[1] === "string" && ["wish", "city", "country", "lat", "lng", "import", "ask"].includes(e[0]))).toString();
   const user = await requireUser(`/create${keep ? `?${keep}` : ""}`);
-  // "Make Hisham a guide" from an ask: the asker's wish, their city and a title are filled in.
+  // "Make Hisham a guide" from an ask: the asker's wish and their city are filled in.
+  // The title is NOT: the creator must name it (an automatic "Dubai for Hisham" looks odd once published).
   const askId = typeof sp.ask === "string" ? sp.ask : "";
   const ask = askId ? await getRequestById(askId) : null;
   const myAsk = ask && ask.recipientId === user.id && ask.status !== "done" ? ask : null;
@@ -54,7 +55,6 @@ export default async function CreatePage({ searchParams }: PageProps<"/create">)
         initialCity={initialCity}
         startWithImport={sp.import === "1"}
         askId={myAsk?.id}
-        initialTitle={myAsk && askerFirst ? `${myAsk.city} for ${askerFirst}` : undefined}
       />
     </AppShell>
   );

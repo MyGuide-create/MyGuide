@@ -121,6 +121,9 @@ export const CategoryGlyph = ({ name, size = 26 }: { name: string; size?: number
       return <svg {...p}><path d="M3 8a2 2 0 0 0 0 4v4a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1v-4a2 2 0 0 1 0-4V6a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1z" /><path d="M14 5v12" strokeDasharray="2 2" /></svg>;
     case "Sports & Wellness":
       return <svg {...p}><path d="M5 19c8 0 14-6 14-14-8 0-14 6-14 14z" /><path d="M5 19c3-3 6-6 10-9" /></svg>;
+    case "Beauty":
+      // Nail-polish bottle with a sparkle.
+      return <svg {...p}><path d="M9 3h4v4H9z" /><path d="M7.5 7h7l1 3v9a2 2 0 0 1-2 2h-5a2 2 0 0 1-2-2v-9z" /><path d="M19 3v4M17 5h4" /></svg>;
     case "Spiritual":
       return <svg {...p}><circle cx="12" cy="12" r="4" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1" /></svg>;
     case "Shopping":

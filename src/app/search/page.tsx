@@ -22,6 +22,7 @@ const CATEGORY_PHRASES: Record<string, (city: string) => string> = {
   "Scenic Spots": (c) => `Best views in ${c}`,
   Entertainment: (c) => `Things to do in ${c}`,
   "Sports & Wellness": (c) => `Wellness in ${c}`,
+  Beauty: (c) => `Hair and nails in ${c}`,
   Spiritual: (c) => `Temples in ${c}`,
   Shopping: (c) => `Shopping in ${c}`,
   Nature: (c) => `Beaches and nature in ${c}`,

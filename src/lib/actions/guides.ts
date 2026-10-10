@@ -82,7 +82,9 @@ export async function createGuide(input: { title: string; city?: string; country
   const user = await getCurrentUser();
   if (!user) redirect("/login?next=/create");
   const db = await getDb();
-  const title = input.title.trim() || "Untitled guide";
+  // Every guide is named by its creator — no automatic titles.
+  const title = input.title.trim();
+  if (!title) throw new UserError("Give your guide a title.", "invalid");
   const known = findCity(input.city);
   const id = newId();
   const slug = await uniqueSlug(title);

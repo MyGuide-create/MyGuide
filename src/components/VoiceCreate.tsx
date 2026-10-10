@@ -97,7 +97,8 @@ export function VoiceCreate({
       setResult(data);
       setDraft(data.places.map((p, i) => ({ ...p, key: `${i}-${p.name}` })));
       // Keep a title the creator already typed; only fill in the suggestion when it's empty.
-      setTitle((t) => t.trim() || data.title);
+      // Not for a guide made for someone (an ask or a wish): the creator names that one themselves.
+      if (!forWish) setTitle((t) => t.trim() || data.title);
       setCity((c) => c.trim() || data.city);
       setStage("review");
     } catch (e) {
@@ -184,7 +185,7 @@ export function VoiceCreate({
       ]);
       const guideTitle = listTitle || opts.fallbackTitle || "";
       setResult({ title: guideTitle, city: firstCity?.city ?? "", country: firstCity?.country ?? "", places: [], ai: true });
-      setTitle((t) => t.trim() || guideTitle);
+      if (!forWish) setTitle((t) => t.trim() || guideTitle);
       setCity((c) => c.trim() || (firstCity?.city ?? ""));
       setFromList(true);
       setStage("review");
@@ -196,10 +197,11 @@ export function VoiceCreate({
   const finish = async () => {
     const kept = draft.filter((p) => !p.removed);
     if (!kept.length) { setError("Keep at least one place."); return; }
+    if (!title.trim()) { setError("Give your guide a title — something friends will recognise, like “" + example + "”."); return; }
     setCreating(true);
     try {
       const slug = await createGuide({
-        title: title.trim() || result?.title || "My Guide",
+        title: title.trim(),
         city: city || result?.city,
         country: result?.country,
         wishIds: forWish?.ids,
@@ -257,7 +259,7 @@ export function VoiceCreate({
         </div>
         <div>
           <Label htmlFor="guide-title">Title</Label>
-          <Input id="guide-title" value={title} onChange={(e) => { setTitle(e.target.value); setError(null); }} placeholder={forWish ? `e.g. ${forWish.city} for ${forWish.names[0]}` : `e.g. ${example}`} autoFocus={!!initialCity || !!forWish} />
+          <Input id="guide-title" value={title} onChange={(e) => { setTitle(e.target.value); setError(null); }} placeholder={forWish ? `e.g. Hidden gems of ${forWish.city}` : `e.g. ${example}`} autoFocus={!!initialCity || !!forWish} />
         </div>
         {error && <p className="text-[12.5px] text-danger">{error}</p>}
         <Button size="lg" onClick={createTyped} disabled={creating || !title.trim() || !(picked || city.trim())}>{creating ? <Spinner /> : "Start guide"}</Button>
@@ -411,7 +413,8 @@ export function VoiceCreate({
       <div className="px-5 pt-3 pb-28 flex flex-col gap-4">
         <div>
           <Label>Title</Label>
-          <input value={title} onChange={(e) => setTitle(e.target.value)} className="w-full bg-transparent font-display text-[32px] leading-[1.05] outline-none border-b border-line focus:border-terracotta-soft" />
+          <input value={title} onChange={(e) => { setTitle(e.target.value); setError(null); }} placeholder={forWish ? `e.g. Hidden gems of ${forWish.city}` : `e.g. ${example}`} autoFocus={!title} aria-required className="w-full bg-transparent font-display text-[32px] leading-[1.05] outline-none border-b border-line focus:border-terracotta-soft placeholder:text-ink-faint" />
+          {!title.trim() && <p className="mt-1.5 text-[12.5px] text-terracotta-deep">Give your guide a title before you create it.</p>}
           <div className="mt-2 flex items-center gap-2">
             <Label className="mb-0">City</Label>
             <input value={city} onChange={(e) => setCity(e.target.value)} placeholder="Where is this guide?" className="flex-1 bg-transparent text-[14px] outline-none border-b border-line focus:border-terracotta-soft py-1" />
@@ -487,7 +490,7 @@ export function VoiceCreate({
           <div className="pointer-events-auto w-full max-w-[480px] safe-bottom bg-paper/95 backdrop-blur border-t border-line px-4 py-3 flex items-center gap-2">
             <button type="button" onClick={() => { setStage("paste"); setFromList(false); setError(null); }} className="text-[13px] font-medium text-ink-muted px-3 py-2">Start over</button>
             <div className="flex-1" />
-            <Button onClick={finish} disabled={creating || kept.length === 0}>{creating ? <Spinner /> : `Create guide · ${kept.length} place${kept.length === 1 ? "" : "s"}`}</Button>
+            <Button onClick={finish} disabled={creating || kept.length === 0 || !title.trim()}>{creating ? <Spinner /> : `Create guide · ${kept.length} place${kept.length === 1 ? "" : "s"}`}</Button>
           </div>
         </div>
       </div>

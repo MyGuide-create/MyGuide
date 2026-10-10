@@ -85,6 +85,7 @@ export function heuristicSearchIntent(query: string): SearchIntent {
   const catSynonyms: Array<[RegExp, Category]> = [
     [/\b(food|eat|eating|restaurants?|dinner|lunch|brunch|coffee|cafes?|ramen|tacos?|drinks?)\b/, "Food & Drinks"],
     [/\b(bars?|clubs?|party|nightlife|night out|cocktails?)\b/, "Nightlife"],
+    [/\b(salons?|hair|haircuts?|nails?|manicures?|pedicures?|barbers?|lashes|brows|beauty|blowouts?)\b/, "Beauty"],
     [/\b(wellness|spa|gym|yoga|onsen|hammam|surf|hike|hiking|run|running)\b/, "Sports & Wellness"],
     [/\b(shopping|shops?|markets?|boutiques?|vintage)\b/, "Shopping"],
     [/\b(nature|parks?|beach|beaches|gardens?|outdoors?)\b/, "Nature"],
@@ -96,7 +97,7 @@ export function heuristicSearchIntent(query: string): SearchIntent {
   if (!intent.category) for (const [re, c] of catSynonyms) if (re.test(lower)) { intent.category = c; break; }
   // Generic category words ("eat", "food", "nightlife") say nothing beyond the category itself, so drop them
   // from keywords. Specific ones ("tacos", "ramen", "beach") stay — they find the right places.
-  const GENERIC = /^(food|foods|eat|eating|drink|drinks|restaurants?|nightlife|party|wellness|shopping|shops?|nature|outdoors?|hotels?|stay|sleep|spiritual|entertainment|sightseeing|sights|scenic)$/;
+  const GENERIC = /^(food|foods|eat|eating|drink|drinks|restaurants?|nightlife|party|wellness|beauty|salons?|shopping|shops?|nature|outdoors?|hotels?|stay|sleep|spiritual|entertainment|sightseeing|sights|scenic)$/;
   const categoryWords = [GENERIC];
 
   const stop = new Set(["show", "me", "find", "search", "for", "guides", "guide", "to", "in", "of", "the", "a", "an", "by", "people", "i", "am", "im", "following", "follow", "my", "friends", "public", "any", "all", "some", "what", "are", "there", "good", "best", "please", "with", "and", "from", "about", "on", "around", "near", "want", "looking", "list", "lists", "where", "when", "which", "who", "how", "should", "can", "could", "would", "things", "thing", "places", "place", "spots", "spot", "visit", "visiting", "see", "go", "going", "get", "top", "nice", "cool", "great", "favorite", "favourite", "favorites", "favourites", "recommend", "recommendations", "recs", "trip", "travel", "tell", "give", "need", "something", "anything", "this", "that", "weekend", "today", "tonight"]);
