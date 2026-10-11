@@ -13,6 +13,7 @@ import { notifyGuidePublished, notifyPlacesAdded } from "../notify";
 import { sendWishGrants, wishesForMaking } from "../wishes";
 import { getPlacesProvider, isCategory, resolvePlaceByName, type PlaceResult } from "../places";
 import { findCity } from "../places/cities";
+import { correctTypedCity } from "../places/correctCity";
 import { getPlacePhotos, reverseGeocode } from "../places/google";
 import { validPin } from "../places/pins";
 import type { BranchCandidate } from "../places/branches";
@@ -85,6 +86,9 @@ export async function createGuide(input: { title: string; city?: string; country
   // Every guide is named by its creator — no automatic titles.
   const title = input.title.trim();
   if (!title) throw new UserError("Give your guide a title.", "invalid");
+  // Typed by hand (no country from Google): a clear misspelling ("Brussles") is saved as the real city.
+  const fixed = input.city?.trim() && !input.country?.trim() && !findCity(input.city) ? await correctTypedCity(input.city) : null;
+  if (fixed) input = { ...input, city: fixed.city, country: fixed.country, lat: Number.isFinite(fixed.lat) ? fixed.lat : input.lat, lng: Number.isFinite(fixed.lng) ? fixed.lng : input.lng };
   const known = findCity(input.city);
   const id = newId();
   const slug = await uniqueSlug(title);
@@ -190,6 +194,9 @@ export async function updateGuideMeta(
   const set: Partial<typeof guides.$inferInsert> = { updatedAt: new Date() };
   if (patch.title !== undefined) set.title = patch.title.trim() || guide.title;
   if (patch.city !== undefined) {
+    // Typed by hand (no country from Google): a clear misspelling ("Brussles") is saved as the real city.
+    const fixed = patch.city.trim() && !patch.country?.trim() && !findCity(patch.city) ? await correctTypedCity(patch.city) : null;
+    if (fixed) patch = { ...patch, city: fixed.city, country: fixed.country, ...(Number.isFinite(fixed.lat) ? { lat: fixed.lat, lng: fixed.lng } : {}) };
     const known = findCity(patch.city);
     // Picked from Google (country given): keep the name as picked; typed by hand: match the built-in list.
     set.city = patch.country !== undefined && patch.country.trim() ? tidyCity(patch.city) : known?.city ?? tidyCity(patch.city);

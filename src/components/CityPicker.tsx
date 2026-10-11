@@ -100,13 +100,6 @@ export function CityPicker({
     await onFreeText(text);
   };
 
-  const keepTyped = async () => {
-    if (!fix || !onFreeText) return;
-    const typed = fix.typed;
-    setFix(null);
-    await onFreeText(typed);
-  };
-
   const showList = open && touched && q.trim().length >= 2;
 
   return (
@@ -170,10 +163,8 @@ export function CityPicker({
             >
               Yes, {fix.suggestion.mainText}
             </button>
-            <button type="button" onClick={keepTyped} className="rounded-full border border-line bg-paper px-4 py-2 text-[14px] text-ink-muted">
-              No, keep “{fix.typed}”
-            </button>
           </div>
+          <p className="mt-2 text-[12.5px] text-ink-muted">Not it? Change the spelling above.</p>
         </div>
       )}
       {showList && (items.length > 0 || onFreeText) && (

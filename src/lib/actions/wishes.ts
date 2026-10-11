@@ -8,6 +8,7 @@ import { hiddenUserIds } from "../blocks";
 import { getDb } from "../db";
 import { guideWishes, guides, wishGrants } from "../db/schema";
 import { findCity } from "../places/cities";
+import { correctTypedCity } from "../places/correctCity";
 import { newId } from "../utils";
 import { MAX_WISHES, sendWishGrants } from "../wishes";
 
@@ -25,7 +26,9 @@ export async function addWish(cityInput: string, noteInput = ""): Promise<WishRe
   const raw = cityInput.trim().replace(/\s+/g, " ").slice(0, 60);
   if (raw.length < 2) return { ok: false, error: "Type a city." };
   const known = findCity(raw);
-  const city = known?.city ?? raw;
+  // A clear misspelling ("Brussles") is saved as the real city.
+  const fixed = known ? null : await correctTypedCity(raw);
+  const city = known?.city ?? fixed?.city ?? raw;
   const note = noteInput.trim().replace(/\s+/g, " ").slice(0, 80);
   const db = await getDb();
   const existing = await db.query.guideWishes.findFirst({ where: and(eq(guideWishes.userId, user.id), sql`lower(${guideWishes.city}) = ${city.toLowerCase()}`) });
@@ -37,7 +40,7 @@ export async function addWish(cityInput: string, noteInput = ""): Promise<WishRe
   const [{ n }] = await db.select({ n: sql<number>`count(*)` }).from(guideWishes).where(eq(guideWishes.userId, user.id));
   if (Number(n) >= MAX_WISHES) return { ok: false, error: `Your wish list is full (${MAX_WISHES} cities). Remove one first.` };
   const id = newId();
-  await db.insert(guideWishes).values({ id, userId: user.id, city, country: known?.country ?? "", note, createdAt: new Date() });
+  await db.insert(guideWishes).values({ id, userId: user.id, city, country: known?.country ?? fixed?.country ?? "", note, createdAt: new Date() });
   refresh(user.username);
   return { ok: true, id, city };
 }
