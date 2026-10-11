@@ -87,9 +87,10 @@ export function NoteEditor({
             Undo tidy
           </button>
         )}
-        {dirty && (
-          <Button size="sm" variant="secondary" onClick={() => save()} disabled={saving}>{saving ? <Spinner /> : "Save note"}</Button>
-        )}
+        {/* Always there, like the tip box's Add (it also saves when you leave the box). */}
+        <Button size="sm" variant={dirty ? "secondary" : "outline"} onClick={() => save()} disabled={saving || !dirty}>
+          {saving ? <Spinner /> : dirty ? "Save" : text.trim() ? "Saved" : "Save"}
+        </Button>
         {clip && (
           <span className="inline-flex items-center gap-2">
             <AudioClip mediaId={clip} />

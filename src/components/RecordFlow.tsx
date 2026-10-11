@@ -60,6 +60,8 @@ export function RecordFlow({ guides }: { guides: GuideOption[] }) {
   const shownInfo = pickedId && googleInfo?.id === pickedId ? googleInfo.info : null;
 
   const [special, setSpecial] = useState("");
+  /** The description box, before Add (works like the tip box; Continue keeps it too). */
+  const [specialDraft, setSpecialDraft] = useState("");
   const [tips, setTips] = useState<string[]>([]);
   const [tipDraft, setTipDraft] = useState("");
   const [photoIds, setPhotoIds] = useState<string[]>([]);
@@ -254,7 +256,36 @@ export function RecordFlow({ guides }: { guides: GuideOption[] }) {
           <div className="flex flex-col gap-5 px-5 pt-5">
             <div>
               <label className="block text-[12px] font-medium uppercase tracking-[0.02em] text-ink-muted mb-1.5">Description - What Makes It Special</label>
-              <Textarea rows={3} value={special} onChange={(e) => setSpecial(e.target.value)} placeholder="What it is, and what makes it special — the view, the service, that one dish…" />
+              {special ? (
+                <div className="flex items-start gap-2 rounded-2xl bg-terracotta-tint px-3 py-2">
+                  <span className="flex-1 text-[13px] leading-snug whitespace-pre-line">{special}</span>
+                  <button type="button" onClick={() => { setSpecialDraft(special); setSpecial(""); }} className="text-[12px] font-medium text-terracotta-deep underline underline-offset-2 shrink-0">
+                    Edit
+                  </button>
+                  <button type="button" aria-label="Remove description" onClick={() => setSpecial("")} className="text-ink-faint hover:text-danger shrink-0">
+                    <XIcon size={13} />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-start gap-2">
+                  <Textarea
+                    rows={3}
+                    value={specialDraft}
+                    onChange={(e) => setSpecialDraft(e.target.value)}
+                    placeholder="What it is, and what makes it special — the view, the service, that one dish…"
+                    className="flex-1"
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={!specialDraft.trim()}
+                    onClick={() => { if (specialDraft.trim()) { setSpecial(specialDraft.trim()); setSpecialDraft(""); } }}
+                  >
+                    Add
+                  </Button>
+                </div>
+              )}
             </div>
             <div>
               <label className="block text-[12px] font-medium uppercase tracking-[0.02em] text-ink-muted mb-1.5">Expert tips</label>
@@ -328,7 +359,8 @@ export function RecordFlow({ guides }: { guides: GuideOption[] }) {
             <Button
               className="w-full"
               onClick={() => {
-                // A tip typed but not added yet still counts.
+                // Text typed but not added yet still counts (description and tip alike).
+                if (specialDraft.trim()) { setSpecial(specialDraft.trim()); setSpecialDraft(""); }
                 if (tipDraft.trim()) { setTips((ts) => [...ts, tipDraft.trim()]); setTipDraft(""); }
                 setStep("save");
               }}
