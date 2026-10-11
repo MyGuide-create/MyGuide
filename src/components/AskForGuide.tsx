@@ -10,6 +10,8 @@ import { Sheet } from "./ShareSheet";
 import { Avatar, Button, Label, Spinner, Textarea, cx } from "./ui";
 
 type City = { city: string; country?: string; lat?: number | null; lng?: number | null };
+/** "Pass it on": someone else's wish, asked on their behalf. */
+export type PassOnWish = { id: string; city: string; country?: string; userId: string; name: string };
 
 /**
  * "Ask a friend for a guide": pick the city, pick people on MyGuide and/or send a link on WhatsApp.
@@ -19,6 +21,7 @@ type City = { city: string; country?: string; lat?: number | null; lng?: number 
 export function AskForGuideButton({
   city,
   person,
+  forWish,
   label,
   variant = "outline",
   size = "sm",
@@ -27,6 +30,8 @@ export function AskForGuideButton({
   city?: City | null;
   /** Asking a specific person (from their profile). */
   person?: PublicUser | null;
+  /** Pass on someone else's wish to a friend who could make it. */
+  forWish?: PassOnWish | null;
   label?: string;
   variant?: "primary" | "outline" | "secondary" | "ghost";
   size?: "sm" | "md" | "lg";
@@ -36,14 +41,15 @@ export function AskForGuideButton({
   return (
     <>
       <Button variant={variant} size={size} onClick={() => setOpen(true)} className={className}>
-        <SparkleIcon size={14} /> {label ?? (person ? `Ask ${person.displayName.split(" ")[0]} for a guide` : city ? `Ask a friend for a ${city.city} guide` : "Ask a friend for a guide")}
+        <SparkleIcon size={14} /> {label ?? (forWish ? "Pass it on" : person ? `Ask ${person.displayName.split(" ")[0]} for a guide` : city ? `Ask a friend for a ${city.city} guide` : "Ask a friend for a guide")}
       </Button>
-      {open && <AskSheet city={city ?? null} person={person ?? null} onClose={() => setOpen(false)} />}
+      {open && <AskSheet city={forWish ? { city: forWish.city, country: forWish.country } : city ?? null} person={person ?? null} forWish={forWish ?? null} onClose={() => setOpen(false)} />}
     </>
   );
 }
 
-function AskSheet({ city: initialCity, person, onClose }: { city: City | null; person: PublicUser | null; onClose: () => void }) {
+function AskSheet({ city: initialCity, person, forWish, onClose }: { city: City | null; person: PublicUser | null; forWish: PassOnWish | null; onClose: () => void }) {
+  const wisher = forWish?.name.split(" ")[0] ?? null;
   const [city, setCity] = useState<City | null>(initialCity);
   const [picked, setPicked] = useState<PublicUser[]>(person ? [person] : []);
   const [note, setNote] = useState("");
@@ -55,7 +61,7 @@ function AskSheet({ city: initialCity, person, onClose }: { city: City | null; p
   /** The ask link is made; the message waits for a tap that opens WhatsApp (a real tap is what makes phones open the contact picker). */
   const [ready, setReady] = useState<string | null>(null);
 
-  const input = () => ({ city: city!.city, country: city!.country ?? "", lat: city!.lat ?? null, lng: city!.lng ?? null, note });
+  const input = () => ({ city: city!.city, country: city!.country ?? "", lat: city!.lat ?? null, lng: city!.lng ?? null, note, ...(forWish ? { forWishId: forWish.id } : {}) });
 
   const sendApp = async () => {
     if (!city || !picked.length) return;
@@ -111,15 +117,17 @@ function AskSheet({ city: initialCity, person, onClose }: { city: City | null; p
 
   if (sentTo || linkSent) {
     return (
-      <Sheet title="Ask sent" onClose={onClose}>
+      <Sheet title={wisher ? "Passed on" : "Ask sent"} onClose={onClose}>
         <div className="flex flex-col items-center text-center gap-3 py-4">
           <span className="w-14 h-14 rounded-full bg-sage-tint text-sage flex items-center justify-center"><CheckIcon size={26} /></span>
           <p className="text-[15px] leading-snug">
-            {sentTo ? <>Asked <b>{sentTo.join(", ")}</b> for a {city?.city} guide.</> : copied ? <>Message copied — paste it to your friend.</> : <>Your {city?.city} ask is on its way.</>}
+            {sentTo ? <>Asked <b>{sentTo.join(", ")}</b> {wisher ? <>to make {wisher} a {city?.city} guide.</> : <>for a {city?.city} guide.</>}</> : copied ? <>Message copied — paste it to your friend.</> : <>Your {city?.city} ask is on its way.</>}
           </p>
-          <p className="text-[13px] text-ink-muted leading-relaxed">We&apos;ll tell you when they open it and when your guide is ready. You can follow it on your wish list.</p>
+          <p className="text-[13px] text-ink-muted leading-relaxed">
+            {wisher ? <>We&apos;ve told {wisher}. The guide goes straight to them, and we&apos;ll let you know when it&apos;s made.</> : <>We&apos;ll tell you when they open it and when your guide is ready. You can follow it on your wish list.</>}
+          </p>
           <div className="mt-2 flex flex-col gap-2 w-full">
-            {sentTo && <Button variant="outline" onClick={() => setSentTo(null)}>Ask someone else too</Button>}
+            {sentTo && <Button variant="outline" onClick={() => { setSentTo(null); setPicked([]); }}>Ask someone else too</Button>}
             {linkSent && <Button variant="outline" onClick={() => { setLinkSent(false); setReady(null); setCopied(false); }}>Ask someone else too</Button>}
             <Button variant="ghost" onClick={onClose}>Done</Button>
           </div>
@@ -157,10 +165,10 @@ function AskSheet({ city: initialCity, person, onClose }: { city: City | null; p
   }
 
   return (
-    <Sheet title="Ask for a guide" onClose={onClose}>
+    <Sheet title={wisher ? `Pass on ${wisher}'s wish` : "Ask for a guide"} onClose={onClose}>
       <div className="flex flex-col gap-5">
         <div>
-          <Label htmlFor="ask-city">Where are you going?</Label>
+          <Label htmlFor="ask-city">{wisher ? `${wisher} wants a guide to` : "Where are you going?"}</Label>
           {city ? (
             <div className="flex items-center justify-between rounded-xl border border-line bg-paper px-3.5 h-12">
               <span className="text-[15px] font-medium">{[city.city, city.country].filter(Boolean).join(", ")}</span>
@@ -172,7 +180,7 @@ function AskSheet({ city: initialCity, person, onClose }: { city: City | null; p
         </div>
 
         <div>
-          <Label>Who knows it?</Label>
+          <Label>{wisher ? `Who could make ${wisher} one?` : "Who knows it?"}</Label>
           {picked.length > 0 && (
             <div className="mb-2 flex flex-wrap gap-2">
               {picked.map((p) => (
@@ -185,12 +193,12 @@ function AskSheet({ city: initialCity, person, onClose }: { city: City | null; p
               ))}
             </div>
           )}
-          <PeopleSearch exclude={picked.map((p) => p.id)} onPick={(u) => setPicked((x) => [...x, u])} />
+          <PeopleSearch exclude={[...picked.map((p) => p.id), ...(forWish ? [forWish.userId] : [])]} onPick={(u) => setPicked((x) => [...x, u])} />
         </div>
 
         <div>
           <Label htmlFor="ask-note">A note (optional)</Label>
-          <Textarea id="ask-note" rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Going next week with the boys — mostly food and nightlife" />
+          <Textarea id="ask-note" rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder={wisher ? `e.g. You lived there — ${wisher} loves food and markets` : "e.g. Going next week with the boys — mostly food and nightlife"} />
         </div>
 
         {error && <p className="text-[12.5px] text-danger">{error}</p>}
@@ -203,7 +211,7 @@ function AskSheet({ city: initialCity, person, onClose }: { city: City | null; p
           )}
           <div className={cx("rounded-2xl border border-line bg-paper p-3.5", picked.length ? "" : "border-terracotta-soft")}>
             <p className="text-[13px] font-semibold">Friend not on MyGuide?</p>
-            <p className="text-[12px] text-ink-muted leading-snug">Send them a personal link — they sign up in a minute and land straight in your guide.</p>
+            <p className="text-[12px] text-ink-muted leading-snug">{wisher ? `Send them a personal link — they sign up in a minute and make ${wisher}'s guide straight away.` : "Send them a personal link — they sign up in a minute and land straight in your guide."}</p>
             <div className="mt-2.5 flex gap-2">
               <Button size="sm" disabled={!city || !!busy} onClick={prepareLink} className="flex-1 bg-[#25D366]! hover:bg-[#1ebe5b]! text-white! border-transparent!">
                 {busy === "link" ? <Spinner /> : <><WhatsAppIcon size={15} /> WhatsApp</>}

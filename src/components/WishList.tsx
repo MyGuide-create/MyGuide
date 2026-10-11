@@ -142,6 +142,9 @@ export function WishList({ wishes, own, ownerName, ownerUsername, signedIn }: { 
                       <LinkButton href={`/signup?why=create&next=${encodeURIComponent(`/u/${ownerUsername}#wishes`)}`} size="sm">Make this guide</LinkButton>
                     )}
                     <SendGuideButton wishId={w.wish.id} guides={w.viewerGuides} sent={w.viewerSent} wisherName={first} />
+                    {signedIn && w.granted.length === 0 && (
+                      <AskForGuideButton variant="ghost" forWish={{ id: w.wish.id, city: w.wish.city, country: w.wish.country, userId: w.wish.userId, name: ownerName }} label="Know someone? Pass it on" />
+                    )}
                   </div>
                 )}
               </div>

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { AppShell, Wordmark } from "@/components/AppShell";
 import { GoingSomewhere } from "@/components/GoingSomewhere";
 import { GuideCover } from "@/components/GuideCover";
+import { AskForGuideButton } from "@/components/AskForGuide";
 import { Avatar, LinkButton } from "@/components/ui";
 import { getCurrentUser } from "@/lib/auth";
 import { listFeed, type GuideCard } from "@/lib/guides";
@@ -169,6 +170,11 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
                     <span className="flex-1 min-w-0 px-1">
                       <span className="block font-semibold text-[15.5px]">{w.group.city}</span>
                       <span className="block text-[13px] text-ink-muted">{who} · {tile ? `${tile.guides} guide${tile.guides === 1 ? "" : "s"}` : "no guides yet"}</span>
+                      {user && (() => {
+                        // Pass on the wish of someone you know first, else the first person who wished.
+                        const p = w.known[0] ?? w.others[0];
+                        return <AskForGuideButton variant="ghost" size="sm" className="-ml-2 mt-0.5 px-2!" forWish={{ id: p.wish.id, city: p.wish.city, country: p.wish.country, userId: p.user.id, name: p.user.displayName }} label="Know someone? Pass it on" />;
+                      })()}
                     </span>
                     <LinkButton href={makeHref(w.others.map((p) => p.wish.id).join(","))} variant="outline" size="sm">Make it</LinkButton>
                   </li>

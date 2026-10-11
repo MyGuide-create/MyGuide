@@ -45,7 +45,7 @@ export async function getRequestById(id: string): Promise<GuideRequest | null> {
  * Returns the updated request, or null if it was meant for someone else.
  */
 export async function claimRequest(req: GuideRequest, viewer: User): Promise<GuideRequest | null> {
-  if (viewer.id === req.requesterId) return req;
+  if (viewer.id === req.requesterId || viewer.id === req.passedById) return req;
   if (req.recipientId && req.recipientId !== viewer.id) return null;
   const db = await getDb();
   const now = new Date();
@@ -60,14 +60,16 @@ export async function claimRequest(req: GuideRequest, viewer: User): Promise<Gui
   const joinedThroughLink = !req.recipientId && req.channel === "link" && viewer.createdAt.getTime() >= req.createdAt.getTime();
   if (joinedThroughLink) {
     // Mutual follow — they came because of each other. No "started following you" noise; one clear notification instead.
+    // A passed-on ask: they know the friend who passed it on, not necessarily the person who wished.
+    const friendId = req.passedById ?? req.requesterId;
     await db
       .insert(follows)
       .values([
-        { followerId: viewer.id, followingId: req.requesterId, status: "accepted", createdAt: now },
-        { followerId: req.requesterId, followingId: viewer.id, status: "accepted", createdAt: now },
+        { followerId: viewer.id, followingId: friendId, status: "accepted", createdAt: now },
+        { followerId: friendId, followingId: viewer.id, status: "accepted", createdAt: now },
       ])
       .onConflictDoNothing();
-    await addNotifications([{ id: newId(), userId: req.requesterId, type: "request_joined", actorId: viewer.id, requestId: req.id, createdAt: now }]);
+    await addNotifications([{ id: newId(), userId: friendId, type: "request_joined", actorId: viewer.id, requestId: req.id, createdAt: now }]);
   }
   return { ...req, ...set } as GuideRequest;
 }
@@ -132,7 +134,25 @@ export async function pendingAsksFor(userId: string): Promise<IncomingAsk[]> {
 /** A guide made for an ask was published and sent: those asks are done. */
 export async function markAsksDone(guideId: string): Promise<void> {
   const db = await getDb();
+  // "Omar made Shahryar's Mexico City guide — thanks to you" for whoever passed the wish on.
+  const passed = await db
+    .select({ id: guideRequests.id, passedById: guideRequests.passedById })
+    .from(guideRequests)
+    .where(and(eq(guideRequests.guideId, guideId), inArray(guideRequests.status, ["opened", "making", "sent"]), sql`${guideRequests.passedById} is not null`));
+  if (passed.length) {
+    const guide = await db.query.guides.findFirst({ where: eq(guides.id, guideId) });
+    const now = new Date();
+    if (guide) await addNotifications(passed.filter((p) => p.passedById !== guide.ownerId).map((p) => ({ id: newId(), userId: p.passedById!, type: "request_passed_done", actorId: guide.ownerId, guideId, requestId: p.id, createdAt: now })));
+  }
   await db.update(guideRequests).set({ status: "done", respondedAt: new Date() }).where(and(eq(guideRequests.guideId, guideId), inArray(guideRequests.status, ["opened", "making", "sent"])));
+}
+
+/** "Pass it on": the text that goes with a link sent on someone else's behalf. */
+export function passOnMessage(passerFirstName: string, wisherFirstName: string, city: string, note: string, url: string): string {
+  const lines = [`Hi! My friend ${wisherFirstName} is looking for ${city} recommendations and I thought of you 🙏`];
+  if (note.trim()) lines.push(note.trim());
+  lines.push(`Could you make ${wisherFirstName} a quick guide on MyGuide? You can paste a list from Google Maps or WhatsApp — takes a few minutes, and it goes straight to them:`, url, `— ${passerFirstName}`);
+  return lines.join("\n\n");
 }
 
 /** The text that goes with an ask link on WhatsApp. */

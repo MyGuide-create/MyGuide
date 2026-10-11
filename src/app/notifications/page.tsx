@@ -48,6 +48,9 @@ export default async function NotificationsPage() {
     pendingAsksFor(user.id),
   ]);
   const reqMap = new Map(reqRows.map((q) => [q.id, q]));
+  // Names for "Pass it on" asks: who wished, and who was asked.
+  const reqPeopleIds = [...new Set(reqRows.flatMap((q) => [q.requesterId, q.recipientId]).filter((x): x is string => !!x))];
+  const reqPeople = new Map((reqPeopleIds.length ? await db.select().from(users).where(inArray(users.id, reqPeopleIds)) : []).map((u) => [u.id, u.displayName.split(" ")[0]]));
 
   // Opening the Notification Centre is itself "seeing" them — mark everything read now
   // so the bell badge clears immediately, instead of waiting for a separate action.
@@ -152,7 +155,23 @@ export default async function NotificationsPage() {
                       {who} used {n.count} {n.count === 1 ? "place" : "places"} from <span className="font-display text-[16px]">“{rawGuide.title}”</span> in their own guide, with your notes credited.
                     </>
                   )}
-                  {n.type === "guide_request" && (
+                  {n.type === "guide_request" && reqMap.get(n.requestId ?? "")?.passedById && (
+                    <>
+                      {who} thinks you could make {reqPeople.get(reqMap.get(n.requestId ?? "")!.requesterId) ?? "a friend"} a <b className="font-semibold">{reqMap.get(n.requestId ?? "")!.city}</b> guide.
+                      {reqMap.get(n.requestId ?? "")?.note ? <span className="block text-[12.5px] text-ink-muted italic">“{reqMap.get(n.requestId ?? "")!.note}”</span> : null}
+                    </>
+                  )}
+                  {n.type === "request_passed" && (
+                    <>
+                      {who} asked {reqPeople.get(reqMap.get(n.requestId ?? "")?.recipientId ?? "") ?? "a friend"} to make you a <b className="font-semibold">{reqMap.get(n.requestId ?? "")?.city ?? ""}</b> guide. <span className="text-ink-muted">You&apos;ll get it when it&apos;s published.</span>
+                    </>
+                  )}
+                  {n.type === "request_passed_done" && (
+                    <>
+                      {who} made {reqPeople.get(reqMap.get(n.requestId ?? "")?.requesterId ?? "") ?? "your friend"}&apos;s <b className="font-semibold">{reqMap.get(n.requestId ?? "")?.city ?? ""}</b> guide, thanks to you.
+                    </>
+                  )}
+                  {n.type === "guide_request" && !reqMap.get(n.requestId ?? "")?.passedById && (
                     <>
                       {who} asked you for a <b className="font-semibold">{reqMap.get(n.requestId ?? "")?.city ?? ""}</b> guide.
                       {reqMap.get(n.requestId ?? "")?.note ? <span className="block text-[12.5px] text-ink-muted italic">“{reqMap.get(n.requestId ?? "")!.note}”</span> : null}
@@ -183,7 +202,7 @@ export default async function NotificationsPage() {
                     {n.type === "guide_published" && <PlusIcon size={12} />}
                     {n.type === "places_added" && <PinIcon size={12} />}
                     {n.type === "guide_used" && <ForkIcon size={12} />}
-                    {(n.type === "wish_granted" || n.type === "guide_request" || n.type === "request_declined") && <SparkleIcon size={12} />}
+                    {(n.type === "wish_granted" || n.type === "guide_request" || n.type === "request_declined" || n.type === "request_passed" || n.type === "request_passed_done") && <SparkleIcon size={12} />}
                     {n.type === "request_joined" && <UserIcon size={12} />}
                     {timeAgo(n.createdAt)}
                   </span>
@@ -191,8 +210,10 @@ export default async function NotificationsPage() {
                   {n.type === "guide_request" && reqMap.get(n.requestId ?? "") && <Link href={`/ask/${reqMap.get(n.requestId ?? "")!.token}`} className="font-medium text-terracotta">Reply →</Link>}
                   {n.type === "request_joined" && actor && <Link href={`/u/${actor.username}`} className="font-medium text-terracotta">View profile →</Link>}
                   {n.type === "request_declined" && <Link href={`/u/${user.username}#wishes`} className="font-medium text-terracotta">Your wish list →</Link>}
+                  {n.type === "request_passed" && <Link href={`/u/${user.username}#wishes`} className="font-medium text-terracotta">Your wish list →</Link>}
+                  {n.type === "request_passed_done" && rawGuide && <Link href={`/g/${rawGuide.slug}`} className="font-medium text-terracotta">See the guide →</Link>}
                   {n.type === "collab_invite" && rawGuide && <Link href={`/g/${rawGuide.slug}/edit`} className="font-medium text-terracotta">Start editing →</Link>}
-                  {guide && n.type !== "place_comment" && n.type !== "places_added" && n.type !== "collab_invite" && n.type !== "guide_used" && n.type !== "wish_granted" && <Link href={`/g/${guide.slug}`} className="font-medium text-terracotta">Open guide →</Link>}
+                  {guide && n.type !== "place_comment" && n.type !== "places_added" && n.type !== "collab_invite" && n.type !== "guide_used" && n.type !== "wish_granted" && n.type !== "request_passed_done" && <Link href={`/g/${guide.slug}`} className="font-medium text-terracotta">Open guide →</Link>}
                   {guide && n.type === "places_added" && (
                     <Link href={n.count === 1 && addedPlace ? `/g/${guide.slug}/p/${addedPlace.id}` : `/g/${guide.slug}`} className="font-medium text-terracotta">{n.count === 1 && addedPlace ? "See the place →" : "See what's new →"}</Link>
                   )}

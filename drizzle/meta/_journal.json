@@ -169,6 +169,13 @@
       "when": 1791650000000,
       "tag": "0023_trip_planned",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1791720000000,
+      "tag": "0024_request_passed_by",
+      "breakpoints": true
     }
   ]
 }

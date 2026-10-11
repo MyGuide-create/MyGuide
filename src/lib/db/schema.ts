@@ -274,7 +274,7 @@ export const notifications = sqliteTable(
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    /** "guide_shared" | "new_follower" | "follow_request" | "follow_accepted" | "place_comment" | "guide_published" | "places_added" | "guide_used" | "collab_invite" | "user_joined" | "wish_granted" | "guide_request" | "request_joined" | "request_declined" */
+    /** "guide_shared" | "new_follower" | "follow_request" | "follow_accepted" | "place_comment" | "guide_published" | "places_added" | "guide_used" | "collab_invite" | "user_joined" | "wish_granted" | "guide_request" | "request_joined" | "request_declined" | "request_passed" | "request_passed_done" */
     type: text("type").notNull(),
     actorId: text("actor_id").references(() => users.id, { onDelete: "cascade" }),
     guideId: text("guide_id").references(() => guides.id, { onDelete: "cascade" }),
@@ -569,6 +569,8 @@ export const guideRequests = sqliteTable(
       .references(() => users.id, { onDelete: "cascade" }),
     recipientId: text("recipient_id").references(() => users.id, { onDelete: "cascade" }),
     wishId: text("wish_id").references(() => guideWishes.id, { onDelete: "set null" }),
+    /** "Pass it on": someone else sent this ask on the wisher's (requester's) behalf. */
+    passedById: text("passed_by_id").references(() => users.id, { onDelete: "set null" }),
     city: text("city").notNull(),
     country: text("country").notNull().default(""),
     lat: real("lat"),

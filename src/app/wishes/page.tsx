@@ -3,6 +3,7 @@ import { AppShell, TopBar } from "@/components/AppShell";
 import { PinIcon, SparkleIcon } from "@/components/Icons";
 import { Avatar, EmptyState, LinkButton } from "@/components/ui";
 import { AddWishForm, GrantedLinks, SendGuideButton } from "@/components/WishList";
+import { AskForGuideButton } from "@/components/AskForGuide";
 import { getCurrentUser, toPublicUser } from "@/lib/auth";
 import { listAllWishes } from "@/lib/wishes";
 import { timeAgo } from "@/lib/utils";
@@ -87,6 +88,9 @@ export default async function WishesPage({ searchParams }: { searchParams: Promi
                     {!p.isViewer && user && (
                       <div className="shrink-0 self-center flex flex-col items-end gap-1">
                         <SendGuideButton wishId={p.wish.id} guides={p.viewerGuides} sent={p.viewerSent} wisherName={p.user.displayName.split(" ")[0]} />
+                        {p.granted.length === 0 && (
+                          <AskForGuideButton variant="ghost" forWish={{ id: p.wish.id, city: p.wish.city, country: p.wish.country, userId: p.user.id, name: p.user.displayName }} />
+                        )}
                       </div>
                     )}
                   </li>

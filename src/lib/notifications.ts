@@ -23,6 +23,10 @@ export async function addNotifications(rows: NewNotification[]): Promise<void> {
       placeIds.length ? db.select().from(places).where(inArray(places.id, placeIds)) : [],
     ]);
     const actor = new Map(actors.map((a) => [a.id, a]));
+    // Asks: the person who wished and the person asked (for "Pass it on" wording).
+    const reqPeopleIds = [...new Set(reqRows.flatMap((q) => [q.requesterId, q.recipientId]).filter((x): x is string => !!x))];
+    const reqPeople = new Map((reqPeopleIds.length ? await db.select().from(users).where(inArray(users.id, reqPeopleIds)) : []).map((u) => [u.id, u]));
+    const firstOf = (id: string | null | undefined) => (id ? reqPeople.get(id)?.displayName.split(" ")[0] : undefined);
     const guide = new Map(gs.map((g) => [g.id, g]));
     const place = new Map(ps.map((p) => [p.id, p]));
     await Promise.all(
@@ -98,7 +102,9 @@ export async function addNotifications(rows: NewNotification[]): Promise<void> {
             }
             break;
           case "guide_request":
-            title = `${who} asked you for a ${q?.city ?? ""} guide`.replace("a  guide", "a guide");
+            title = q?.passedById
+              ? `${who} thinks you could make ${firstOf(q.requesterId) ?? "a friend"} a ${q.city} guide`
+              : `${who} asked you for a ${q?.city ?? ""} guide`.replace("a  guide", "a guide");
             body = q?.note || "You know it — tap to make them a guide or send one you've made.";
             if (q) url = `/ask/${q.token}`;
             break;
@@ -106,6 +112,16 @@ export async function addNotifications(rows: NewNotification[]): Promise<void> {
             title = `${shortName(who)} joined MyGuide from your ask`;
             body = q ? `You now follow each other. They can make your ${q.city} guide.` : "You now follow each other.";
             if (a) url = `/u/${a.username}`;
+            break;
+          case "request_passed":
+            title = `${who} asked ${firstOf(q?.recipientId) ?? "a friend"} to make you a ${q?.city ?? ""} guide`.replace("a  guide", "a guide");
+            body = "They passed your wish on. You'll get the guide as soon as it's published.";
+            url = "/wishes";
+            break;
+          case "request_passed_done":
+            title = `${who} made ${firstOf(q?.requesterId) ?? "your friend"}'s ${q?.city ?? ""} guide — thanks to you`.replace("'s  guide", "'s guide");
+            body = g?.title ?? "";
+            if (g) url = `/g/${g.slug}`;
             break;
           case "request_declined":
             title = `${shortName(who)} can't help with ${q?.city ?? "that city"}`;

@@ -5,9 +5,9 @@ import { AskActions } from "@/components/AskActions";
 import { AskForGuideButton } from "@/components/AskForGuide";
 import { CheckIcon, SparkleIcon } from "@/components/Icons";
 import { Avatar, LinkButton } from "@/components/ui";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser, toPublicUser } from "@/lib/auth";
 import { getDb } from "@/lib/db";
-import { guides } from "@/lib/db/schema";
+import { guides, users } from "@/lib/db/schema";
 import { claimRequest, getRequestByToken, STATUS_LABEL, type RequestStatus } from "@/lib/requests";
 
 export const dynamic = "force-dynamic";
@@ -39,6 +39,25 @@ export default async function AskPage({ params }: { params: Promise<{ token: str
   const first = requester.displayName.split(" ")[0];
   const self = `/ask/${token}`;
   let req = found.req;
+  // "Pass it on": a friend sent this on the wisher's behalf.
+  const passerRow = req.passedById ? await (await getDb()).query.users.findFirst({ where: eq(users.id, req.passedById) }) : undefined;
+  const passer = passerRow ? toPublicUser(passerRow) : null;
+  const passerFirst = passer?.displayName.split(" ")[0] ?? null;
+
+  // The friend who passed it on, opening the link they sent.
+  if (viewer && passer && viewer.id === passer.id) {
+    return (
+      <AppShell>
+        <div className="px-6 pt-10 pb-10 flex flex-col gap-4">
+          <p className="text-[12px] font-semibold uppercase tracking-[0.08em] text-terracotta">You passed this on</p>
+          <h1 className="font-display text-[32px] leading-[1.05]">A {req.city} guide for {first}</h1>
+          {req.note && <p className="text-[14px] italic text-ink-muted">“{req.note}”</p>}
+          <p className="text-[14px]">Status: <b>{req.recipientId ? STATUS_LABEL[req.status as RequestStatus] : "not opened yet"}</b></p>
+          <p className="text-[13px] text-ink-muted">This is the link your friend gets. When they publish, the guide goes straight to {first} and we&apos;ll let you know.</p>
+        </div>
+      </AppShell>
+    );
+  }
 
   // The asker opening their own link: where it stands, and a way to send it again.
   if (viewer?.id === requester.id) {
@@ -101,8 +120,13 @@ export default async function AskPage({ params }: { params: Promise<{ token: str
             </div>
           </div>
           <h1 className="mt-5 font-display text-[32px] leading-[1.08]">
-            {first} is going to {req.city} and asked for your recommendations.
+            {passer ? <>{first} wants a {req.city} guide, and {passerFirst} thought of you.</> : <>{first} is going to {req.city} and asked for your recommendations.</>}
           </h1>
+          {passer && (
+            <div className="mt-3 flex items-center gap-2 text-[13.5px] text-ink-muted">
+              <Avatar user={passer} size={24} /> Passed on by {passer.displayName}
+            </div>
+          )}
           {req.note && <p className="mt-3 rounded-2xl bg-paper border border-line px-4 py-3 text-[14.5px] italic leading-relaxed">“{req.note}”</p>}
         </div>
 
