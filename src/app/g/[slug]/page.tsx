@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
+import { isStash } from "@/lib/stash";
 import { AppShell, TopBar } from "@/components/AppShell";
 import { GuideView } from "@/components/GuideView";
 import { LinkButton } from "@/components/ui";
@@ -50,6 +51,8 @@ export default async function GuidePage({ params, searchParams }: PageProps<"/g/
   const guide = await getGuideBySlug(slug);
   if (!guide) notFound();
   const user = await getCurrentUser();
+  // Your Saved places list has its own page.
+  if (user && guide.ownerId === user.id && isStash(guide)) redirect("/saved/places");
   if (!(await canViewGuide(guide, user?.id, key))) {
     return (
       <AppShell>

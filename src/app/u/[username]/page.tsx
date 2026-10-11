@@ -9,6 +9,11 @@ import { Avatar, EmptyState, LinkButton } from "@/components/ui";
 import { getCurrentUser, toPublicUser } from "@/lib/auth";
 import { AskForGuideButton } from "@/components/AskForGuide";
 import { getFollowStats, getUserByUsername, listGuidesByOwner } from "@/lib/guides";
+import { and, asc, eq } from "drizzle-orm";
+import { getDb } from "@/lib/db";
+import { guides, places } from "@/lib/db/schema";
+import { STASH_TITLE } from "@/lib/stash";
+import { PlaceTile } from "@/components/PlaceTile";
 import { hiddenUserIds, viewerBlocked } from "@/lib/blocks";
 import { BlockButton } from "@/components/BlockButton";
 import { ReportButton } from "@/components/ReportButton";
@@ -35,6 +40,10 @@ export default async function ProfilePage({ params, searchParams }: PageProps<"/
   const iBlocked = !!viewer && !own && (await viewerBlocked(viewer.id, profile.id));
   const hiddenFromMe = !!viewer && !own && (await hiddenUserIds(viewer.id)).has(profile.id);
   const [cards, stats, wishes] = await Promise.all([listGuidesByOwner(profile.id, viewer?.id), getFollowStats(profile.id, viewer?.id), listWishesFor(profile, viewer?.id)]);
+  // Your own Saved places (places recorded on the go) get their own card, not a draft.
+  const db = own ? await getDb() : null;
+  const stash = db ? await db.query.guides.findFirst({ where: and(eq(guides.ownerId, profile.id), eq(guides.title, STASH_TITLE)) }) : undefined;
+  const stashPlaces = db && stash ? await db.select().from(places).where(eq(places.guideId, stash.id)).orderBy(asc(places.position)).limit(50) : [];
   const published = cards.filter((c) => c.guide.publishedAt);
   const drafts = cards.filter((c) => !c.guide.publishedAt);
   // listGuidesByOwner already hides guides from a locked private profile, but the page still
@@ -104,6 +113,20 @@ export default async function ProfilePage({ params, searchParams }: PageProps<"/
           />
         ) : (
           <>
+            {own && stashPlaces.length > 0 && (
+              <Link href="/saved/places" className="flex items-center gap-3 rounded-[22px] border border-line bg-paper px-4 py-3.5 hover:border-terracotta-soft">
+                <span className="flex -space-x-3 shrink-0">
+                  {stashPlaces.slice(0, 3).map((p) => (
+                    <PlaceTile key={p.id} place={p} size={44} className="ring-2 ring-paper" />
+                  ))}
+                </span>
+                <span className="flex-1 min-w-0">
+                  <span className="block font-display text-[20px] leading-tight">Saved places</span>
+                  <span className="block text-[12.5px] text-ink-muted">{stashPlaces.length} place{stashPlaces.length === 1 ? "" : "s"} to sort into guides</span>
+                </span>
+                <span aria-hidden className="text-[20px] text-terracotta">›</span>
+              </Link>
+            )}
             {wishes && <WishList wishes={wishes} own={own} ownerName={profile.displayName} ownerUsername={profile.username} signedIn={!!viewer} />}
             {own && drafts.length > 0 && (
               <>

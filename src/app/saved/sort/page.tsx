@@ -22,7 +22,7 @@ export default async function SortSavedPage() {
   const mine = (await listGuidesByOwner(user.id, user.id)).filter((g) => g.guide.id !== stash?.id);
   return (
     <AppShell nav={false}>
-      <TopBar back={stash ? `/g/${stash.slug}` : "/saved"} title="Make a guide" avatarUser={toPublicUser(user)} />
+      <TopBar back="/saved/places" title="Make a guide" avatarUser={toPublicUser(user)} />
       {rows.length === 0 ? (
         <div className="px-4 pt-6">
           <EmptyState

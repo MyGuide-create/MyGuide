@@ -6,6 +6,7 @@ import { toPublicUser, type PublicUser } from "./auth";
 import type { SearchIntent } from "./ai";
 import { hiddenUserIds } from "./blocks";
 import { coverCityLabel } from "./coverCity";
+import { isStash } from "./stash";
 import { cityNameVariants } from "./places/cities";
 import { DESCRIBED_MIN_CHARS, feedScore, rankFeed, type GuideStats } from "./feedRank";
 
@@ -231,7 +232,8 @@ export async function listGuidesByOwner(ownerId: string, viewerId?: string | nul
     .from(guides)
     .where(own ? eq(guides.ownerId, ownerId) : and(eq(guides.ownerId, ownerId), publicPublished()))
     .orderBy(desc(guides.updatedAt));
-  const cards = await hydrateCards(rows);
+  // Saved places has its own page (/saved/places); it isn't a guide or a draft.
+  const cards = await hydrateCards(rows.filter((g) => !isStash(g)));
   return own ? cards : filterVisibleCards(cards, viewerId);
 }
 
