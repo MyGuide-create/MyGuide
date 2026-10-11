@@ -4,6 +4,7 @@ import { mapsUrl } from "@/lib/places/pins";
 import { errorText } from "@/lib/errorText";
 
 import Link from "next/link";
+import { STASH_TITLE } from "@/lib/stash";
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { GuideDetail } from "@/lib/guides";
@@ -145,6 +146,16 @@ export function GuideView({ detail, viewerId, viewer, shareUrl, shareKey }: { de
         </div>
 
         {guide.description && <p className="mt-3.5 text-[13.5px] leading-[1.5] italic">{guide.description}</p>}
+
+        {detail.viewerIsOwner && guide.title === STASH_TITLE && places.length > 0 && (
+          <Link href="/saved/sort" className="mt-4 flex items-center justify-between gap-3 rounded-2xl bg-ink text-cream px-4 py-3.5">
+            <span className="min-w-0">
+              <span className="block font-semibold text-[15px]">Make a guide from these</span>
+              <span className="block text-[12.5px] text-cream-deep">Tick the places that go together and choose a guide</span>
+            </span>
+            <span aria-hidden className="text-[20px]">›</span>
+          </Link>
+        )}
 
         <div className="mt-4 flex gap-2">
           {!detail.viewerCanEdit && <SaveGuideButton guideId={guide.id} initial={detail.viewerSavedGuide} signedIn={!!viewerId} />}
