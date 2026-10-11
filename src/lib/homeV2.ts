@@ -133,7 +133,9 @@ export async function wantedGuides(viewerId: string | null | undefined, limit = 
   const counts = viewerId ? await viewerPlaceCounts(viewerId, groups.map((g) => g.city)) : new Map<string, number>();
   const all: WantedCity[] = groups
     .map((g) => {
-      const others = g.people.filter((p) => !p.isViewer);
+      // Open wishes only: not the viewer's own, and nobody has sent a guide for it yet
+      // (the viewer's own sends included). Granted wishes stay on /wishes and profiles.
+      const others = g.people.filter((p) => !p.isViewer && p.viewerSent.length === 0 && p.granted.length === 0);
       const firstOther = others[0];
       return {
         group: g,
