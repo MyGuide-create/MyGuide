@@ -50,7 +50,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
             <div className="grid grid-cols-2 gap-2.5">
               {moreCities.slice(0, 8).map((t) => (
                 <Link key={t.city} href={cityHref(t)} className="flex items-center gap-2.5 rounded-2xl border border-line/80 bg-paper p-2 hover:border-terracotta-soft">
-                  <GuideCover guide={t.cover.guide} ownerUsername={t.cover.owner.username} bare className="w-11 h-11 rounded-[10px] shrink-0" />
+                  <GuideCover guide={t.cover.guide} ownerUsername={t.cover.owner.username} bare thumb className="w-11 h-11 rounded-[10px] shrink-0" />
                   <span className="min-w-0">
                     <span className="block font-semibold text-[14.5px] truncate">{t.city}</span>
                     <span className="block text-[12px] text-ink-muted">{t.guides} guide{t.guides === 1 ? "" : "s"}</span>
@@ -94,7 +94,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
           <div className="px-4 pt-4">
             <Link href={`/trips/${trip.trip.id}`} className="flex items-center gap-3.5 rounded-[20px] bg-ink text-cream p-3">
               {tripTile ? (
-                <GuideCover guide={tripTile.cover.guide} ownerUsername={tripTile.cover.owner.username} bare className="w-16 h-16 rounded-xl shrink-0" />
+                <GuideCover guide={tripTile.cover.guide} ownerUsername={tripTile.cover.owner.username} bare thumb className="w-16 h-16 rounded-xl shrink-0" />
               ) : (
                 <span className="w-16 h-16 rounded-xl shrink-0 bg-terracotta" />
               )}
@@ -218,7 +218,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
 function CityTileCard({ t }: { t: CityTile }) {
   return (
     <Link href={cityHref(t)} className="shrink-0 w-[150px] flex flex-col gap-2">
-      <GuideCover guide={t.cover.guide} ownerUsername={t.cover.owner.username} bare className="h-[170px] rounded-2xl" />
+      <GuideCover guide={t.cover.guide} ownerUsername={t.cover.owner.username} bare thumb className="h-[170px] rounded-2xl" />
       <span className="px-0.5">
         <span className="block font-display text-[19px] leading-tight truncate">{t.city}</span>
         <span className="block text-[12.5px] text-ink-muted">

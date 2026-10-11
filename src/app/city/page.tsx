@@ -114,7 +114,7 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
             <div className="flex gap-3 overflow-x-auto no-scrollbar px-5">
               {mine.map((g) => (
                 <Link key={g.guide.id} href={`/g/${g.guide.slug}`} className="shrink-0 w-[220px] rounded-2xl border border-line/80 bg-paper overflow-hidden">
-                  <GuideCover guide={g.guide} ownerUsername={g.owner.username} bare className="h-[120px]" />
+                  <GuideCover guide={g.guide} ownerUsername={g.owner.username} bare thumb className="h-[120px]" />
                   <span className="block p-3">
                     <span className="block font-semibold text-[15px] leading-snug line-clamp-2">{g.guide.title}</span>
                     <span className="block mt-1 text-[12.5px] text-ink-muted">{g.owner.displayName.split(" ")[0]} · {g.placeCount} place{g.placeCount === 1 ? "" : "s"}</span>
@@ -144,7 +144,7 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
                 ))}
               </div>
             </div>
-            {all.map((g) => <GuideRow key={g.guide.id} g={g} meta={sort === "new" ? `Updated ${timeAgo(g.guide.updatedAt)}` : savedLabel(saves.get(g.guide.id) ?? 0)} />)}
+            {all.map((g) => <GuideRow key={g.guide.id} g={g} meta={sort === "new" || !saves.get(g.guide.id) ? `Updated ${timeAgo(g.guide.updatedAt)}` : savedLabel(saves.get(g.guide.id) ?? 0)} />)}
           </section>
         )}
 
@@ -182,12 +182,12 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
   );
 }
 
-const savedLabel = (n: number) => (n === 0 ? "Not saved yet" : `Saved by ${n} ${n === 1 ? "person" : "people"}`);
+const savedLabel = (n: number) => `Saved by ${n} ${n === 1 ? "person" : "people"}`;
 
 function GuideRow({ g, meta }: { g: GuideCard; meta: string }) {
   return (
     <Link href={`/g/${g.guide.slug}`} className="flex items-center gap-3 rounded-2xl border border-line/80 bg-paper p-2.5 hover:border-terracotta-soft">
-      <GuideCover guide={g.guide} ownerUsername={g.owner.username} bare className="w-16 h-16 rounded-xl shrink-0" />
+      <GuideCover guide={g.guide} ownerUsername={g.owner.username} bare thumb className="w-16 h-16 rounded-xl shrink-0" />
       <span className="flex-1 min-w-0">
         <span className="block font-semibold text-[15px] leading-snug line-clamp-2">{g.guide.title}</span>
         <span className="block mt-0.5 text-[12.5px] text-ink-muted">{g.owner.displayName} · {g.placeCount} place{g.placeCount === 1 ? "" : "s"}</span>

@@ -16,6 +16,7 @@ export function GuideCover({
   bare,
   creditLinks,
   cityLabel,
+  thumb,
 }: {
   guide: {
     id: string;
@@ -37,6 +38,8 @@ export function GuideCover({
   creditLinks?: boolean;
   /** City pill, bottom-left ("Crans-Montana", "Bali + 2 more"). See lib/coverCity. */
   cityLabel?: string | null;
+  /** Small thumbnail (city tiles, list rows): no credit or city pill — they don't fit. The guide page shows the credit. */
+  thumb?: boolean;
 }) {
   if (guide.coverMediaId) {
     return (
@@ -52,7 +55,7 @@ export function GuideCover({
       <div className={cx("relative overflow-hidden bg-cream-deep", className)}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={guide.coverUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
-        <CoverOverlay city={cityLabel} credit={<CoverCredit guide={guide} links={creditLinks} />} />
+        <CoverOverlay city={cityLabel} credit={thumb ? null : <CoverCredit guide={guide} links={creditLinks} />} />
       </div>
     );
   }
