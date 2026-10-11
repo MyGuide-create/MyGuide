@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { AppShell, TopBar } from "@/components/AppShell";
 import { GuideCover } from "@/components/GuideCover";
-import { PlusIcon, SparkleIcon } from "@/components/Icons";
+import { HeartIcon, PlusIcon, SparkleIcon } from "@/components/Icons";
 import { AskForGuideButton } from "@/components/AskForGuide";
 import { EmptyState, LinkButton, cx } from "@/components/ui";
 import { getCurrentUser, toPublicUser } from "@/lib/auth";
@@ -139,12 +139,12 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
                     aria-current={sort === s ? "true" : undefined}
                     className={cx("px-3 py-1.5 rounded-full text-[13px]", sort === s ? "bg-ink text-cream font-semibold" : "text-ink")}
                   >
-                    {s === "saved" ? "Most saved" : "Newest"}
+                    {s === "saved" ? "Most favourited" : "Newest"}
                   </Link>
                 ))}
               </div>
             </div>
-            {all.map((g) => <GuideRow key={g.guide.id} g={g} meta={sort === "new" || !saves.get(g.guide.id) ? `Updated ${timeAgo(g.guide.updatedAt)}` : savedLabel(saves.get(g.guide.id) ?? 0)} />)}
+            {all.map((g) => <GuideRow key={g.guide.id} g={g} hearts={saves.get(g.guide.id) ?? 0} />)}
           </section>
         )}
 
@@ -182,16 +182,25 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
   );
 }
 
-const savedLabel = (n: number) => `Saved by ${n} ${n === 1 ? "person" : "people"}`;
-
-function GuideRow({ g, meta }: { g: GuideCard; meta: string }) {
+/** A guide in the city list. ♥ N = how many people favourited it (the same heart as on the guide). */
+function GuideRow({ g, hearts }: { g: GuideCard; hearts: number }) {
   return (
     <Link href={`/g/${g.guide.slug}`} className="flex items-center gap-3 rounded-2xl border border-line/80 bg-paper p-2.5 hover:border-terracotta-soft">
       <GuideCover guide={g.guide} ownerUsername={g.owner.username} bare thumb className="w-16 h-16 rounded-xl shrink-0" />
       <span className="flex-1 min-w-0">
         <span className="block font-semibold text-[15px] leading-snug line-clamp-2">{g.guide.title}</span>
         <span className="block mt-0.5 text-[12.5px] text-ink-muted">{g.owner.displayName} · {g.placeCount} place{g.placeCount === 1 ? "" : "s"}</span>
-        <span className="block mt-0.5 text-[12px] font-medium text-ink-muted">{meta}</span>
+        <span className="mt-0.5 flex items-center gap-1.5 text-[12px] text-ink-muted">
+          {hearts > 0 && (
+            <>
+              <span className="inline-flex items-center gap-1 font-semibold text-terracotta-deep" aria-label={`Favourited by ${hearts} ${hearts === 1 ? "person" : "people"}`}>
+                <HeartIcon size={13} filled aria-hidden /> {hearts}
+              </span>
+              <span aria-hidden>·</span>
+            </>
+          )}
+          <span>Updated {timeAgo(g.guide.updatedAt)}</span>
+        </span>
       </span>
     </Link>
   );
