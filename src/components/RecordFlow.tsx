@@ -8,7 +8,7 @@ import { PhotoPicker } from "./PhotoPicker";
 import { PlaceSearch } from "./PlaceSearch";
 import { PinDropSheet } from "./PinDropSheet";
 import { GoogleInfoCard, type GoogleInfo } from "./GoogleInfoCard";
-import { CameraIcon, CheckIcon, ChevronLeft, PinIcon, XIcon } from "./Icons";
+import { CameraIcon, CheckIcon, ChevronLeft, PinIcon, PlusIcon, XIcon } from "./Icons";
 import { Button, Spinner, Textarea, cx } from "./ui";
 
 interface NearbyResult {
@@ -69,8 +69,8 @@ export function RecordFlow({ guides }: { guides: GuideOption[] }) {
   const sameCity = (g: GuideOption) => !!placeCity && g.city.trim().toLowerCase() === placeCity.toLowerCase();
   /** Same-city guides first; nothing pre-picked unless one matches (a Dubai café shouldn't default into the Bali trip). */
   const sortedGuides = [...guides.filter(sameCity), ...guides.filter((g) => !sameCity(g))];
-  const [userChoice, setGuideChoice] = useState<string | null | undefined>(undefined);
-  const guideChoice = userChoice !== undefined ? userChoice : (guides.find(sameCity)?.id ?? null);
+  // The "Saved places" stash has its own button.
+  const listedGuides = sortedGuides.filter((g) => g.title !== "Saved places");
   const [saving, startSaving] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -345,79 +345,61 @@ export function RecordFlow({ guides }: { guides: GuideOption[] }) {
             <button type="button" aria-label="Back" onClick={() => setStep("capture")} className="w-9 h-9 rounded-full border border-line bg-paper flex items-center justify-center">
               <ChevronLeft size={17} />
             </button>
-            <span className="text-[15px] font-semibold">Add to a guide</span>
+            <span className="text-[15px] font-semibold">Where should it go?</span>
           </div>
 
-          <div className="mx-4 mt-4 rounded-2xl bg-sage-tint px-3.5 py-3 flex items-center gap-2.5">
-            <CheckIcon size={18} className="text-sage shrink-0" />
-            <div className="min-w-0">
-              <div className="text-[12.5px] font-bold">Saved: {selected.name}</div>
-              {special && <div className="text-[11.5px] text-ink-muted truncate">&ldquo;{special}&rdquo;</div>}
-              {tips.length > 0 && <div className="text-[11px] text-ink-faint">{tips.length} expert tip{tips.length === 1 ? "" : "s"}</div>}
-            </div>
+          <div className="mx-4 mt-4 rounded-2xl bg-cream-deep/50 px-3.5 py-3">
+            <div className="text-[13px] font-bold">{selected.name}</div>
+            {special && <div className="text-[11.5px] text-ink-muted truncate">&ldquo;{special}&rdquo;</div>}
+            {tips.length > 0 && <div className="text-[11px] text-ink-faint">{tips.length} expert tip{tips.length === 1 ? "" : "s"}</div>}
           </div>
 
+          {/* One tap: the private "Saved places" list. Sorting into a guide can wait. */}
           <div className="px-5 pt-5">
+            <Button className="w-full" size="lg" disabled={saving} onClick={() => save({})}>
+              {saving ? <Spinner /> : "Save to my Saved places"}
+            </Button>
+            <p className="mt-2 text-center text-[12px] text-ink-muted">Your private list. Add it to a guide whenever you like.</p>
+          </div>
+
+          <div className="flex items-center gap-2.5 px-5 pt-6 pb-1 text-ink-faint text-[11px] font-semibold uppercase tracking-[0.03em]">
+            <div className="flex-1 h-px bg-line" /> or add it to a guide <div className="flex-1 h-px bg-line" />
+          </div>
+
+          <div className="flex flex-col gap-2 px-5 pt-2 pb-8">
+            {listedGuides.map((g) => (
+              <button
+                type="button"
+                key={g.id}
+                disabled={saving}
+                onClick={() => save({ guideId: g.id })}
+                className="flex items-center gap-2.5 rounded-2xl border border-line bg-paper p-2.5 text-left hover:border-terracotta-soft"
+              >
+                <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-terracotta-soft to-terracotta shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="text-[13.5px] font-bold truncate">{g.title}</div>
+                  <div className="text-[11px] text-ink-muted">{g.placeCount} place{g.placeCount === 1 ? "" : "s"}{sameCity(g) ? ` · ${g.city}` : ""}</div>
+                </div>
+                <PlusIcon size={16} className="text-terracotta shrink-0" />
+              </button>
+            ))}
             <button
               type="button"
               disabled={saving}
               onClick={() => save({ newGuideTitle: placeCity ? `My ${placeCity} guide` : selected.name })}
-              className="w-full flex items-center gap-3 rounded-2xl border-[1.5px] border-dashed border-terracotta bg-terracotta-tint p-4 text-left"
+              className="flex items-center gap-2.5 rounded-2xl border-[1.5px] border-dashed border-terracotta-soft p-2.5 text-left"
             >
-              <div className="w-10 h-10 rounded-full bg-terracotta text-white flex items-center justify-center shrink-0">
-                <span className="text-[18px] leading-none">+</span>
+              <div className="w-11 h-11 rounded-xl bg-terracotta-tint text-terracotta flex items-center justify-center shrink-0">
+                <PlusIcon size={18} />
               </div>
               <div>
-                <div className="text-[14px] font-bold">Create a new guide</div>
-                <div className="text-[11.5px] text-ink-muted">Starts a guide with just this place</div>
+                <div className="text-[13.5px] font-bold">Start a new guide</div>
+                <div className="text-[11px] text-ink-muted">With just this place for now</div>
               </div>
             </button>
           </div>
 
-          {guides.length > 0 && (
-            <>
-              <div className="flex items-center gap-2.5 px-5 pt-5 pb-1 text-ink-faint text-[11px] font-semibold uppercase tracking-[0.03em]">
-                <div className="flex-1 h-px bg-line" /> or add to an existing guide <div className="flex-1 h-px bg-line" />
-              </div>
-              <div className="flex flex-col gap-2 px-5 pt-2">
-                {sortedGuides.map((g) => (
-                  <button
-                    type="button"
-                    key={g.id}
-                    onClick={() => setGuideChoice(g.id)}
-                    className={cx(
-                      "flex items-center gap-2.5 rounded-2xl border p-2.5 text-left",
-                      guideChoice === g.id ? "border-terracotta" : "border-line opacity-80",
-                    )}
-                  >
-                    <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-terracotta-soft to-terracotta shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <div className="text-[13.5px] font-bold truncate">{g.title}</div>
-                      <div className="text-[11px] text-ink-muted">{g.placeCount} place{g.placeCount === 1 ? "" : "s"}</div>
-                    </div>
-                    {guideChoice === g.id && <CheckIcon size={17} className="text-terracotta shrink-0" />}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-
-          {error && <p className="px-5 pt-3 text-[12.5px] text-danger">{error}</p>}
-
-          <div className="mt-auto px-5 pt-5 pb-8 flex flex-col items-center gap-3">
-            {guides.length > 0 && guideChoice && (
-              <Button
-                className="w-full"
-                disabled={saving || !guideChoice}
-                onClick={() => save({ guideId: guideChoice ?? undefined })}
-              >
-                {saving ? <Spinner /> : `Add to "${guides.find((g) => g.id === guideChoice)?.title ?? ""}"`}
-              </Button>
-            )}
-            <button type="button" disabled={saving} onClick={() => save({})} className="text-[12px] text-ink-muted underline">
-              Just save it for later, decide next time
-            </button>
-          </div>
+          {error && <p className="px-5 pb-6 text-[12.5px] text-danger">{error}</p>}
         </div>
       )}
     </div>
