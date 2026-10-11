@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { errorText } from "@/lib/errorText";
 import type { PlaceTip } from "@/lib/db/schema";
 import { addPlaceTip, removePlaceTip, updatePlaceTip } from "@/lib/actions/guides";
@@ -34,9 +34,12 @@ export function TipsEditor({
   const [editText, setEditText] = useState("");
   const [error, setError] = useState<string | null>(null);
 
+  // One add at a time (leaving the box and tapping Add can both fire).
+  const addingRef = useRef(false);
   const add = async () => {
     const body = draft.trim();
-    if (!body) return;
+    if (!body || addingRef.current) return;
+    addingRef.current = true;
     setAdding(true);
     setError(null);
     try {
@@ -46,6 +49,7 @@ export function TipsEditor({
     } catch (e) {
       setError(errorText(e, "Couldn't add that tip."));
     } finally {
+      addingRef.current = false;
       setAdding(false);
     }
   };
@@ -126,6 +130,8 @@ export function TipsEditor({
           rows={2}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
+          // Leaving the box adds the tip, so a typed tip isn't lost if Add isn't tapped.
+          onBlur={() => void add()}
           placeholder="What to order, where to sit, best time to go…"
           className="flex-1"
         />

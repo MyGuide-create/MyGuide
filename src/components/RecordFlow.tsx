@@ -325,7 +325,16 @@ export function RecordFlow({ guides }: { guides: GuideOption[] }) {
           </div>
 
           <div className="mt-auto px-5 pt-5 pb-8">
-            <Button className="w-full" onClick={() => setStep("save")}>Continue</Button>
+            <Button
+              className="w-full"
+              onClick={() => {
+                // A tip typed but not added yet still counts.
+                if (tipDraft.trim()) { setTips((ts) => [...ts, tipDraft.trim()]); setTipDraft(""); }
+                setStep("save");
+              }}
+            >
+              Continue
+            </Button>
           </div>
         </div>
       )}
