@@ -26,6 +26,7 @@ import { canViewSharedPlace } from "@/lib/citySpots";
 import { isStash, myPlacesHref } from "@/lib/stash";
 import { canonicalCity } from "@/lib/places/cities";
 import { RecommendToggle } from "@/components/RecommendToggle";
+import { FixPlaceLocation } from "@/components/FixPlaceLocation";
 import { getPlacesProvider } from "@/lib/places";
 import { getGoogleRatings } from "@/lib/places/ratings";
 import { GoogleRatingLine } from "@/components/GoogleRating";
@@ -174,6 +175,17 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
             place.address && <p className="mt-1 text-[13px] text-ink-muted">{place.address}</p>
           )}
           {googleRating && <GoogleRatingLine rating={googleRating} href={mapsHref} />}
+          {detail.viewerCanEdit && (
+            <FixPlaceLocation
+              guideId={guide.id}
+              placeId={place.id}
+              name={place.name}
+              // A guide's city is what it should be; in My places the saved city may be the wrong one.
+              cityHint={stashPlace ? undefined : tidyCity(guide.city) || undefined}
+              droppedPin={isDroppedPin(place)}
+              at={place.lat != null && place.lng != null ? { lat: place.lat, lng: place.lng } : null}
+            />
+          )}
           {(detail.friendsWhoLike[place.id]?.length ?? 0) > 0 && (
             <p className="mt-2 text-[12.5px] text-sage font-medium">
               ♥ {namesSentence(detail.friendsWhoLike[place.id].map((u) => u.displayName.split(" ")[0]))} {detail.friendsWhoLike[place.id].length === 1 ? "likes" : "like"} this — people you follow

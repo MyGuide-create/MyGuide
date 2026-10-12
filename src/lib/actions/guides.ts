@@ -1,7 +1,8 @@
 "use server";
 
 import { UserError } from "../userError";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
+import type { SQLiteUpdateSetSource } from "drizzle-orm/sqlite-core";
 import { tidyCity } from "@/lib/places/cityName";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -23,6 +24,7 @@ import { addNotifications } from "../notifications";
 import { isReservedTitle, isStash } from "../stash";
 import { addToStash, copyPlaceExtras } from "../myPlaces";
 import { settleGuides } from "../settleCities";
+import { spotKey } from "../citySpots";
 import { normaliseInstagram, normaliseReserve, normaliseWebsite, normaliseWhatsapp, type Normalised } from "@/lib/placeLinks";
 
 /** Owner or invited co-editor. Use for editing places, notes, tips and guide details. */
@@ -460,26 +462,52 @@ export async function addPinnedPlace(guideId: string, input: { name: string; lat
 
 /** Turn an existing place into a dropped pin (e.g. it couldn't be matched, or Google has it in the wrong spot). */
 export async function setPlacePin(guideId: string, placeId: string, input: { lat: number; lng: number }): Promise<Place> {
-  const { guide } = await requireOwner(guideId);
+  const { guide, userId } = await requireOwner(guideId);
   if (!validPin(input.lat, input.lng)) throw new UserError("That pin isn't on the map.", "invalid");
   const db = await getDb();
+  const before = await getPlaceInGuide(guideId, placeId);
   const where = await reverseGeocode(input.lat, input.lng);
-  await db
-    .update(places)
-    .set({
-      lat: input.lat,
-      lng: input.lng,
-      googlePlaceId: null,
-      businessStatus: null,
-      hoursJson: null,
-      address: where?.area ?? "",
-      area: where?.hood ?? "",
-      ...(where?.city ? { city: where.city, country: where.country } : {}),
-    })
-    .where(and(eq(places.id, placeId), eq(places.guideId, guideId)));
-  await touch(guideId);
-  revalidateGuide(guide.slug);
+  await applyLocationFix(db, userId, before, guide, {
+    lat: input.lat,
+    lng: input.lng,
+    googlePlaceId: null,
+    businessStatus: null,
+    hoursJson: null,
+    address: where?.area ?? "",
+    area: where?.hood ?? "",
+    // A new town: settle it again from scratch (it may join an area, like North Vancouver → Vancouver).
+    ...(where?.city ? { city: where.city, sourceCity: "", country: where.country } : {}),
+  });
   return (await db.query.places.findFirst({ where: eq(places.id, placeId) }))!;
+}
+
+/**
+ * Fixing where a place is (wrong Google match, or a moved pin) fixes it everywhere it's yours: the same
+ * spot in My places and in your other guides is one place to you, so a fix in one shouldn't leave the
+ * old address in another. Only the location changes; notes, tips and photos stay as they are.
+ */
+async function applyLocationFix(
+  db: Awaited<ReturnType<typeof getDb>>,
+  userId: string,
+  before: Place,
+  guide: Guide,
+  set: SQLiteUpdateSetSource<typeof places>,
+): Promise<void> {
+  const mine = await db
+    .select({ place: places, slug: guides.slug })
+    .from(places)
+    .innerJoin(guides, eq(guides.id, places.guideId))
+    .where(eq(guides.ownerId, userId));
+  const k = spotKey(before);
+  const copies = mine.filter((r) => r.place.id !== before.id && spotKey(r.place) === k);
+  const ids = [before.id, ...copies.map((r) => r.place.id)];
+  await db.update(places).set(set).where(inArray(places.id, ids));
+  const guideIds = [...new Set([guide.id, ...copies.map((r) => r.place.guideId)])];
+  await settleGuides(db, guideIds);
+  for (const id of guideIds) await touch(id);
+  for (const slug of new Set([guide.slug, ...copies.map((r) => r.slug)])) revalidateGuide(slug);
+  revalidatePath("/my-places");
+  revalidatePath("/city");
 }
 
 /* ---------------------------------------------------------------------------
@@ -637,35 +665,30 @@ export async function addPlace(guideId: string, input: { providerId?: string; na
 
 /** Re-point an existing place at a different search result (fixing a mis-match). */
 export async function replacePlace(guideId: string, placeId: string, providerId: string): Promise<Place | null> {
-  const { guide } = await requireOwner(guideId);
+  const { guide, userId } = await requireOwner(guideId);
   const db = await getDb();
+  const before = await getPlaceInGuide(guideId, placeId);
   const resolved = await getPlacesProvider().details(providerId);
   if (!resolved) return null;
-  await db
-    .update(places)
-    .set({
-      name: resolved.name,
-      address: resolved.address,
-      area: resolved.area ?? "",
-      city: resolved.city,
-      sourceCity: "",
-      country: resolved.country,
-      lat: resolved.lat,
-      lng: resolved.lng,
-      category: resolved.category,
-      photoUrl: resolved.photoUrl,
-      phone: resolved.phone,
-      website: resolved.website,
-      // Keep a handle the creator typed; only fill it from Google when empty.
-      instagram: sql`coalesce(${places.instagram}, ${resolved.instagram})`,
-      hoursJson: resolved.hours ? JSON.stringify(resolved.hours) : null,
-      googlePlaceId: resolved.providerId,
-      businessStatus: resolved.businessStatus,
-    })
-    .where(and(eq(places.id, placeId), eq(places.guideId, guideId)));
-  await settleGuides(db, [guideId]);
-  await touch(guideId);
-  revalidateGuide(guide.slug);
+  await applyLocationFix(db, userId, before, guide, {
+    name: resolved.name,
+    address: resolved.address,
+    area: resolved.area ?? "",
+    city: resolved.city,
+    sourceCity: "",
+    country: resolved.country,
+    lat: resolved.lat,
+    lng: resolved.lng,
+    category: resolved.category,
+    photoUrl: resolved.photoUrl,
+    phone: resolved.phone,
+    website: resolved.website,
+    // Keep a handle the creator typed; only fill it from Google when empty.
+    instagram: sql`coalesce(${places.instagram}, ${resolved.instagram})`,
+    hoursJson: resolved.hours ? JSON.stringify(resolved.hours) : null,
+    googlePlaceId: resolved.providerId,
+    businessStatus: resolved.businessStatus,
+  });
   return (await db.query.places.findFirst({ where: eq(places.id, placeId) })) ?? null;
 }
 
