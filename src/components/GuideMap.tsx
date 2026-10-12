@@ -15,7 +15,7 @@ export interface MapPlace {
   lng: number | null;
   category: string;
   note?: string;
-  /** Number shown on the pin (1-based). Defaults to the position in `places`. */
+  /** Number shown on the pin (1-based). Defaults to the position in `places`. 0 = a plain pin with a dot, no number. */
   n?: number;
   /** Place detail page, shown as "View place" on the pin card. */
   href?: string;
@@ -31,7 +31,11 @@ export interface MapPlace {
 
 const PIN_SVG = (fill: string, n: number) =>
   `data:image/svg+xml;utf8,${encodeURIComponent(
-    `<svg xmlns="http://www.w3.org/2000/svg" width="34" height="42" viewBox="0 0 24 30"><path d="M12 29s9-9.5 9-16A9 9 0 1 0 3 13c0 6.5 9 16 9 16z" fill="${fill}" stroke="white" stroke-width="1.5"/><text x="12" y="16.5" text-anchor="middle" font-family="Work Sans, sans-serif" font-size="9" font-weight="600" fill="white">${n}</text></svg>`
+    `<svg xmlns="http://www.w3.org/2000/svg" width="34" height="42" viewBox="0 0 24 30"><path d="M12 29s9-9.5 9-16A9 9 0 1 0 3 13c0 6.5 9 16 9 16z" fill="${fill}" stroke="white" stroke-width="1.5"/>${
+      n > 0
+        ? `<text x="12" y="16.5" text-anchor="middle" font-family="Work Sans, sans-serif" font-size="9" font-weight="600" fill="white">${n}</text>`
+        : `<circle cx="12" cy="13" r="3.2" fill="white"/>`
+    }</svg>`
   )}`;
 
 const CLUSTER_SVG = (n: number) =>

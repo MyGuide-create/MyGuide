@@ -303,7 +303,8 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
                         lat: s.place.lat,
                         lng: s.place.lng,
                         category: s.place.category,
-                        n: s.recommenders.length,
+                        // A number only when several people recommend it (2, 3…); one person's spot is a plain pin.
+                        n: s.recommenders.length > 1 ? s.recommenders.length : 0,
                         href: `/g/${r.guideSlug}/p/${r.placeId}`,
                         photoUrl: s.place.photoUrl,
                         photoMediaId: s.place.photoMediaId,
