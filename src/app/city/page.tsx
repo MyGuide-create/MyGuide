@@ -3,7 +3,9 @@ import type { ReactNode } from "react";
 import { AppShell, TopBar } from "@/components/AppShell";
 import { GuideCover } from "@/components/GuideCover";
 import { HeartIcon, LockIcon, MapIcon, PlusIcon, SparkleIcon } from "@/components/Icons";
-import { findCity } from "@/lib/places/cities";
+import { findCity, metroOfDistrict } from "@/lib/places/cities";
+import { placeArea } from "@/lib/places/neighbourhood";
+import { redirect } from "next/navigation";
 import { AskForGuideButton } from "@/components/AskForGuide";
 import { SendSpotsButton } from "@/components/SendSpotsButton";
 import { FollowPill } from "@/components/FollowPill";
@@ -46,6 +48,13 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
   const user = await getCurrentUser();
   const sp = await searchParams;
   const city = one(sp.name).slice(0, 80);
+  // A district (Üsküdar, Etterbeek, Shibuya City) opens its main city: spots are grouped there.
+  const metro = metroOfDistrict(city);
+  if (metro) {
+    const q = new URLSearchParams(Object.entries(sp).filter((e): e is [string, string] => typeof e[1] === "string" && !["name", "country", "lat", "lng"].includes(e[0])));
+    q.set("name", metro);
+    redirect(`/city?${q.toString()}`);
+  }
   const country = one(sp.country).slice(0, 80);
   const lat = one(sp.lat);
   const lng = one(sp.lng);
@@ -505,7 +514,7 @@ function SpotRow({
       <PlaceTile place={p} size={68} />
       <span className="flex-1 min-w-0 flex flex-col gap-1">
         <span className="font-semibold text-[15px] leading-snug">{p.name}</span>
-        <span className="text-[12.5px] text-ink-muted truncate">{[p.category, p.area].filter(Boolean).join(" · ")}</span>
+        <span className="text-[12.5px] text-ink-muted truncate">{[p.category, placeArea(p)].filter(Boolean).join(" · ")}</span>
         {lead.tip && (
           <span className="text-[13px] leading-snug text-ink/85 line-clamp-2">
             &ldquo;{lead.tip}&rdquo; <span className="text-ink-muted">{nm(lead.user, viewerId)}</span>

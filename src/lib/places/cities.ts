@@ -33,6 +33,7 @@ export const CITIES: CityInfo[] = [
   { city: "Milan", country: "Italy", lat: 45.4642, lng: 9.19, aliases: ["milano"] },
   { city: "Naples", country: "Italy", lat: 40.8518, lng: 14.2681, aliases: ["napoli"] },
   { city: "Berlin", country: "Germany", lat: 52.52, lng: 13.405, aliases: ["kreuzberg", "neukolln", "neukölln", "mitte"] },
+  { city: "Brussels", country: "Belgium", lat: 50.8503, lng: 4.3517, aliases: ["bruxelles", "brussel", "city of brussels", "ville de bruxelles", "stad brussel"] },
   { city: "Amsterdam", country: "Netherlands", lat: 52.3676, lng: 4.9041, aliases: ["jordaan", "de pijp"] },
   { city: "Copenhagen", country: "Denmark", lat: 55.6761, lng: 12.5683, aliases: ["kobenhavn", "københavn", "norrebro", "nørrebro", "vesterbro"] },
   { city: "Stockholm", country: "Sweden", lat: 59.3293, lng: 18.0686, aliases: ["sodermalm", "södermalm"] },
@@ -87,7 +88,100 @@ export const CITIES: CityInfo[] = [
   { city: "Colombo", country: "Sri Lanka", lat: 6.9271, lng: 79.8612 },
 ];
 
-const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
+/**
+ * Districts, boroughs and communes that Google gives as their own "city" (Üsküdar, Etterbeek,
+ * Shibuya City…) but that belong to a bigger city. Hisham (12 Oct 2026): group them under the main
+ * city; people can still make a guide about one district. They match like aliases, and the
+ * district name is kept as the place's area ("Üsküdar · Istanbul").
+ * Leave out names that are also common words or other cities ("Forest" in Brussels, "Tuzla").
+ */
+const DISTRICTS: Record<string, string[]> = {
+  Istanbul: [
+    "Adalar", "Arnavutköy", "Ataşehir", "Avcılar", "Bağcılar", "Bahçelievler", "Bakırköy", "Başakşehir", "Bayrampaşa", "Beşiktaş",
+    "Beykoz", "Beylikdüzü", "Beyoğlu", "Büyükçekmece", "Çatalca", "Çekmeköy", "Esenler", "Esenyurt", "Eyüpsultan", "Eyüp", "Fatih",
+    "Gaziosmanpaşa", "Güngören", "Kadıköy", "Kağıthane", "Kartal", "Küçükçekmece", "Maltepe", "Pendik", "Sancaktepe", "Sarıyer",
+    "Silivri", "Sultanbeyli", "Sultangazi", "Şile", "Şişli", "Ümraniye", "Üsküdar", "Zeytinburnu", "Ortaköy", "Cihangir",
+    "Nişantaşı", "Balat", "Galata", "Sultanahmet", "Eminönü",
+  ],
+  Brussels: [
+    "Anderlecht", "Auderghem", "Oudergem", "Berchem-Sainte-Agathe", "Sint-Agatha-Berchem", "Etterbeek", "Evere", "Vorst", "Ganshoren",
+    "Ixelles", "Elsene", "Jette", "Koekelberg", "Molenbeek-Saint-Jean", "Sint-Jans-Molenbeek", "Molenbeek", "Saint-Gilles", "Sint-Gillis",
+    "Saint-Josse-ten-Noode", "Sint-Joost-ten-Node", "Schaerbeek", "Schaarbeek", "Uccle", "Ukkel", "Watermael-Boitsfort",
+    "Watermaal-Bosvoorde", "Woluwe-Saint-Lambert", "Sint-Lambrechts-Woluwe", "Woluwe-Saint-Pierre", "Sint-Pieters-Woluwe",
+  ],
+  Tokyo: [
+    "Chiyoda City", "Chuo City", "Minato City", "Shinjuku City", "Bunkyo City", "Taito City", "Sumida City", "Koto City",
+    "Shinagawa City", "Meguro City", "Ota City", "Setagaya City", "Shibuya City", "Nakano City", "Suginami City", "Toshima City",
+    "Kita City", "Arakawa City", "Itabashi City", "Nerima City", "Adachi City", "Katsushika City", "Edogawa City",
+    "Chiyoda", "Minato", "Bunkyo", "Meguro", "Setagaya", "Shinagawa", "Nakano", "Suginami", "Toshima", "Nerima", "Edogawa",
+  ],
+  "Mexico City": [
+    "Cuauhtémoc", "Miguel Hidalgo", "Benito Juárez", "Álvaro Obregón", "Tlalpan", "Xochimilco", "Iztapalapa", "Azcapotzalco",
+    "Gustavo A. Madero", "Venustiano Carranza", "Iztacalco", "La Magdalena Contreras", "Cuajimalpa", "Cuajimalpa de Morelos", "Tláhuac", "Milpa Alta",
+  ],
+  Seoul: ["Gangnam-gu", "Jongno-gu", "Mapo-gu", "Yongsan-gu", "Seongdong-gu", "Seocho-gu", "Songpa-gu", "Seodaemun-gu", "Gwangjin-gu", "Yeongdeungpo-gu"],
+  Dubai: ["Bur Dubai", "Al Barsha", "Jumeirah Village Circle", "Palm Jumeirah", "Al Wasl", "Umm Suqeim", "Al Safa"],
+};
+
+/**
+ * Regions that are the city itself: when Google's region for a place is one of these, the place
+ * is in that city even if its "locality" is a district (İstanbul province → Istanbul, Brussels-Capital
+ * Region → Brussels, Tokyo Metropolis → Tokyo). Not regions bigger than the city (Lisbon district has Sintra).
+ */
+const REGION_CITY: Record<string, string> = {
+  istanbul: "Istanbul",
+  "brussels-capital region": "Brussels",
+  "brussels capital region": "Brussels",
+  "region de bruxelles-capitale": "Brussels",
+  "brussels hoofdstedelijk gewest": "Brussels",
+  brussels: "Brussels",
+  tokyo: "Tokyo",
+  "tokyo metropolis": "Tokyo",
+  seoul: "Seoul",
+  "ciudad de mexico": "Mexico City",
+  "mexico city": "Mexico City",
+  cdmx: "Mexico City",
+  berlin: "Berlin",
+  vienna: "Vienna",
+  wien: "Vienna",
+  prague: "Prague",
+  "hlavni mesto praha": "Prague",
+  bangkok: "Bangkok",
+  "krung thep maha nakhon": "Bangkok",
+  "buenos aires": "Buenos Aires",
+  "ciudad autonoma de buenos aires": "Buenos Aires",
+  beirut: "Beirut",
+  "beirut governorate": "Beirut",
+  "greater london": "London",
+  singapore: "Singapore",
+  "hong kong": "Hong Kong",
+  dubai: "Dubai",
+};
+
+const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/ı/g, "i").trim();
+
+const DISTRICT_OF = new Map<string, string>();
+for (const [metro, names] of Object.entries(DISTRICTS)) {
+  const info = CITIES.find((c) => c.city === metro);
+  if (!info) continue;
+  info.aliases = [...(info.aliases ?? []), ...names];
+  for (const n of names) DISTRICT_OF.set(norm(n), metro);
+}
+
+/** "Üsküdar" → "Istanbul", "Shibuya City" → "Tokyo": the main city a district belongs to (undefined if it isn't one). */
+export function metroOfDistrict(name: string | null | undefined): string | undefined {
+  return name ? DISTRICT_OF.get(norm(name)) : undefined;
+}
+
+/**
+ * Group a place under its main city. `regions` are Google's administrative areas (province/state,
+ * then county). Returns the city to store and, when it was a district, the district (for the area).
+ */
+export function groupUnderCity(city: string, regions: string[]): { city: string; district: string } {
+  const metro = metroOfDistrict(city) ?? regions.map((r) => REGION_CITY[norm(r)]).find(Boolean);
+  if (!metro || norm(metro) === norm(city)) return { city, district: "" };
+  return { city: metro, district: city };
+}
 
 /** `phrase` appears in `text` as whole words ("dubai marina" has "dubai"; "valais" doesn't have "la"). */
 const hasWords = (text: string, phrase: string) => ` ${text.replace(/[^\p{L}\p{N}]+/gu, " ")} `.includes(` ${phrase.replace(/[^\p{L}\p{N}]+/gu, " ").trim()} `);
@@ -127,7 +221,9 @@ export function canonicalCity(input: string): string {
 export function cityNameVariants(input: string): string[] {
   const known = findCityExact(input);
   const names = known ? [known.city, ...(known.aliases ?? [])] : [input];
-  return [...new Set(names.map((n) => n.trim().replace(/\s+/g, " ").toLowerCase()).filter(Boolean))];
+  // SQL compares with SQLite's lower(), which only lowers A–Z ("Üsküdar" stays "Üsküdar"), so both forms are listed.
+  const tidy = names.map((n) => n.trim().replace(/\s+/g, " ")).filter(Boolean);
+  return [...new Set([...tidy.map((n) => n.toLowerCase()), ...tidy.map((n) => n.replace(/[A-Z]/g, (c) => c.toLowerCase()))])];
 }
 
 /** Scan free text for any mention of a known city. */

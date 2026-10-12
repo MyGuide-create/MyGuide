@@ -1,7 +1,7 @@
 import { categoryFromGoogleTypes } from "./categories";
 import { tidyCity } from "./cityName";
 import { sameBrand } from "./branches";
-import { findCity } from "./cities";
+import { findCity, groupUnderCity } from "./cities";
 import { haversineMeters } from "./geo";
 import type { CityInfo, CitySuggestion, PlaceResult, PlaceSuggestion, PlacesProvider } from "./types";
 import { splitGoogleWebsite } from "../placeLinks";
@@ -49,7 +49,12 @@ function key(): string {
 
 function toResult(p: GooglePlace): PlaceResult {
   const comp = (type: string) => p.addressComponents?.find((c) => c.types?.includes(type))?.longText ?? "";
-  const city = tidyCity(comp("locality") || comp("postal_town") || comp("administrative_area_level_2") || comp("administrative_area_level_1"));
+  // Districts Google calls their own town (Üsküdar, Etterbeek, Shibuya City) go under the main city; the district becomes the area.
+  const grouped = groupUnderCity(
+    tidyCity(comp("locality") || comp("postal_town") || comp("administrative_area_level_2") || comp("administrative_area_level_1")),
+    [comp("administrative_area_level_1"), comp("administrative_area_level_2")],
+  );
+  const city = grouped.city;
   const country = comp("country");
   const photoUrls = (p.photos ?? []).slice(0, 8).map((ph) => `/api/places/photo?ref=${encodeURIComponent(ph.name)}`);
   const status = p.businessStatus;
@@ -57,7 +62,7 @@ function toResult(p: GooglePlace): PlaceResult {
     providerId: p.id,
     name: tidyPlaceName(p.displayName?.text ?? "Unnamed place"),
     address: p.formattedAddress ?? "",
-    area: areaFromComponents(p.addressComponents, city),
+    area: areaFromComponents(p.addressComponents, city) || grouped.district,
     city,
     country,
     lat: p.location?.latitude ?? 0,
@@ -310,8 +315,12 @@ export async function reverseGeocode(lat: number, lng: number): Promise<{ area: 
     }
     const comps = data.results.flatMap((r) => r.address_components);
     const find = (...types: string[]) => comps.find((c) => types.some((t) => c.types.includes(t)))?.long_name ?? "";
-    const near = tidyArea(find("neighborhood", "sublocality", "sublocality_level_1"));
-    const city = tidyCity(find("locality", "postal_town") || find("administrative_area_level_2") || find("administrative_area_level_1"));
+    const grouped = groupUnderCity(
+      tidyCity(find("locality", "postal_town") || find("administrative_area_level_2") || find("administrative_area_level_1")),
+      [find("administrative_area_level_1"), find("administrative_area_level_2")],
+    );
+    const city = grouped.city;
+    const near = tidyArea(find("neighborhood", "sublocality", "sublocality_level_1")) || grouped.district;
     const country = find("country");
     const area = [near && near !== city ? near : "", city, country].filter(Boolean).join(", ");
     return { area, hood: near && near !== city ? near : "", city, country };
