@@ -216,6 +216,8 @@ export interface FriendCity {
   spots: number;
   /** Friends with spots here, most spots first. */
   friends: PublicUser[];
+  /** Places of your own here (with `withOwn`): one of your cities too. */
+  mine: number;
   /** A spot with a photo, for the tile when there's no guide cover. */
   photo: Place | null;
 }
@@ -239,14 +241,24 @@ export async function friendCities(viewerId: string | null | undefined, recs?: R
     c.owners.set(r.owner.id, o);
     if (!c.photo && (r.place.photoMediaId || r.place.photoUrl)) c.photo = r.place;
   }
-  // The viewer's own places count too (the same number as the city page): friends' spots ∪ yours.
+  // With `withOwn`: your own places count too (the same number as the city page), and cities where
+  // only you have places are included — they're cities you'll want (Hisham, 12 Oct 2026).
+  const mine = new Map<string, number>();
   if (opts.withOwn) {
-    const own = await ownSpotKeys(viewerId);
-    for (const [k, c] of by) for (const key of own.get(k) ?? []) c.keys.add(key);
+    for (const [k, o] of await ownCities(viewerId)) {
+      let c = by.get(k);
+      if (!c) {
+        c = { city: o.city, country: o.country, keys: new Set(), owners: new Map(), photo: null };
+        by.set(k, c);
+      }
+      for (const key of o.keys) c.keys.add(key);
+      mine.set(k, o.keys.size);
+    }
   }
-  return [...by.values()]
-    .map((c) => ({ city: c.city, country: c.country, spots: c.keys.size, friends: [...c.owners.values()].sort((a, b) => b.n - a.n).map((o) => o.user), photo: c.photo }))
-    .sort((a, b) => b.friends.length - a.friends.length || b.spots - a.spots);
+  // People who know the city (friends, plus you), then spots.
+  return [...by.entries()]
+    .map(([k, c]) => ({ city: c.city, country: c.country, spots: c.keys.size, friends: [...c.owners.values()].sort((a, b) => b.n - a.n).map((o) => o.user), photo: c.photo, mine: mine.get(k) ?? 0 }))
+    .sort((a, b) => b.friends.length + Number(b.mine > 0) - (a.friends.length + Number(a.mine > 0)) || b.spots - a.spots);
 }
 
 export type ActivityItem =
@@ -306,21 +318,27 @@ export async function canViewSharedPlace(ownerId: string, viewerId: string | nul
  * page, which always includes your own spots.
  */
 export async function ownSpotKeys(viewerId: string): Promise<Map<string, Set<string>>> {
+  return new Map([...(await ownCities(viewerId))].map(([k, c]) => [k, c.keys]));
+}
+
+/** The viewer's cities: every city they have places in (any guide, drafts, My places), with those places' spot keys. */
+export async function ownCities(viewerId: string): Promise<Map<string, { city: string; country: string; keys: Set<string> }>> {
   const db = await getDb();
   const rows = await db
-    .select({ googlePlaceId: places.googlePlaceId, name: places.name, lat: places.lat, lng: places.lng, city: places.city, guideCity: guides.city })
+    .select({ googlePlaceId: places.googlePlaceId, name: places.name, lat: places.lat, lng: places.lng, city: places.city, country: places.country, guideCity: guides.city, guideCountry: guides.country })
     .from(places)
     .innerJoin(guides, eq(guides.id, places.guideId))
     .where(eq(guides.ownerId, viewerId))
     .limit(5000);
-  const out = new Map<string, Set<string>>();
+  const out = new Map<string, { city: string; country: string; keys: Set<string> }>();
   for (const r of rows) {
     const raw = r.city.trim() || r.guideCity.trim();
     if (!raw) continue;
-    const k = canonicalCity(raw).toLowerCase();
-    const set = out.get(k) ?? new Set<string>();
-    set.add(spotKey(r));
-    out.set(k, set);
+    const city = canonicalCity(raw);
+    const k = city.toLowerCase();
+    const e = out.get(k) ?? { city, country: r.country || r.guideCountry || "", keys: new Set<string>() };
+    e.keys.add(spotKey(r));
+    out.set(k, e);
   }
   return out;
 }

@@ -13,7 +13,9 @@ const cityHref = (t: { city: string; country?: string }) => `/city?${new URLSear
 /** Every city on MyGuide: the ones your friends recommend spots in first, then the rest. */
 export default async function CitiesPage() {
   const user = await getCurrentUser();
-  const [{ byCity }, friends] = await Promise.all([cityTiles(user?.id), friendCities(user?.id, undefined, { withOwn: true })]);
+  const [{ byCity }, mineAndFriends] = await Promise.all([cityTiles(user?.id), friendCities(user?.id, undefined, { withOwn: true })]);
+  // Where only you have places, the city page shows everyone's spots with yours: count the same.
+  const friends = mineAndFriends.map((c) => (c.friends.length ? c : { ...c, spots: Math.max(c.spots, byCity.get(cityKey(c.city))?.spots ?? 0) }));
   const friendKeys = new Set(friends.map((c) => cityKey(c.city)));
   const rest = [...byCity.values()].filter((t) => !friendKeys.has(cityKey(t.city))).sort((a, b) => b.spots - a.spots || b.guides - a.guides);
   const photos = await cityPhotosFor([...friends.map((c) => c.city), ...rest.map((t) => t.city)]);
@@ -29,7 +31,7 @@ export default async function CitiesPage() {
       <main className="px-4 pt-2 pb-8 flex flex-col gap-7">
         {friends.length > 0 && (
           <section className="flex flex-col gap-2.5">
-            <h2 className="px-1 font-display text-[22px]">Your friends&apos; cities</h2>
+            <h2 className="px-1 font-display text-[22px]">{friends.some((c) => c.mine > 0) ? "Your cities" : "Your friends\u2019 cities"}</h2>
             <div className="grid grid-cols-2 gap-2.5">
               {friends.map((c) => {
                 return (
@@ -37,7 +39,7 @@ export default async function CitiesPage() {
                     {thumb(c.city)}
                     <span className="min-w-0">
                       <span className="block font-semibold text-[14.5px] truncate">{c.city}</span>
-                      <span className="block text-[12px] text-ink-muted">{c.spots} spot{c.spots === 1 ? "" : "s"} · {c.friends.length} friend{c.friends.length === 1 ? "" : "s"}</span>
+                      <span className="block text-[12px] text-ink-muted">{[`${c.spots} spot${c.spots === 1 ? "" : "s"}`, c.mine > 0 ? "you" : "", c.friends.length ? `${c.friends.length} friend${c.friends.length === 1 ? "" : "s"}` : ""].filter(Boolean).join(" · ")}</span>
                     </span>
                   </Link>
                 );

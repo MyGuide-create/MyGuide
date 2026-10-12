@@ -8,7 +8,7 @@ import { PlaceTile } from "@/components/PlaceTile";
 import { SaveButton } from "@/components/SaveButton";
 import { SendSpotsButton } from "@/components/SendSpotsButton";
 import { Avatar, LinkButton, cx } from "@/components/ui";
-import { getCurrentUser, type PublicUser } from "@/lib/auth";
+import { getCurrentUser, toPublicUser, type PublicUser } from "@/lib/auth";
 import { acceptedFollowingIds, friendCities, loadRecommendations } from "@/lib/citySpots";
 import { cityPhotoKey, cityPhotosFor } from "@/lib/cityPhotos";
 import type { CityPhoto } from "@/lib/db/schema";
@@ -43,14 +43,18 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   const user = await getCurrentUser();
   const followingIds = user ? await acceptedFollowingIds(user.id) : [];
 
-  const [{ moreCities }, trip, wanted, recs, followingGuides] = await Promise.all([
+  const [{ moreCities, byCity }, trip, wanted, recs, followingGuides] = await Promise.all([
     cityTiles(user?.id),
     user ? nextTrip(user.id) : Promise.resolve(null),
     wantedGuides(user?.id, 5),
     user ? loadRecommendations({ viewerId: user.id, ownerIds: followingIds }) : Promise.resolve([]),
     user ? listFeed({ viewerId: user.id, scope: "following", limit: 40 }) : Promise.resolve([] as GuideCard[]),
   ]);
-  const cities = (user ? await friendCities(user.id, recs, { withOwn: true }) : []).slice(0, CITY_TILES);
+  // Your friends' cities and yours. Where only you have places, the city page lists everyone's spots
+  // with yours, so the tile counts the same (everyone's ∪ yours).
+  const cities = (user ? await friendCities(user.id, recs, { withOwn: true }) : [])
+    .slice(0, CITY_TILES)
+    .map((c) => (c.friends.length ? c : { ...c, spots: Math.max(c.spots, byCity.get(cityKey(c.city))?.spots ?? 0) }));
   // Then the most active cities on MyGuide (most spots) up to CITY_TILES.
   const friendCityKeys = new Set(cities.map((c) => cityKey(c.city)));
   const popular = moreCities.filter((t) => !friendCityKeys.has(cityKey(t.city))).sort((a, b) => b.spots - a.spots || b.guides - a.guides);
@@ -126,7 +130,10 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
                 {tripCity ? (
                   <span className="flex items-center gap-2 text-[13px] text-cream-deep">
                     <Faces users={tripCity.friends} ring="ring-ink" />
-                    {tripCity.spots} spot{tripCity.spots === 1 ? "" : "s"} from {tripCity.friends.length} friend{tripCity.friends.length === 1 ? "" : "s"}
+                    {tripCity.spots} spot{tripCity.spots === 1 ? "" : "s"}
+                    {tripCity.friends.length
+                      ? ` from ${tripCity.mine ? "you and " : ""}${tripCity.friends.length} friend${tripCity.friends.length === 1 ? "" : "s"}`
+                      : " of yours"}
                   </span>
                 ) : (
                   <span className="text-[13px] text-cream-deep">See what people recommend there</span>
@@ -145,14 +152,14 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
         )}
         {(cities.length > 0 || popularTiles.length > 0) && (
           <section className="pt-8 flex flex-col gap-3">
-            <h2 className="px-5 font-display text-[22px]">{cities.length ? "Your friends\u2019 cities" : "Popular on MyGuide"}</h2>
+            <h2 className="px-5 font-display text-[22px]">{!cities.length ? "Popular on MyGuide" : cities.some((c) => c.mine > 0) ? "Your cities" : "Your friends\u2019 cities"}</h2>
             <div className="flex gap-3 overflow-x-auto no-scrollbar px-5">
               {cities.map((c) => (
                 <Link key={c.city} href={cityHref(c)} className="shrink-0 w-[150px] flex flex-col gap-2">
                   <CityTileImage photo={photoFor(c.city)} city={c.city} />
                   <span className="px-0.5 flex items-center gap-1.5 text-[12.5px] text-ink-muted">
-                    <Faces users={c.friends} ring="ring-cream" />
-                    {c.friends.length > 3 && <span>+{c.friends.length - 3}</span>}
+                    <Faces users={c.mine > 0 && user ? [toPublicUser(user), ...c.friends] : c.friends} ring="ring-cream" />
+                    {c.friends.length + Number(c.mine > 0) > 3 && <span>+{c.friends.length + Number(c.mine > 0) - 3}</span>}
                   </span>
                   <span className="px-0.5 -mt-1 text-[13px] font-semibold">{c.spots} spot{c.spots === 1 ? "" : "s"}</span>
                 </Link>
