@@ -508,6 +508,10 @@ export function RecordFlow({
             </div>
             <h1 className="font-display text-[28px] leading-tight">{done.city ? `Added to My ${done.city}` : "Added to My places"} ✓</h1>
             <p className="mt-1.5 text-[15px] font-semibold">{done.name}</p>
+            {done.address && <p className="mt-0.5 text-[12.5px] text-ink-muted">{done.address}</p>}
+            <Link href={`/g/${done.guideSlug}/p/${done.placeId}#fix`} className="mt-1 text-[12.5px] font-medium text-terracotta-deep underline underline-offset-2">
+              Wrong place? Fix location
+            </Link>
             <p className="mt-0.5 text-[12.5px] text-ink-muted">
               {done.shared ? `Recommended · friends see it on the ${done.city || "city"} page` : "Only you can see it"}
             </p>

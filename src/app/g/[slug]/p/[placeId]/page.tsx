@@ -27,6 +27,7 @@ import { isStash, myPlacesHref } from "@/lib/stash";
 import { canonicalCity } from "@/lib/places/cities";
 import { RecommendToggle } from "@/components/RecommendToggle";
 import { FixPlaceLocation } from "@/components/FixPlaceLocation";
+import { ownCopyOf } from "@/lib/myPlaces";
 import { getPlacesProvider } from "@/lib/places";
 import { getGoogleRatings } from "@/lib/places/ratings";
 import { GoogleRatingLine } from "@/components/GoogleRating";
@@ -120,6 +121,8 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
   const placeHref = (id: string) => `/g/${slug}/p/${id}${keyQuery}`;
   const canReuse = !detail.viewerCanEdit && isReusable(guide);
   const targets = canReuse && user ? await reuseTargets(user.id, tidyCity(guide.city || place.city)) : null;
+  // Opened someone else's copy of a spot you have too: fix yours from here.
+  const mine = user && !detail.viewerCanEdit ? await ownCopyOf(user.id, place) : null;
   const noteAuthor = place.noteAuthorId && place.noteAuthorId !== detail.owner.id ? detail.noteAuthors[place.noteAuthorId] : null;
 
   return (
@@ -185,6 +188,21 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
               droppedPin={isDroppedPin(place)}
               at={place.lat != null && place.lng != null ? { lat: place.lat, lng: place.lng } : null}
             />
+          )}
+          {mine && (
+            <div className="mt-2">
+              <p className="text-[12px] text-ink-faint">
+                It&apos;s in <Link href={`/g/${mine.slug}/p/${mine.placeId}`} className="underline underline-offset-2">your places</Link> too.
+              </p>
+              <FixPlaceLocation
+                guideId={mine.guideId}
+                placeId={mine.placeId}
+                name={place.name}
+                droppedPin={mine.droppedPin}
+                at={mine.lat != null && mine.lng != null ? { lat: mine.lat, lng: mine.lng } : null}
+                label="Wrong place? Fix yours"
+              />
+            </div>
           )}
           {(detail.friendsWhoLike[place.id]?.length ?? 0) > 0 && (
             <p className="mt-2 text-[12.5px] text-sage font-medium">

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { replacePlace, setPlacePin } from "@/lib/actions/guides";
 import { PlaceSearch } from "./PlaceSearch";
 import { PinDropSheet } from "./PinDropSheet";
@@ -19,6 +19,7 @@ export function FixPlaceLocation({
   cityHint,
   droppedPin,
   at,
+  label,
 }: {
   guideId: string;
   placeId: string;
@@ -26,6 +27,8 @@ export function FixPlaceLocation({
   cityHint?: string;
   droppedPin: boolean;
   at: { lat: number; lng: number } | null;
+  /** Button text instead of the default (e.g. "Wrong place? Fix yours" on a friend's page). */
+  label?: string;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -33,6 +36,13 @@ export function FixPlaceLocation({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+
+  // "Wrong place? Fix location" on the done screen links here with #fix: open straight away.
+  useEffect(() => {
+    if (window.location.hash !== "#fix") return;
+    const t = setTimeout(() => (droppedPin ? setPinning(true) : setOpen(true)), 0);
+    return () => clearTimeout(t);
+  }, [droppedPin]);
 
   const finish = () => {
     setOpen(false);
@@ -69,7 +79,7 @@ export function FixPlaceLocation({
             onClick={() => (droppedPin ? setPinning(true) : setOpen(true))}
             className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full border border-line text-[12.5px] font-medium text-ink-muted hover:text-ink"
           >
-            <PinIcon size={14} /> {at == null ? "Find it on the map" : droppedPin ? "Move pin" : "Wrong place? Fix location"}
+            <PinIcon size={14} /> {label ?? (at == null ? "Find it on the map" : droppedPin ? "Move pin" : "Wrong place? Fix location")}
           </button>
           {done && <span className="text-[12px] text-sage font-medium">Location updated ✓</span>}
         </div>

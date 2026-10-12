@@ -42,6 +42,8 @@ export interface RecordedPlace {
   intoGuide: boolean;
   placeId: string;
   name: string;
+  /** Where it is, so a wrong match is easy to spot on the done screen. */
+  address: string;
   /** The place's city, tidied ("" when unknown). */
   city: string;
   shared: boolean;
@@ -113,18 +115,17 @@ export async function saveRecordedPlace(input: RecordPlaceInput): Promise<Record
       if (same.city.trim()) cityOut = canonicalCity(same.city);
       const [{ n: tipCount }] = await db.select({ n: sql<number>`count(*)` }).from(placeTips).where(eq(placeTips.placeId, same.id));
       const [{ n: photoCount }] = await db.select({ n: sql<number>`count(*)` }).from(placePhotos).where(eq(placePhotos.placeId, same.id));
-      await db
-        .update(places)
-        .set({
-          ...(liked ? { note: liked, noteAuthorId: user.id } : {}),
-          ...(input.share && !same.sharedAt ? { sharedAt: now } : {}),
-          ...(!same.photoMediaId && input.photoMediaIds[0] ? { photoMediaId: input.photoMediaIds[0] } : {}),
-        })
-        .where(eq(places.id, same.id));
+      const patch = {
+        ...(liked ? { note: liked, noteAuthorId: user.id } : {}),
+        ...(input.share && !same.sharedAt ? { sharedAt: now } : {}),
+        ...(!same.photoMediaId && input.photoMediaIds[0] ? { photoMediaId: input.photoMediaIds[0] } : {}),
+      };
+      // Nothing new (added again with no words): leave it as it is.
+      if (Object.keys(patch).length) await db.update(places).set(patch).where(eq(places.id, same.id));
       if (tips.length) await db.insert(placeTips).values(tips.map((body, i) => ({ id: newId(), placeId: same.id, body, position: Number(tipCount) + i, createdAt: now })));
       if (input.photoMediaIds.length) await db.insert(placePhotos).values(input.photoMediaIds.map((mediaId, i) => ({ id: newId(), placeId: same.id, mediaId, position: Number(photoCount) + i, createdAt: now })));
       revalidatePath("/my-places");
-      return { guideSlug: guide.slug, intoGuide: false, placeId: same.id, name: same.name, city: cityOut, shared: !!input.share || !!same.sharedAt, unguided: await unguidedIn(), recommended: await recommendedIn() };
+      return { guideSlug: guide.slug, intoGuide: false, placeId: same.id, name: same.name, address: same.address, city: cityOut, shared: !!input.share || !!same.sharedAt, unguided: await unguidedIn(), recommended: await recommendedIn() };
     }
   }
 
@@ -177,7 +178,7 @@ export async function saveRecordedPlace(input: RecordPlaceInput): Promise<Record
   revalidatePath(`/g/${guide.slug}/edit`);
   revalidatePath("/me");
   revalidatePath("/my-places");
-  return { guideSlug: guide.slug, intoGuide: !toStash, placeId, name: resolved?.name ?? input.name, city: cityOut, shared: toStash && !!input.share, unguided: await unguidedIn(), recommended: await recommendedIn() };
+  return { guideSlug: guide.slug, intoGuide: !toStash, placeId, name: resolved?.name ?? input.name, address: resolved?.address ?? "", city: cityOut, shared: toStash && !!input.share, unguided: await unguidedIn(), recommended: await recommendedIn() };
 }
 
 /** Recommend (or stop recommending) places in My places, so they show on their city's page. */

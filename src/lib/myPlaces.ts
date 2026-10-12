@@ -187,3 +187,20 @@ export async function copyPlaceExtras(pairs: Array<[string, string]>): Promise<v
     if (branches.length) await db.insert(placeLocations).values(branches.map((t) => ({ ...t, id: newId(), placeId: to.get(t.placeId)!, createdAt: now })));
   }
 }
+
+/**
+ * Your own copy of a spot someone else saved (a friend's page opens from the city page when you both
+ * have it), so you can fix your copy's location from there. My places first, then your guides.
+ */
+export async function ownCopyOf(userId: string, place: Pick<Place, "id" | "googlePlaceId" | "name" | "lat" | "lng">): Promise<{ guideId: string; placeId: string; slug: string; droppedPin: boolean; lat: number | null; lng: number | null } | null> {
+  const db = await getDb();
+  const k = spotKey(place);
+  const rows = await db
+    .select({ place: places, guide: guides })
+    .from(places)
+    .innerJoin(guides, eq(guides.id, places.guideId))
+    .where(place.googlePlaceId ? and(eq(guides.ownerId, userId), eq(places.googlePlaceId, place.googlePlaceId)) : eq(guides.ownerId, userId));
+  const hit = rows.filter((r) => r.place.id !== place.id && spotKey(r.place) === k).sort((a, b) => Number(STASH_TITLES.includes(b.guide.title) && !b.guide.publishedAt) - Number(STASH_TITLES.includes(a.guide.title) && !a.guide.publishedAt))[0];
+  if (!hit) return null;
+  return { guideId: hit.guide.id, placeId: hit.place.id, slug: hit.guide.slug, droppedPin: !hit.place.googlePlaceId && hit.place.lat != null, lat: hit.place.lat, lng: hit.place.lng };
+}
