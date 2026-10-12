@@ -68,7 +68,7 @@ export async function citySpots(opts: { city: string; viewerId?: string | null; 
   ];
   if (ownerIds) conds.push(inArray(guides.ownerId, ownerIds));
   const rows = await db
-    .select({ place: places, guide: { id: guides.id, slug: guides.slug, title: guides.title, ownerId: guides.ownerId }, owner: users })
+    .select({ place: places, guide: { id: guides.id, slug: guides.slug, title: guides.title, ownerId: guides.ownerId, forkedFrom: guides.forkedFromGuideId }, owner: users })
     .from(places)
     .innerJoin(guides, eq(guides.id, places.guideId))
     .innerJoin(users, eq(users.id, guides.ownerId))
@@ -106,6 +106,9 @@ export async function citySpots(opts: { city: string; viewerId?: string | null; 
     const notTheirs = (r.place.noteAuthorId && r.place.noteAuthorId !== r.owner.id) || (r.place.sourcePlaceId && r.place.noteAuthorId !== r.owner.id);
     const ownNote = notTheirs ? "" : r.place.note;
     const tip = clip(ownNote || firstTip.get(r.place.id) || "");
+    // Picked/copied from someone else (or in a copied guide): "want to try", not a recommendation,
+    // until they add words of their own.
+    if ((r.place.sourcePlaceId || r.guide.forkedFrom) && !tip) continue;
     const existing = g.recommenders.find((x) => x.user.id === r.owner.id);
     if (existing) {
       if (!existing.tip && tip) Object.assign(existing, { tip, placeId: r.place.id, guideSlug: r.guide.slug, guideTitle: r.guide.title });
@@ -118,7 +121,7 @@ export async function citySpots(opts: { city: string; viewerId?: string | null; 
 
   const latest = (s: CitySpot) => Math.max(...s.recommenders.map((x) => x.addedAt.getTime()));
   for (const g of groups.values()) g.recommenders.sort((a, b) => Number(!!b.tip) - Number(!!a.tip) || b.addedAt.getTime() - a.addedAt.getTime());
-  return [...groups.values()].sort((a, b) => b.recommenders.length - a.recommenders.length || latest(b) - latest(a));
+  return [...groups.values()].filter((g) => g.recommenders.length > 0).sort((a, b) => b.recommenders.length - a.recommenders.length || latest(b) - latest(a));
 }
 
 /** Can the viewer see a place its owner recommended on its own (outside a public guide)? Same rules as a public guide. */

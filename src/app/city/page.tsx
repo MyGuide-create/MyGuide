@@ -96,6 +96,7 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
   const sortHref = (s: "saved" | "new") => cityHref({ sort: s === "new" ? "new" : "" });
   const startQs = new URLSearchParams({ city, ...(country ? { country } : {}), ...(lat && lng ? { lat, lng } : {}) }).toString();
   const startHref = user ? `/create?${startQs}` : `/signup?next=${encodeURIComponent(`/create?${startQs}`)}&why=create`;
+  const pickHref = `/pick?${new URLSearchParams({ city, ...(picked ? { friend: picked.username } : {}) }).toString()}`;
   const addSpotsHref = ownCityGuide ? `/g/${ownCityGuide.guide.slug}/edit` : startHref;
   const tripHref = user ? `/trips?city=${encodeURIComponent(city)}` : `/signup?next=${encodeURIComponent(`/trips?city=${city}`)}`;
   const signupAsk = `/signup?next=${encodeURIComponent(`/city?${new URLSearchParams(base).toString()}`)}`;
@@ -263,6 +264,18 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
                 <h2 className="font-display text-[22px]">{picked ? `${first(picked)}\u2019s ${city}` : fromFriends ? "Most recommended" : "Most recommended on MyGuide"}</h2>
                 <span className="text-[13px] text-ink-muted">{shownSpots.length} spot{shownSpots.length === 1 ? "" : "s"}</span>
               </div>
+              {shownSpots.length > 0 && (
+                <Link
+                  href={user ? pickHref : `/signup?why=fork&next=${encodeURIComponent(pickHref)}`}
+                  className="flex items-center justify-between gap-3 rounded-2xl bg-ink text-cream px-4 py-3"
+                >
+                  <span className="min-w-0">
+                    <span className="block font-semibold text-[14.5px]">Make your own {city} guide</span>
+                    <span className="block text-[12px] text-cream-deep">Tick the spots you want and keep them in a guide</span>
+                  </span>
+                  <span aria-hidden className="text-[20px]">›</span>
+                </Link>
+              )}
               {!fromFriends && (
                 <p className="px-1 -mt-1 text-[13px] text-ink-muted">Nobody you follow has added {city} spots yet, so here&apos;s what MyGuide travellers recommend.</p>
               )}

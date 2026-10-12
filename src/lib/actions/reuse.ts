@@ -11,6 +11,9 @@ import { canViewGuide, isCollaborator } from "../guides";
 import { findCity } from "../places/cities";
 import { copyBranches, copyPlace, freshGuideSlug, isReusable, notifyGuideUsed, placeKey } from "../reuse";
 import { newId, newToken } from "../utils";
+import { canViewSharedPlace } from "../citySpots";
+import { isStash } from "../stash";
+import { canonicalCity } from "../places/cities";
 
 type Result = { ok: true; slug: string; title: string; added: number } | { ok: false; error: string };
 
@@ -55,9 +58,14 @@ async function copyInto(user: User, target: Guide, placeIds: string[]): Promise<
   const sources = sourceIds.length ? await db.select().from(guides).where(inArray(guides.id, sourceIds)) : [];
   const hidden = await hiddenUserIds(user.id);
   const usable = new Map<string, Guide>();
+  // Saved places lists aren't public, but a place recommended from one can be picked on its own.
+  const sharedOnly = new Set<string>();
   for (const g of sources) {
-    if (g.id === target.id || !isReusable(g) || hidden.has(g.ownerId)) continue;
-    if (g.ownerId !== user.id && !(await canViewGuide(g, user.id))) continue;
+    if (g.id === target.id || hidden.has(g.ownerId)) continue;
+    if (!isReusable(g) || (g.ownerId !== user.id && !(await canViewGuide(g, user.id)))) {
+      if (!isStash(g) || !(await canViewSharedPlace(g.ownerId, user.id))) continue;
+      sharedOnly.add(g.id);
+    }
     usable.set(g.id, g);
   }
   const existing = await db.select().from(places).where(eq(places.guideId, target.id));
@@ -72,6 +80,7 @@ async function copyInto(user: User, target: Guide, placeIds: string[]): Promise<
     const p: Place | undefined = byId.get(id);
     const source = p && usable.get(p.guideId);
     if (!p || !source) continue;
+    if (sharedOnly.has(source.id) && !p.sharedAt) continue;
     const key = placeKey(p);
     if (have.has(key)) continue;
     have.add(key);
@@ -156,4 +165,61 @@ export async function addPlaceToMyGuide(placeId: string, target: string): Promis
     return { ok: false, error: "This place can't be added — the guide isn't public." };
   }
   return { ok: true, slug: guide.slug, title: guide.title, added };
+}
+
+/**
+ * Pick places (from a city's spots or someone's guide) into a new guide of your own, or one you
+ * already have. Replaces "Copy guide": picking every place of a guide is the old copy.
+ */
+export async function pickIntoGuide(input: { placeIds: string[]; guideId?: string; newTitle?: string; city?: string }): Promise<Result & { created?: boolean }> {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "Please log in." };
+  if (!input.placeIds.length) return { ok: false, error: "Pick at least one place." };
+  const db = await getDb();
+  let target: Guide | undefined;
+  let created = false;
+  if (input.guideId) {
+    target = await db.query.guides.findFirst({ where: eq(guides.id, input.guideId) });
+    if (!target || (target.ownerId !== user.id && !(await isCollaborator(target.id, user.id)))) return { ok: false, error: "You can only add to your own guides." };
+  } else {
+    const title = (input.newTitle ?? "").trim().slice(0, 80);
+    if (!title) return { ok: false, error: "Give your guide a title." };
+    // City: the one picked from, else the most common city among the places.
+    let cityName = (input.city ?? "").trim();
+    if (!cityName) {
+      const rows = await db.select({ city: places.city }).from(places).where(inArray(places.id, input.placeIds.slice(0, MAX_PLACES)));
+      const counts = new Map<string, number>();
+      for (const r of rows) if (r.city.trim()) counts.set(canonicalCity(r.city), (counts.get(canonicalCity(r.city)) ?? 0) + 1);
+      cityName = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "";
+    }
+    const known = findCity(cityName);
+    const now = new Date();
+    const row: typeof guides.$inferInsert = {
+      id: newId(),
+      ownerId: user.id,
+      slug: await freshGuideSlug(title),
+      title,
+      city: known?.city ?? cityName,
+      country: known?.country ?? "",
+      lat: known?.lat ?? null,
+      lng: known?.lng ?? null,
+      description: "",
+      visibility: "private",
+      allowFork: true,
+      shareToken: newToken(),
+      publishedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    await db.insert(guides).values(row);
+    target = (await db.query.guides.findFirst({ where: eq(guides.id, row.id) }))!;
+    created = true;
+  }
+  const added = await copyInto(user, target, input.placeIds);
+  if (!added && created) {
+    await db.delete(guides).where(eq(guides.id, target.id));
+    return { ok: false, error: "None of those places could be added." };
+  }
+  revalidateTarget(target.slug);
+  return { ok: true, slug: target.slug, title: target.title, added, created };
 }

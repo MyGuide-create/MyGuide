@@ -8,7 +8,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "../auth";
 import { getDb } from "../db";
 import { guideCollaborators, guideRequests, guideShares, guides, media, notifications, placeComments, placeLocations, placePhotos, placeTips, places, users, wishGrants, type Guide, type Place, type PlaceLocation, type PlaceTip } from "../db/schema";
-import { canViewGuide, getGuideById, isCollaborator } from "../guides";
+import { getGuideById, isCollaborator } from "../guides";
 import { notifyGuidePublished, notifyPlacesAdded } from "../notify";
 import { sendWishGrants, wishesForMaking } from "../wishes";
 import { getPlacesProvider, isCategory, resolvePlaceByName, type PlaceResult } from "../places";
@@ -20,7 +20,6 @@ import type { BranchCandidate } from "../places/branches";
 import { claimUnsplashPhoto } from "../covers/unsplash";
 import { mapLimit, newId, newToken, slugify } from "../utils";
 import { addNotifications } from "../notifications";
-import { copyBranches, copyPlace, notifyGuideUsed } from "../reuse";
 import { normaliseInstagram, normaliseReserve, normaliseWebsite, normaliseWhatsapp, type Normalised } from "@/lib/placeLinks";
 
 /** Owner or invited co-editor. Use for editing places, notes, tips and guide details. */
@@ -679,49 +678,6 @@ export async function reorderPlaces(guideId: string, orderedIds: string[]): Prom
   );
   await touch(guideId);
   revalidateGuide(guide.slug);
-}
-
-/** Copy someone's guide into a private, editable guide of your own. */
-export async function forkGuide(guideId: string, shareKey?: string | null): Promise<string> {
-  const user = await getCurrentUser();
-  if (!user) redirect("/login");
-  const db = await getDb();
-  const source = await getGuideById(guideId);
-  if (!source) throw new UserError("Guide not found.", "gone");
-  if (!(await canViewGuide(source, user.id, shareKey))) throw new UserError("You don't have access to this guide.", "forbidden");
-  if (source.ownerId === user.id) throw new UserError("This is already your guide.", "forbidden");
-
-  const sourcePlaces = await db.select().from(places).where(eq(places.guideId, guideId)).orderBy(places.position);
-  const id = newId();
-  const slug = await uniqueSlug(source.title);
-  const now = new Date();
-  await db.insert(guides).values({
-    id,
-    ownerId: user.id,
-    slug,
-    title: source.title,
-    city: source.city,
-    country: source.country,
-    description: source.description,
-    coverMediaId: null,
-    visibility: "private",
-    allowFork: true,
-    forkedFromGuideId: source.id,
-    forkedFromUserId: source.ownerId,
-    shareToken: newToken(),
-    publishedAt: null,
-    createdAt: now,
-    updatedAt: now,
-  });
-  if (sourcePlaces.length) {
-    const newIds = sourcePlaces.map(() => newId());
-    // Places are copied; the creator's notes and tips stay theirs and show on the copy, credited (see lib/reuse).
-    await db.insert(places).values(sourcePlaces.map((p, i) => ({ ...copyPlace(p, source, { guideId: id, position: i, now }), id: newIds[i] })));
-    await copyBranches(sourcePlaces.map((p, i) => [p.id, newIds[i]]));
-  }
-  await notifyGuideUsed(source, user.id, sourcePlaces.length);
-  revalidatePath("/me");
-  return slug;
 }
 
 /** Share a guide with a specific person: creates the share and a notification. */

@@ -1,15 +1,12 @@
 "use client";
 
 import { mapsUrl } from "@/lib/places/pins";
-import { errorText } from "@/lib/errorText";
 
 import Link from "next/link";
 import { STASH_TITLE } from "@/lib/stash";
-import { useEffect, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import type { GuideDetail } from "@/lib/guides";
 import type { PublicUser } from "@/lib/auth";
-import { forkGuide } from "@/lib/actions/guides";
 import { orderedCategories } from "@/lib/places/order";
 import { placeArea } from "@/lib/places/neighbourhood";
 import { cityLine, timeAgo, titleSize } from "@/lib/utils";
@@ -19,13 +16,13 @@ import { GuideCover } from "./GuideCover";
 import { CityLine } from "./GuideCard";
 import { coverCityLabel } from "@/lib/coverCity";
 import { GuideMap } from "./GuideMap";
-import { CheckIcon, EditIcon, ForkIcon, ListIcon, LockIcon, MapIcon, ShareIcon } from "./Icons";
+import { CheckIcon, EditIcon, ForkIcon, ListIcon, LockIcon, MapIcon, PlusIcon, ShareIcon } from "./Icons";
 import { PlaceRow } from "./PlaceRow";
 import type { GoogleRating } from "@/lib/places/ratingFormat";
 import { ShareSheet } from "./ShareSheet";
 import { ReportButton } from "./ReportButton";
 import { SaveGuideButton } from "./SaveGuideButton";
-import { Avatar, Button, Chip, LinkButton, Spinner, Tag, cx } from "./ui";
+import { Avatar, Button, Chip, LinkButton, Tag, cx } from "./ui";
 
 export function GuideView({ detail, viewerId, viewer, shareUrl, shareKey }: { detail: GuideDetail; viewerId: string | null; viewer: PublicUser | null; shareUrl: string; shareKey?: string | null }) {
   const { guide, owner, places, noteAuthors, forkedFrom } = detail;
@@ -34,9 +31,6 @@ export function GuideView({ detail, viewerId, viewer, shareUrl, shareKey }: { de
   const [sharing, setSharing] = useState(false);
   const [flags, setFlags] = useState<Record<string, string>>({});
   const [ratings, setRatings] = useState<Record<string, GoogleRating>>({});
-  const [forking, startFork] = useTransition();
-  const [forkError, setForkError] = useState<string | null>(null);
-  const router = useRouter();
 
   // Group places by category (fixed category order, guide order within each group).
   const categories = orderedCategories(places);
@@ -80,19 +74,6 @@ export function GuideView({ detail, viewerId, viewer, shareUrl, shareKey }: { de
       })
       .catch(() => {});
   }, [guide.id, shareKey]);
-
-  const fork = () => {
-    setForkError(null);
-    track("fork", guide.id);
-    startFork(async () => {
-      try {
-        const slug = await forkGuide(guide.id, shareKey);
-        router.push(`/g/${slug}/edit?forked=1`);
-      } catch (e) {
-        setForkError(errorText(e, "Couldn't copy this guide."));
-      }
-    });
-  };
 
   return (
     <>
@@ -142,7 +123,7 @@ export function GuideView({ detail, viewerId, viewer, shareUrl, shareKey }: { de
               <Tag tone="sage"><ForkIcon size={11} /> based on @{forkedFrom.username}&apos;s guide</Tag>
             </Link>
           )}
-          {!guide.allowFork && <Tag>Copies get places only</Tag>}
+          {!guide.allowFork && <Tag>Picks get places only</Tag>}
         </div>
 
         {guide.description && <p className="mt-3.5 text-[13.5px] leading-[1.5] italic">{guide.description}</p>}
@@ -161,19 +142,16 @@ export function GuideView({ detail, viewerId, viewer, shareUrl, shareKey }: { de
           {!detail.viewerCanEdit && <SaveGuideButton guideId={guide.id} initial={detail.viewerSavedGuide} signedIn={!!viewerId} />}
           <Button size="sm" variant="secondary" onClick={() => setSharing(true)} className="flex-1"><ShareIcon size={15} /> Share</Button>
           {detail.viewerCanFork && (
-            <Button size="sm" variant="outline" onClick={fork} disabled={forking} className="flex-1 whitespace-nowrap">
-              {forking ? <Spinner /> : <ForkIcon size={15} />} Copy guide
-            </Button>
+            <LinkButton href={`/pick?${new URLSearchParams({ guide: guide.slug, ...(shareKey ? { key: shareKey } : {}) }).toString()}`} size="sm" variant="outline" className="flex-1 whitespace-nowrap"><PlusIcon size={15} /> Pick places</LinkButton>
           )}
           {!viewerId && (
-            <LinkButton href={`/signup?why=fork&next=${encodeURIComponent(`/g/${guide.slug}${shareKey ? `?key=${shareKey}` : ""}`)}`} size="sm" variant="outline" className="flex-1 whitespace-nowrap"><ForkIcon size={15} /> Copy guide</LinkButton>
+            <LinkButton href={`/signup?why=fork&next=${encodeURIComponent(`/pick?${new URLSearchParams({ guide: guide.slug, ...(shareKey ? { key: shareKey } : {}) }).toString()}`)}`} size="sm" variant="outline" className="flex-1 whitespace-nowrap"><PlusIcon size={15} /> Pick places</LinkButton>
           )}
           <div className="flex rounded-full border border-line p-0.5">
             <button type="button" aria-label="List view" onClick={() => setMode("list")} className={cx("w-9 h-8 rounded-full flex items-center justify-center", mode === "list" ? "bg-ink text-cream" : "text-ink-muted")}><ListIcon size={17} /></button>
             <button type="button" aria-label="Map view" onClick={() => setMode("map")} className={cx("w-9 h-8 rounded-full flex items-center justify-center", mode === "map" ? "bg-ink text-cream" : "text-ink-muted")}><MapIcon size={17} /></button>
           </div>
         </div>
-        {forkError && <p className="mt-2 text-[12.5px] text-danger">{forkError}</p>}
 
         {categories.length > 1 && (
           <div className="mt-[18px] -mx-5 px-5 flex gap-2 overflow-x-auto no-scrollbar">
