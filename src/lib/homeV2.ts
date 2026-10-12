@@ -5,7 +5,7 @@
 import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { getDb } from "./db";
 import { follows, guides, notifications, places, savedGuides, savedPlaces, trips, type Trip } from "./db/schema";
-import { friendCities, friendsActivity, loadRecommendations, type ActivityItem, type Recommendation } from "./citySpots";
+import { friendCities, friendsActivity, loadRecommendations, spotKey, type ActivityItem, type Recommendation } from "./citySpots";
 import { listFeed, type GuideCard } from "./guides";
 import { listAllWishes, type CityWishes } from "./wishes";
 import { canonicalCity, cityNameVariants, findCityExact } from "./places/cities";
@@ -38,6 +38,8 @@ export interface CityTile {
   city: string;
   country: string;
   guides: number;
+  /** Distinct spots recommended here (published guides and places recommended on their own) that the viewer can see. */
+  spots: number;
   /** Distinct people the viewer follows with a guide here. */
   friends: number;
   /** Best-ranked guide with a photo (else the best-ranked guide): its cover stands for the city. */
@@ -46,7 +48,15 @@ export interface CityTile {
 
 /** Every city with a public guide the viewer can see, split into ones friends know and the rest. */
 export async function cityTiles(viewerId: string | null | undefined): Promise<{ friendCities: CityTile[]; moreCities: CityTile[]; byCity: Map<string, CityTile> }> {
-  const [cards, followed] = await Promise.all([listFeed({ viewerId, limit: 300 }), followedIds(viewerId)]);
+  const [cards, followed, recs] = await Promise.all([listFeed({ viewerId, limit: 300 }), followedIds(viewerId), loadRecommendations({ viewerId })]);
+  const spotsBy = new Map<string, Set<string>>();
+  for (const r of recs) {
+    if (!r.city) continue;
+    const k = key(r.city);
+    const set = spotsBy.get(k) ?? new Set<string>();
+    set.add(spotKey(r.place));
+    spotsBy.set(k, set);
+  }
   const groups = new Map<string, { tile: CityTile; owners: Set<string> }>();
   for (const c of cards) {
     if (!c.guide.city.trim()) continue;
@@ -54,7 +64,7 @@ export async function cityTiles(viewerId: string | null | undefined): Promise<{ 
     const k = key(city);
     let g = groups.get(k);
     if (!g) {
-      g = { tile: { city, country: findCityExact(city)?.country ?? c.guide.country, guides: 0, friends: 0, cover: c }, owners: new Set() };
+      g = { tile: { city, country: findCityExact(city)?.country ?? c.guide.country, guides: 0, spots: spotsBy.get(k)?.size ?? 0, friends: 0, cover: c }, owners: new Set() };
       groups.set(k, g);
     }
     g.tile.guides++;
@@ -66,7 +76,7 @@ export async function cityTiles(viewerId: string | null | undefined): Promise<{ 
   const tiles = [...groups.values()].map((g) => ({ ...g.tile, friends: g.owners.size }));
   const byCity = new Map(tiles.map((t) => [key(t.city), t]));
   const friendCities = tiles.filter((t) => t.friends > 0).sort((a, b) => b.friends - a.friends || b.guides - a.guides);
-  const moreCities = tiles.filter((t) => t.friends === 0).sort((a, b) => b.guides - a.guides);
+  const moreCities = tiles.filter((t) => t.friends === 0).sort((a, b) => b.spots - a.spots || b.guides - a.guides);
   return { friendCities, moreCities, byCity };
 }
 

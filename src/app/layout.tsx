@@ -26,13 +26,13 @@ const siteUrl =
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: { default: "MyGuide", template: "%s · MyGuide" },
-  description: "Personal city guides from people whose taste you trust.",
+  description: "The spots your friends love, in every city they know.",
   applicationName: "MyGuide",
   appleWebApp: { capable: true, title: "MyGuide", statusBarStyle: "default" },
   openGraph: {
     siteName: "MyGuide",
     title: "MyGuide",
-    description: "Personal city guides from people whose taste you trust.",
+    description: "The spots your friends love, in every city they know.",
     images: [{ url: "/api/og", width: 1200, height: 630 }],
   },
   twitter: { card: "summary_large_image" },

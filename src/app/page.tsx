@@ -59,7 +59,6 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   }
 
   const signupNext = (next: string, why?: string) => `/signup?next=${encodeURIComponent(next)}${why ? `&why=${why}` : ""}`;
-  const makeHref = (ids: string) => (user ? `/create?wish=${ids}` : signupNext(`/create?wish=${ids}`, "create"));
 
   const tripWhen = !trip
     ? ""
@@ -82,7 +81,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
             <CityImage photo={photoFor(t.city)} className="w-11 h-11 rounded-[10px]" />
             <span className="min-w-0">
               <span className="block font-semibold text-[14.5px] truncate">{t.city}</span>
-              <span className="block text-[12px] text-ink-muted">{t.guides} guide{t.guides === 1 ? "" : "s"}</span>
+              <span className="block text-[12px] text-ink-muted">{t.spots ? `${t.spots} spot${t.spots === 1 ? "" : "s"}` : `${t.guides} guide${t.guides === 1 ? "" : "s"}`}</span>
             </span>
           </Link>
         ))}
@@ -214,11 +213,13 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
                 ) : help.viewerGuides.length > 0 ? (
                   <LinkButton href={`/wishes?city=${encodeURIComponent(help.group.city)}`}>Send my guide</LinkButton>
                 ) : (
-                  <LinkButton href={makeHref(wishIds(help).join(","))}>Make it for them</LinkButton>
+                  <LinkButton href={`/record?wish=${wishIds(help)[0]}`}>Add {help.group.city} spots</LinkButton>
                 )}
-                <Link href={help.viewerSpots > 0 || help.viewerPlaces > 0 ? "/my-places" : "/record"} className="inline-flex items-center h-11 px-4 rounded-full border border-cream/40 text-[14px] font-medium">
-                  Recommend more
-                </Link>
+                {help.viewerSpots > 0 && (
+                  <Link href={`/record?wish=${wishIds(help)[0]}`} className="inline-flex items-center h-11 px-4 rounded-full border border-cream/40 text-[14px] font-medium">
+                    Add more
+                  </Link>
+                )}
               </div>
             </div>
           )}

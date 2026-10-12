@@ -6,7 +6,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "MyGuide",
     short_name: "MyGuide",
-    description: "Personal city guides from people whose taste you trust.",
+    description: "The spots your friends love, in every city they know.",
     id: "/",
     start_url: "/",
     scope: "/",

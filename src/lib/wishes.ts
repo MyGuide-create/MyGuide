@@ -1,7 +1,9 @@
 import { and, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { asksForWishes, markAsksDone, type AskView } from "./requests";
 import { getDb } from "./db";
-import { follows, guideShares, guideWishes, guides, users, wishGrants, type Guide, type GuideWish } from "./db/schema";
+import { follows, guideShares, guideWishes, guides, notifications, users, wishGrants, type Guide, type GuideWish } from "./db/schema";
+import { loadRecommendations, mergeSpots } from "./citySpots";
+import { canonicalCity } from "./places/cities";
 import { toPublicUser, type PublicUser } from "./auth";
 import { hiddenUserIds } from "./blocks";
 import { addNotifications } from "./notifications";
@@ -23,11 +25,67 @@ export interface WishView {
   viewerGuides: Array<{ id: string; slug: string; title: string }>;
   /** Viewer's guides already sent for this wish. */
   viewerSent: string[];
+  /** People who sent their spots for this city (newest first). */
+  spotsFrom: SpotsFrom[];
+  /** How many spots the viewer recommends in this city (for "Send your N spots"). 0 for their own wishes. */
+  viewerSpots: number;
+  /** The viewer already sent this person their spots for this city. */
+  viewerSentSpots: boolean;
   /** Your own wishes only: who you asked for this city and where each ask stands. */
   asks?: AskView[];
 }
 
 const sameCity = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+const cityKey = (c: string) => canonicalCity(c).toLowerCase();
+
+export interface SpotsFrom {
+  user: PublicUser;
+  count: number;
+  city: string;
+}
+
+/** "Yara sent 6 spots": spots_sent alerts to each wisher for the wish's city. */
+async function spotsFromFor(wishList: GuideWish[], viewerId: string | null | undefined): Promise<Map<string, SpotsFrom[]>> {
+  const out = new Map<string, SpotsFrom[]>();
+  if (!wishList.length) return out;
+  const db = await getDb();
+  const rows = await db
+    .select({ n: notifications, u: users })
+    .from(notifications)
+    .innerJoin(users, eq(users.id, notifications.actorId))
+    .where(and(eq(notifications.type, "spots_sent"), inArray(notifications.userId, [...new Set(wishList.map((w) => w.userId))])))
+    .orderBy(desc(notifications.createdAt));
+  const hidden = await hiddenUserIds(viewerId);
+  for (const w of wishList) {
+    const list: SpotsFrom[] = [];
+    for (const r of rows) {
+      if (r.n.userId !== w.userId || hidden.has(r.u.id) || cityKey(r.n.city ?? "") !== cityKey(w.city)) continue;
+      if (list.some((x) => x.user.id === r.u.id)) continue;
+      list.push({ user: toPublicUser(r.u), count: r.n.count ?? 0, city: canonicalCity(w.city) });
+    }
+    if (list.length) out.set(w.id, list);
+  }
+  return out;
+}
+
+/** The viewer's recommended spots per city (lowercased canonical city → count). */
+async function viewerSpotCounts(viewerId: string | null | undefined): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  if (!viewerId) return out;
+  const recs = await loadRecommendations({ viewerId, ownerIds: [viewerId] });
+  const byCity = new Map<string, typeof recs>();
+  for (const r of recs) if (r.city) byCity.set(r.city.toLowerCase(), [...(byCity.get(r.city.toLowerCase()) ?? []), r]);
+  for (const [k, list] of byCity) out.set(k, mergeSpots(list).length);
+  return out;
+}
+
+/** "<wisher id>|<city>" for every wisher the viewer already sent spots to. */
+async function viewerSpotsSent(viewerId: string | null | undefined): Promise<Set<string>> {
+  if (!viewerId) return new Set();
+  const db = await getDb();
+  const rows = await db.select({ userId: notifications.userId, city: notifications.city }).from(notifications).where(and(eq(notifications.actorId, viewerId), eq(notifications.type, "spots_sent")));
+  return new Set(rows.map((r) => `${r.userId}|${cityKey(r.city ?? "")}`));
+}
 
 /** Can `viewerId` see `owner`'s wish list? Same rule as their guides: blocks hide it, private accounts need an approved follow. */
 async function canSeeWishesOf(owner: { id: string; profileVisibility: string }, viewerId: string | null | undefined): Promise<boolean> {
@@ -86,14 +144,21 @@ export async function listWishesFor(owner: { id: string; profileVisibility: stri
   if (!(await canSeeWishesOf(owner, viewerId))) return null;
   const db = await getDb();
   const wishList = await db.select().from(guideWishes).where(eq(guideWishes.userId, owner.id)).orderBy(desc(guideWishes.createdAt));
-  const [granted, mine, sent, asks] = await Promise.all([
+  const own = owner.id === viewerId;
+  const [granted, mine, sent, asks, spotsFrom, counts, sentSpots] = await Promise.all([
     grantedFor(wishList, viewerId),
-    owner.id === viewerId ? Promise.resolve([]) : viewerCityGuides(viewerId),
+    own ? Promise.resolve([]) : viewerCityGuides(viewerId),
     viewerSentFor(wishList.map((w) => w.id), viewerId),
-    owner.id === viewerId ? asksForWishes(wishList.map((w) => w.id)) : Promise.resolve({} as Record<string, AskView[]>),
+    own ? asksForWishes(wishList.map((w) => w.id)) : Promise.resolve({} as Record<string, AskView[]>),
+    spotsFromFor(wishList, viewerId),
+    own ? Promise.resolve(new Map<string, number>()) : viewerSpotCounts(viewerId),
+    own ? Promise.resolve(new Set<string>()) : viewerSpotsSent(viewerId),
   ]);
   return wishList.map((w) => ({
     asks: asks[w.id] ?? [],
+    spotsFrom: spotsFrom.get(w.id) ?? [],
+    viewerSpots: counts.get(cityKey(w.city)) ?? 0,
+    viewerSentSpots: sentSpots.has(`${w.userId}|${cityKey(w.city)}`),
     wish: w,
     granted: granted.get(w.id) ?? [],
     viewerGuides: mine.filter((g) => sameCity(g.city, w.city)).map((g) => ({ id: g.id, slug: g.slug, title: g.title })),
@@ -127,7 +192,14 @@ export async function listAllWishes(viewerId: string | null | undefined, opts: {
   }
   const visible = rows.filter((r) => !hidden.has(r.u.id) && (r.u.profileVisibility !== "private" || r.u.id === viewerId || approved.has(r.u.id)));
   const wishList = visible.map((r) => r.w);
-  const [granted, mine, sent] = await Promise.all([grantedFor(wishList, viewerId), viewerCityGuides(viewerId), viewerSentFor(wishList.map((w) => w.id), viewerId)]);
+  const [granted, mine, sent, spotsFrom, counts, sentSpots] = await Promise.all([
+    grantedFor(wishList, viewerId),
+    viewerCityGuides(viewerId),
+    viewerSentFor(wishList.map((w) => w.id), viewerId),
+    spotsFromFor(wishList, viewerId),
+    viewerSpotCounts(viewerId),
+    viewerSpotsSent(viewerId),
+  ]);
   const byCity = new Map<string, CityWishes>();
   for (const r of visible) {
     const key = r.w.city.trim().toLowerCase();
@@ -140,6 +212,9 @@ export async function listAllWishes(viewerId: string | null | undefined, opts: {
       granted: granted.get(r.w.id) ?? [],
       viewerGuides: isViewer ? [] : mine.filter((g) => sameCity(g.city, r.w.city)).map((g) => ({ id: g.id, slug: g.slug, title: g.title })),
       viewerSent: sent.get(r.w.id) ?? [],
+      spotsFrom: spotsFrom.get(r.w.id) ?? [],
+      viewerSpots: isViewer ? 0 : counts.get(cityKey(r.w.city)) ?? 0,
+      viewerSentSpots: sentSpots.has(`${r.w.userId}|${cityKey(r.w.city)}`),
     });
     if (!group.country && r.w.country) group.country = r.w.country;
     if (r.w.createdAt > group.latest) group.latest = r.w.createdAt;

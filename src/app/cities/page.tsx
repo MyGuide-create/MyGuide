@@ -15,7 +15,7 @@ export default async function CitiesPage() {
   const user = await getCurrentUser();
   const [{ byCity }, friends] = await Promise.all([cityTiles(user?.id), friendCities(user?.id)]);
   const friendKeys = new Set(friends.map((c) => cityKey(c.city)));
-  const rest = [...byCity.values()].filter((t) => !friendKeys.has(cityKey(t.city))).sort((a, b) => b.guides - a.guides);
+  const rest = [...byCity.values()].filter((t) => !friendKeys.has(cityKey(t.city))).sort((a, b) => b.spots - a.spots || b.guides - a.guides);
   const photos = await cityPhotosFor([...friends.map((c) => c.city), ...rest.map((t) => t.city)]);
   const thumb = (city: string) => {
     const p = photos.get(cityPhotoKey(city));
@@ -54,7 +54,7 @@ export default async function CitiesPage() {
                   {thumb(t.city)}
                   <span className="min-w-0">
                     <span className="block font-semibold text-[14.5px] truncate">{t.city}</span>
-                    <span className="block text-[12px] text-ink-muted">{t.guides} guide{t.guides === 1 ? "" : "s"}</span>
+                    <span className="block text-[12px] text-ink-muted">{t.spots ? `${t.spots} spot${t.spots === 1 ? "" : "s"}` : `${t.guides} guide${t.guides === 1 ? "" : "s"}`}</span>
                   </span>
                 </Link>
               ))}

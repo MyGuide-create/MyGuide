@@ -34,10 +34,10 @@ const CATEGORY_PHRASES: Record<string, (city: string) => string> = {
 };
 
 /** "Try searching" examples built from what's actually on MyGuide, so every one returns something. */
-async function buildExamples(cities: string[], signedIn: boolean): Promise<string[]> {
+async function buildExamples(cities: string[]): Promise<string[]> {
   const out: string[] = [];
   for (const city of cities.slice(0, 2)) {
-    out.push(`Guides to ${city}`);
+    out.push(city);
     for (const c of await topPlaceCategories(city, 2)) {
       const phrase = CATEGORY_PHRASES[c];
       if (phrase) out.push(phrase(city));
@@ -45,7 +45,6 @@ async function buildExamples(cities: string[], signedIn: boolean): Promise<strin
   }
   const creators = (await suggestedCreators(null, 3)).filter((u) => u.guideCount > 0);
   for (const u of creators.slice(0, 2)) out.push(`Guides by ${u.username}`);
-  if (signedIn && cities[0]) out.push(`Guides to ${cities[0]} by people I'm following`);
   return [...new Set(out)].slice(0, 5);
 }
 
@@ -73,7 +72,7 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
   const people = q ? await searchPeople(q, user?.id, allPeople ? 50 : 3, { wholeWord: placeSearch }) : { hits: [], total: 0 };
   const [results, placeHits] = intent ? await Promise.all([searchGuides(intent, user?.id), searchPlaces(intent, user?.id)]) : [[], []];
   const cities = q ? [] : await listFeedCities();
-  const examples = q ? [] : await buildExamples(cities, !!user);
+  const examples = q ? [] : await buildExamples(cities);
   const wanted = q ? [] : (await listAllWishes(user?.id)).slice(0, 3);
   const suggested = q ? null : await peopleToFollow(user?.id, 8);
   // A search that names a city leads with that city's page (friends' guides, all guides, Plan a trip).
@@ -115,18 +114,18 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
           )}
           <Link href="/wishes" className="block rounded-2xl border border-terracotta-soft bg-terracotta-tint/50 px-4 py-3 hover:border-terracotta">
             <span className="flex items-center justify-between gap-3">
-              <span className="inline-flex items-center gap-2 text-[14.5px] font-semibold"><SparkleIcon size={16} className="text-terracotta" /> Wanted guides</span>
+              <span className="inline-flex items-center gap-2 text-[14.5px] font-semibold"><SparkleIcon size={16} className="text-terracotta" /> Where people are going</span>
               <span className="text-[12.5px] font-medium text-terracotta">See all →</span>
             </span>
             <span className="block mt-1 text-[12.5px] text-ink-muted leading-snug">
               {wanted.length
                 ? wanted.map((w) => `${w.city} (${w.people.length})`).join(" · ")
-                : "Cities people want a guide to. Add yours, or make one for someone."}
+                : "Friends' wish lists. Add where you're going, or send someone your spots."}
             </span>
           </Link>
           {cities.length > 0 && (
             <div>
-              <h2 className="text-[12px] font-medium uppercase tracking-[0.08em] text-ink-muted mb-2">Cities with guides</h2>
+              <h2 className="text-[12px] font-medium uppercase tracking-[0.08em] text-ink-muted mb-2">Cities</h2>
               <div className="flex flex-wrap gap-2">
                 {cities.map((c) => (
                   <Link key={c} href={cityHref(c)} className="rounded-full border border-line px-[15px] py-[7px] text-[12.5px] font-medium text-ink-muted hover:border-terracotta-soft hover:text-ink">{c}</Link>
@@ -211,16 +210,16 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
           {results.length > 0 && (placeHits.length > 0 || people.hits.length > 0) && <h2 className="px-1 -mb-1 text-[12px] font-medium uppercase tracking-[0.08em] text-ink-muted">Guides</h2>}
           {results.length === 0 && placeHits.length === 0 && people.hits.length === 0 && (user || intent.scope !== "following") && (
             <EmptyState
-              title="No guides match yet"
-              body={intent.city ? `Nobody has published a ${intent.city} guide${intent.scope === "following" ? " that you follow" : ""} yet. Add it to your wish list — people who know ${intent.city} can make one for you.` : "Try a city name, or say what you're looking for."}
+              title="Nothing matches yet"
+              body={intent.city ? `No ${intent.city} spots${intent.scope === "following" ? " from people you follow" : ""} yet. Add it to your wish list — people who know ${intent.city} can send you theirs.` : "Try a city name, or say what you're looking for."}
               action={
                 intent.city ? (
                   <span className="flex flex-col items-center gap-2.5">
-                    {user ? <WishForCityButton city={intent.city} /> : <LinkButton href={`/signup?next=${encodeURIComponent(`/search?q=${q}`)}`} size="sm">Sign up to wish for a {intent.city} guide</LinkButton>}
-                    <Link href={`/wishes?city=${encodeURIComponent(intent.city)}`} className="text-[12.5px] font-medium text-terracotta">Who else wants one →</Link>
+                    {user ? <WishForCityButton city={intent.city} /> : <LinkButton href={`/signup?next=${encodeURIComponent(`/search?q=${q}`)}`} size="sm">Sign up to ask for {intent.city} spots</LinkButton>}
+                    <Link href={`/wishes?city=${encodeURIComponent(intent.city)}`} className="text-[12.5px] font-medium text-terracotta">Who else is going →</Link>
                   </span>
                 ) : (
-                  <LinkButton href="/create" size="sm">Create a guide</LinkButton>
+                  <LinkButton href="/record" size="sm">Add a place</LinkButton>
                 )
               }
             />

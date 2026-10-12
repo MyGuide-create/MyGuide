@@ -5,6 +5,7 @@ import { GuideCover } from "@/components/GuideCover";
 import { HeartIcon, LockIcon, MapIcon, PlusIcon, SparkleIcon } from "@/components/Icons";
 import { findCity } from "@/lib/places/cities";
 import { AskForGuideButton } from "@/components/AskForGuide";
+import { SendSpotsButton } from "@/components/SendSpotsButton";
 import { GuideMap } from "@/components/GuideMap";
 import { PlaceTile } from "@/components/PlaceTile";
 import { Avatar, EmptyState, LinkButton, cx } from "@/components/ui";
@@ -95,8 +96,6 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
   const listed = showAll ? shownSpots : shownSpots.slice(0, SPOTS_SHOWN);
   const friendGuides = isMe ? ownGuides : picked ? mine.filter((g) => g.owner.id === picked.id) : mine.filter((g) => g.owner.id !== viewerId);
 
-  // "Add your spots" opens your own guide for this city when you have one, else starts one.
-  const ownCityGuide = ownGuides[0];
   const centre = findCity(city);
   const wish = [wanted.help, ...wanted.list].find((w) => w && cityKey(w.group.city) === cityKey(city)) ?? null;
 
@@ -108,10 +107,13 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
     return `/city?${new URLSearchParams(q).toString()}`;
   };
   const sortHref = (s: "saved" | "new") => cityHref({ sort: s === "new" ? "new" : "" });
-  const startQs = new URLSearchParams({ city, ...(country ? { country } : {}), ...(lat && lng ? { lat, lng } : {}) }).toString();
-  const startHref = user ? `/create?${startQs}` : `/signup?next=${encodeURIComponent(`/create?${startQs}`)}&why=create`;
   const pickHref = `/pick?${new URLSearchParams({ city, ...(picked ? { friend: picked.username } : {}) }).toString()}`;
-  const addSpotsHref = ownCityGuide ? `/g/${ownCityGuide.guide.slug}/edit` : startHref;
+  // Places first: "Add your spots" opens Add a place (it lands in My places, recommended or not).
+  const addSpotsHref = user ? "/record" : "/signup?next=/record&why=record";
+  const hasAny = all.length > 0 || spots.length > 0;
+  const wishFirst = wish?.others[0]?.wish.id;
+  const wishNames = wish ? wish.others.map((p) => p.user.displayName.split(" ")[0]) : [];
+  const wishWho = wishNames.length === 1 ? wishNames[0] : "them";
   const tripHref = user ? `/trips?city=${encodeURIComponent(city)}` : `/signup?next=${encodeURIComponent(`/trips?city=${city}`)}`;
   const signupAsk = `/signup?next=${encodeURIComponent(`/city?${new URLSearchParams(base).toString()}`)}`;
   const askCity = { city, country, lat: lat ? Number(lat) : null, lng: lng ? Number(lng) : null };
@@ -133,42 +135,38 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
         )}
         {city && (
           <div className="mt-4 flex gap-2.5">
-            {all.length > 0 && (
-              <LinkButton href={addSpotsHref} className="flex-1">
-                <PlusIcon size={15} /> Add your spots
-              </LinkButton>
-            )}
-            <LinkButton href={tripHref} variant={all.length > 0 ? "outline" : "primary"} className="flex-1">Plan a trip</LinkButton>
+            <LinkButton href={addSpotsHref} className="flex-1">
+              <PlusIcon size={15} /> Add your spots
+            </LinkButton>
+            <LinkButton href={tripHref} variant="outline" className="flex-1">Plan a trip</LinkButton>
           </div>
         )}
       </header>
 
       <main className="pb-8 flex flex-col">
-        {city && all.length === 0 && wish && (
+        {city && !hasAny && wish && wishFirst && (
           <div className="px-4 pb-4">
             <div className="rounded-[20px] bg-ink text-cream p-4 flex flex-col gap-3">
               <p className="font-display text-[21px] leading-snug">
-                {wish.others.length} {wish.others.length === 1 ? "person wants" : "people want"} a {city} guide. Be the first to make one.
+                {wish.others.length} {wish.others.length === 1 ? "person wants" : "people want"} {city} spots. Been? Be the first to send {wishWho} yours.
               </p>
-              <LinkButton href={user ? `/create?wish=${wish.others.map((p) => p.wish.id).join(",")}` : startHref} className="self-start">Make it for them</LinkButton>
+              <LinkButton href={user ? `/record?wish=${wishFirst}` : signupAsk} className="self-start">Add {city} spots</LinkButton>
             </div>
           </div>
         )}
-        {city && all.length === 0 && (
+        {city && !hasAny && (
           <div className="px-4">
             <EmptyState
-              title={`No guides for ${city} yet`}
-              body="Know someone who's been? Ask them to make you one. Or start your own and add places when you get there."
+              title={`No ${city} spots yet`}
+              body="Know someone who's been? Ask them for their spots. Or add your own when you get there."
               action={
                 <span className="flex flex-col items-center gap-3">
-                  <LinkButton href={startHref}>
-                    <PlusIcon size={15} /> Start a guide for {city}
-                  </LinkButton>
                   {user ? (
-                    <AskForGuideButton city={askCity} label="Ask a friend who knows it" variant="outline" size="md" />
+                    <AskForGuideButton city={askCity} label={`Ask friends for ${city} spots`} variant="primary" size="md" />
                   ) : (
-                    <Link href={signupAsk} className="text-[13px] font-medium text-terracotta-deep">Sign up to ask a friend for a {city} guide</Link>
+                    <LinkButton href={signupAsk}>Sign up to ask friends for {city} spots</LinkButton>
                   )}
+                  <Link href={addSpotsHref} className="text-[13px] font-medium text-terracotta-deep">Been? Add a place</Link>
                 </span>
               }
             />
@@ -342,22 +340,26 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
           </section>
         )}
 
-        {city && all.length > 0 && (
+        {city && hasAny && (
           <div className="px-4 pt-8">
             <div className="rounded-[20px] bg-sage-tint p-4 flex flex-col gap-2.5">
               <p className="font-display text-[20px]">Know {city} well?</p>
               {wish ? (
                 <>
                   <p className="text-[14px] leading-snug">
-                    {wish.others.length} {wish.others.length === 1 ? "person has" : "people have"} {city} on their wish list. Your guide would go straight to them.
+                    {wish.others.length} {wish.others.length === 1 ? "person has" : "people have"} {city} on their wish list. Send {wishWho} your spots.
                   </p>
-                  <LinkButton href={user ? `/create?wish=${wish.others.map((p) => p.wish.id).join(",")}` : startHref} className="self-start">Start a {city} guide</LinkButton>
+                  {user && wish.viewerSpots > 0 ? (
+                    <SendSpotsButton wishIds={wish.others.map((p) => p.wish.id)} label={`Send your ${wish.viewerSpots} spot${wish.viewerSpots === 1 ? "" : "s"}`} className="self-start" />
+                  ) : (
+                    <LinkButton href={user && wishFirst ? `/record?wish=${wishFirst}` : signupAsk} className="self-start">Add {city} spots</LinkButton>
+                  )}
                 </>
               ) : (
                 <>
-                  <p className="text-[14px] leading-snug">Share what you know, or ask a friend who&apos;s been.</p>
+                  <p className="text-[14px] leading-snug">Share your spots, or ask a friend who&apos;s been for theirs.</p>
                   <span className="flex flex-wrap gap-2.5">
-                    <LinkButton href={startHref}>Start a {city} guide</LinkButton>
+                    <LinkButton href={addSpotsHref}>Add your spots</LinkButton>
                     {user && <AskForGuideButton city={askCity} label="Ask a friend" variant="outline" />}
                   </span>
                 </>

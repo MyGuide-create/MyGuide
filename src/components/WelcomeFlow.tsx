@@ -22,7 +22,7 @@ export type WelcomeSample = {
 };
 
 const SLIDES = [
-  { title: "Guides from people you trust", body: "Follow friends and see the places they actually love — not ads or top-10 lists." },
+  { title: "Spots from people you trust", body: "Follow friends and see where they actually go in every city — not ads or top-10 lists." },
   { title: "Save places you like", body: "Tap ♥ on any place and it’s kept for your next trip." },
   { title: "Add a place", body: "Tap + wherever you are. Got a Google Maps list or screenshots? Bring in many at once. Group your places into guides whenever you like." },
 ];

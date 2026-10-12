@@ -1,4 +1,4 @@
-/** Shared by server and browser: where a guide request ("Ask a friend for a guide") stands. */
+/** Shared by server and browser: where an ask ("Ask a friend for spots") stands. */
 export type RequestStatus = "sent" | "opened" | "making" | "declined" | "done";
 
 export const STATUS_LABEL: Record<RequestStatus, string> = {
@@ -6,5 +6,5 @@ export const STATUS_LABEL: Record<RequestStatus, string> = {
   opened: "opened it",
   making: "working on it",
   declined: "can’t help",
-  done: "guide sent ✓",
+  done: "sent ✓",
 };

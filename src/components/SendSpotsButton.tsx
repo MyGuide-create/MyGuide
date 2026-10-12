@@ -6,7 +6,7 @@ import { CheckIcon } from "./Icons";
 import { Spinner, cx } from "./ui";
 
 /** "Send your 6 spots" to people who wished for a city: one tap, no guide needed. */
-export function SendSpotsButton({ wishIds, label, dark = false, className }: { wishIds: string[]; label: string; dark?: boolean; className?: string }) {
+export function SendSpotsButton({ wishIds, label, dark = false, className, onSent }: { wishIds: string[]; label: string; dark?: boolean; className?: string; onSent?: () => void }) {
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -14,7 +14,10 @@ export function SendSpotsButton({ wishIds, label, dark = false, className }: { w
     setError(null);
     start(async () => {
       const res = await sendSpotsForWishes(wishIds);
-      if (res.ok) setSent(true);
+      if (res.ok) {
+        setSent(true);
+        onSent?.();
+      }
       else setError(res.error);
     });
   };

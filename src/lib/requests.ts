@@ -151,7 +151,7 @@ export async function markAsksDone(guideId: string): Promise<void> {
 export function passOnMessage(passerFirstName: string, wisherFirstName: string, city: string, note: string, url: string): string {
   const lines = [`Hi! My friend ${wisherFirstName} is looking for ${city} recommendations and I thought of you 🙏`];
   if (note.trim()) lines.push(note.trim());
-  lines.push(`Could you make ${wisherFirstName} a quick guide on MyGuide? You can paste a list from Google Maps or WhatsApp — takes a few minutes, and it goes straight to them:`, url, `— ${passerFirstName}`);
+  lines.push(`Could you send ${wisherFirstName} your favourite spots there on MyGuide? Add them in a minute (or paste a Google Maps list) and they go straight to them:`, url, `— ${passerFirstName}`);
   return lines.join("\n\n");
 }
 
@@ -159,6 +159,6 @@ export function passOnMessage(passerFirstName: string, wisherFirstName: string, 
 export function askMessage(requesterFirstName: string, city: string, note: string, url: string): string {
   const lines = [`Hi! I'm going to ${city} and would love your recommendations 🙏`];
   if (note.trim()) lines.push(note.trim());
-  lines.push(`Could you make me a quick guide on MyGuide? You can paste a list from Google Maps or WhatsApp — takes a few minutes:`, url, `— ${requesterFirstName}`);
+  lines.push(`Could you send me your favourite spots there on MyGuide? Add them in a minute (or paste a Google Maps list) and they come straight to me:`, url, `— ${requesterFirstName}`);
   return lines.join("\n\n");
 }

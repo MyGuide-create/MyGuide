@@ -24,7 +24,7 @@ export default async function SignupPage({ searchParams }: { searchParams: Promi
         <Wordmark />
         <h1 className="mt-6 font-display text-[36px] leading-[1.02]">Join MyGuide.</h1>
         <p className="mt-2 text-[14px] text-ink-muted">
-          {reasonText(why) ?? "Follow people whose taste you trust, save their favourite places, and make guides of your own."}
+          {reasonText(why) ?? "See the spots your friends love in every city, and add your own."}
         </p>
         <p className="mt-3 text-[13.5px] text-ink-muted">
           Already have an account? <Link href={authHref("login", next, why)} className="font-semibold text-terracotta">Log in</Link>

@@ -21,7 +21,7 @@ export default async function TripsPage({ searchParams }: { searchParams: Promis
       <div className="px-4 pt-4 pb-8 flex flex-col gap-6">
         <div>
           <h1 className="font-display text-[28px] leading-tight px-1">Going somewhere?</h1>
-          <p className="mt-1 px-1 text-[13.5px] text-ink-muted">Tell us the city and we&apos;ll pull together your favourites, guides from people you follow, and the places people love most there.</p>
+          <p className="mt-1 px-1 text-[13.5px] text-ink-muted">Tell us the city and we&apos;ll pull together the spots your friends recommend there, your favourites and their guides.</p>
           <div className="mt-3">
             <TripForm defaultCity={typeof sp.city === "string" ? sp.city : undefined} />
           </div>

@@ -4,15 +4,15 @@ export type AuthReason = "follow" | "fork" | "create" | "record" | "notification
 export const SUPPORT_CONTACT = "Hisham";
 
 const REASONS: Record<AuthReason, string> = {
-  follow: "Create a free account to follow creators and see their new guides.",
+  follow: "Create a free account to follow friends and see the spots they love.",
   fork: "Create a free account to pick places — keep the spots you like in a guide of your own.",
   create: "Create a free account to make your first guide.",
   record: "Create a free account to add places as you go.",
-  notifications: "Sign up or log in to see guides people have shared with you.",
+  notifications: "Sign up or log in to see what friends have sent you.",
   comment: "Create a free account to comment on places.",
-  following: "Sign up or log in to see guides from people you follow.",
+  following: "Sign up or log in to see spots from people you follow.",
   save: "Create a free account to keep favourite places in your own shortlist.",
-  ask: "Create a free account to make your friend their guide — it takes a minute, then you’re straight in.",
+  ask: "Create a free account to send your friend your spots — it takes a minute, then you’re straight in.",
 };
 
 export function parseReason(v: unknown): AuthReason | null {

@@ -10,6 +10,7 @@ import { getCurrentUser, toPublicUser } from "@/lib/auth";
 import { AskForGuideButton } from "@/components/AskForGuide";
 import { getFollowStats, getUserByUsername, listGuidesByOwner } from "@/lib/guides";
 import { loadMyPlaces } from "@/lib/myPlaces";
+import { loadRecommendations, mergeSpots, type Recommendation } from "@/lib/citySpots";
 import { PlaceTile } from "@/components/PlaceTile";
 import { hiddenUserIds, viewerBlocked } from "@/lib/blocks";
 import { BlockButton } from "@/components/BlockButton";
@@ -36,7 +37,17 @@ export default async function ProfilePage({ params, searchParams }: PageProps<"/
   const own = viewer?.id === profile.id;
   const iBlocked = !!viewer && !own && (await viewerBlocked(viewer.id, profile.id));
   const hiddenFromMe = !!viewer && !own && (await hiddenUserIds(viewer.id)).has(profile.id);
-  const [cards, stats, wishes] = await Promise.all([listGuidesByOwner(profile.id, viewer?.id), getFollowStats(profile.id, viewer?.id), listWishesFor(profile, viewer?.id)]);
+  const [cards, stats, wishes, recs] = await Promise.all([
+    listGuidesByOwner(profile.id, viewer?.id),
+    getFollowStats(profile.id, viewer?.id),
+    listWishesFor(profile, viewer?.id),
+    loadRecommendations({ viewerId: viewer?.id, ownerIds: [profile.id] }),
+  ]);
+  // The spots they recommend (published guides and places recommended on their own), per city — what others see.
+  const byCity = new Map<string, Recommendation[]>();
+  for (const r of recs) if (r.city) byCity.set(r.city, [...(byCity.get(r.city) ?? []), r]);
+  const spotCities = [...byCity.entries()].map(([city, list]) => ({ city, spots: mergeSpots(list) })).sort((a, b) => b.spots.length - a.spots.length);
+  const spotCount = spotCities.reduce((n, c) => n + c.spots.length, 0);
   // Your own places (My places) get their own card, not a draft.
   const myPlaces = own ? (await loadMyPlaces(profile.id)).items : [];
   const published = cards.filter((c) => c.guide.publishedAt);
@@ -57,6 +68,7 @@ export default async function ProfilePage({ params, searchParams }: PageProps<"/
               {profile.profileVisibility === "private" && <LockIcon size={16} className="text-ink-faint shrink-0" />}
             </h1>
             <div className="mt-1.5 text-[12.5px] text-ink-muted flex gap-3">
+              <span><b className="text-ink font-semibold">{spotCount}</b> spot{spotCount === 1 ? "" : "s"}</span>
               <span><b className="text-ink font-semibold">{published.length}</b> guide{published.length === 1 ? "" : "s"}</span>
               <Link href={`/u/${profile.username}/followers`} className="hover:underline"><b className="text-ink font-semibold">{stats.followers}</b> {stats.followers === 1 ? "follower" : "followers"}</Link>
               <Link href={`/u/${profile.username}/following`} className="hover:underline"><b className="text-ink font-semibold">{stats.following}</b> following</Link>
@@ -91,7 +103,7 @@ export default async function ProfilePage({ params, searchParams }: PageProps<"/
             viewer ? (
               <AskForGuideButton person={toPublicUser(profile)} className="mt-2.5" />
             ) : (
-              <LinkButton href={`/signup?next=${encodeURIComponent(`/u/${profile.username}`)}`} size="sm" variant="outline" className="mt-2.5">Ask {profile.displayName.split(" ")[0]} for a guide</LinkButton>
+              <LinkButton href={`/signup?next=${encodeURIComponent(`/u/${profile.username}`)}`} size="sm" variant="outline" className="mt-2.5">Ask {profile.displayName.split(" ")[0]} for spots</LinkButton>
             )
           )}
         </div>
@@ -127,6 +139,34 @@ export default async function ProfilePage({ params, searchParams }: PageProps<"/
                 <span aria-hidden className="text-[20px] text-terracotta">›</span>
               </Link>
             )}
+            {!own && spotCities.length > 0 && (
+              <section>
+                <h2 className="font-display text-[22px] px-1 mb-2">{profile.displayName.split(" ")[0]}&apos;s spots</h2>
+                <ul className="flex flex-col gap-2">
+                  {spotCities.map((c) => (
+                    <li key={c.city}>
+                      <Link
+                        href={`/city?${new URLSearchParams({ name: c.city, friend: profile.username }).toString()}`}
+                        className="flex items-center gap-3 rounded-2xl border border-line bg-paper px-3 py-2.5 hover:border-terracotta-soft"
+                      >
+                        <span className="flex -space-x-3 shrink-0">
+                          {c.spots.slice(0, 3).map((x) => (
+                            <PlaceTile key={x.key} place={x.place} size={40} className="ring-2 ring-paper" />
+                          ))}
+                        </span>
+                        <span className="flex-1 min-w-0">
+                          <span className="block font-semibold text-[15px] truncate">{c.city}</span>
+                          <span className="block text-[12.5px] text-ink-muted truncate">
+                            {c.spots.length} spot{c.spots.length === 1 ? "" : "s"} · {c.spots.slice(0, 2).map((x) => x.place.name).join(", ")}
+                          </span>
+                        </span>
+                        <span aria-hidden className="text-[20px] text-terracotta">›</span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
             {wishes && <WishList wishes={wishes} own={own} ownerName={profile.displayName} ownerUsername={profile.username} signedIn={!!viewer} />}
             {own && (
               <div className="flex items-center justify-between px-1 mt-1">
@@ -142,8 +182,9 @@ export default async function ProfilePage({ params, searchParams }: PageProps<"/
                 <h2 className="font-display text-[19px] px-1 mt-2 text-ink-muted">Published</h2>
               </>
             )}
-            {published.length === 0 && (
-              <EmptyState title={own ? "No guides yet" : `${profile.displayName.split(" ")[0]} hasn't published a guide yet`} body={own ? "Group your places into a guide whenever you like — from My places, a city page, or New guide above." : undefined} />
+            {!own && spotCities.length > 0 && published.length > 0 && <h2 className="font-display text-[22px] px-1 mt-2">Guides</h2>}
+            {published.length === 0 && (own || spotCities.length === 0) && (
+              <EmptyState title={own ? "No guides yet" : `${profile.displayName.split(" ")[0]} hasn't shared any spots yet`} body={own ? "Group your places into a guide whenever you like — from My places, a city page, or New guide above." : undefined} />
             )}
             {published.map((c) => <GuideCard key={c.guide.id} data={c} showOwner={false} />)}
           </>

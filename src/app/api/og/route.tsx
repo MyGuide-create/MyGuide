@@ -4,7 +4,7 @@ import { ImageResponse } from "next/og";
 export async function GET(req: Request) {
   const params = new URL(req.url).searchParams;
   const title = (params.get("title") || "MyGuide").slice(0, 90);
-  const sub = (params.get("sub") || "Guides from people whose taste you trust.").slice(0, 120);
+  const sub = (params.get("sub") || "The spots your friends love, in every city they know.").slice(0, 120);
   return new ImageResponse(
     (
       <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", justifyContent: "space-between", background: "#fbf4ea", padding: "64px 72px", color: "#2a211c" }}>

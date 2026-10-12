@@ -4,6 +4,7 @@ import Link from "next/link";
 import { AskForGuideButton } from "./AskForGuide";
 import type { AskView } from "@/lib/requests";
 import { STATUS_LABEL } from "@/lib/requestStatus";
+import { SendSpotsButton } from "./SendSpotsButton";
 import { useState, useTransition } from "react";
 import { addWish, removeWish, sendGuideForWish } from "@/lib/actions/wishes";
 import type { WishView } from "@/lib/wishes";
@@ -85,6 +86,47 @@ export function SendGuideButton({ wishId, guides, sent, wisherName }: { wishId: 
   );
 }
 
+/**
+ * What a visitor can do for someone's wish: send their spots there (one tap) or, with none yet,
+ * add some first (Add a place, which then offers to send them).
+ */
+export function WishSpotsActions({ w, firstName, signedIn, next, wide }: { w: Pick<WishView, "wish" | "viewerSpots" | "viewerSentSpots">; firstName: string; signedIn: boolean; next: string; wide?: boolean }) {
+  const city = w.wish.city;
+  if (!signedIn) return <LinkButton href={`/signup?why=ask&next=${encodeURIComponent(next)}`} size="sm" className={wide ? "w-full" : undefined}>Send {firstName} your spots</LinkButton>;
+  if (w.viewerSentSpots) {
+    return (
+      <span className="inline-flex items-center gap-2 text-[12.5px]">
+        <span className="inline-flex items-center gap-1 font-medium text-sage"><CheckIcon size={13} /> Spots sent</span>
+        <Link href={`/record?wish=${w.wish.id}`} className="font-medium text-terracotta">Add more</Link>
+      </span>
+    );
+  }
+  if (w.viewerSpots > 0) {
+    return (
+      <>
+        <SendSpotsButton wishIds={[w.wish.id]} label={`Send your ${w.viewerSpots} spot${w.viewerSpots === 1 ? "" : "s"}`} className={wide ? "w-full" : undefined} />
+        <Link href={`/record?wish=${w.wish.id}`} className="text-[12.5px] font-medium text-terracotta">Add more</Link>
+      </>
+    );
+  }
+  return <LinkButton href={`/record?wish=${w.wish.id}`} size="sm" className={wide ? "w-full" : undefined}>Add {city} spots</LinkButton>;
+}
+
+/** "Yara sent 6 spots · See them" under a wish. */
+export function SpotsFromLinks({ spotsFrom }: { spotsFrom: WishView["spotsFrom"] }) {
+  if (!spotsFrom.length) return null;
+  return (
+    <div className="mt-1.5 flex flex-col gap-0.5">
+      {spotsFrom.map((x) => (
+        <Link key={x.user.id} href={`/city?${new URLSearchParams({ name: x.city, friend: x.user.username }).toString()}`} className="inline-flex items-center gap-1 text-[12px] font-medium text-sage hover:underline min-w-0">
+          <PinIcon size={12} className="shrink-0" />
+          <span className="truncate">{x.user.displayName} sent {x.count} spot{x.count === 1 ? "" : "s"}</span>
+        </Link>
+      ))}
+    </div>
+  );
+}
+
 /** The made-for-this-wish guides, as small links. */
 export function GrantedLinks({ granted }: { granted: WishView["granted"] }) {
   if (!granted.length) return null;
@@ -101,8 +143,8 @@ export function GrantedLinks({ granted }: { granted: WishView["granted"] }) {
 }
 
 /**
- * Profile section: cities this person wants a guide to.
- * Owner adds/removes; visitors can make the guide (or send one they already have).
+ * Profile section: cities this person is going to and wants spots for.
+ * Owner adds/removes and asks friends; visitors send their spots (or add some first), or a guide they've made.
  */
 export function WishList({ wishes, own, ownerName, ownerUsername, signedIn }: { wishes: WishView[]; own: boolean; ownerName: string; ownerUsername: string; signedIn: boolean }) {
   const [adding, setAdding] = useState(false);
@@ -117,8 +159,8 @@ export function WishList({ wishes, own, ownerName, ownerUsername, signedIn }: { 
       </div>
       <p className="mt-1.5 text-[12.5px] text-ink-muted leading-snug">
         {own
-          ? "Cities you'd love a guide to. Ask a friend who knows one — on MyGuide or by WhatsApp — and you'll get the guide the moment they publish."
-          : `Cities ${first} wants a guide to. Know one? Make it for ${first} — it's sent to them when you publish.`}
+          ? "Cities you're going to. Ask friends who know them — on MyGuide or by WhatsApp — and their spots come straight to you."
+          : `Cities ${first} is going to. Been? Send ${first} your spots.`}
       </p>
 
       {wishes.length > 0 && (
@@ -130,19 +172,16 @@ export function WishList({ wishes, own, ownerName, ownerUsername, signedIn }: { 
                 <div className="text-[15px] font-semibold leading-tight">{w.wish.city}{w.wish.country ? <span className="font-normal text-ink-muted">, {w.wish.country}</span> : null}</div>
                 {w.wish.note && <div className="text-[12.5px] text-ink-muted italic leading-snug">{w.wish.note}</div>}
                 <GrantedLinks granted={w.granted} />
-                {own && <AskStatus asks={w.asks ?? []} />}
-                {own && w.granted.length === 0 && (
+                <SpotsFromLinks spotsFrom={w.spotsFrom} />
+                {own && <AskStatus asks={(w.asks ?? []).filter((a) => !(a.status === "done" && !a.guideSlug && w.spotsFrom.some((x) => x.user.id === a.recipient?.id)))} city={w.wish.city} />}
+                {own && w.granted.length === 0 && w.spotsFrom.length === 0 && (
                   <AskForGuideButton city={{ city: w.wish.city, country: w.wish.country }} label={(w.asks ?? []).length ? "Ask someone else" : "Ask a friend"} className="mt-2" />
                 )}
                 {!own && (
                   <div className="mt-2 flex flex-wrap items-center gap-2">
-                    {signedIn ? (
-                      <LinkButton href={`/create?wish=${w.wish.id}`} size="sm">Make this guide</LinkButton>
-                    ) : (
-                      <LinkButton href={`/signup?why=create&next=${encodeURIComponent(`/u/${ownerUsername}#wishes`)}`} size="sm">Make this guide</LinkButton>
-                    )}
+                    <WishSpotsActions w={w} firstName={first} signedIn={signedIn} next={`/u/${ownerUsername}#wishes`} />
                     <SendGuideButton wishId={w.wish.id} guides={w.viewerGuides} sent={w.viewerSent} wisherName={first} />
-                    {signedIn && w.granted.length === 0 && (
+                    {signedIn && w.granted.length === 0 && w.spotsFrom.length === 0 && (
                       <AskForGuideButton variant="ghost" forWish={{ id: w.wish.id, city: w.wish.city, country: w.wish.country, userId: w.wish.userId, name: ownerName }} label="Know someone? Pass it on" />
                     )}
                   </div>
@@ -178,7 +217,7 @@ export function WishList({ wishes, own, ownerName, ownerUsername, signedIn }: { 
 }
 
 /** Who you asked for this city, and where each ask stands. */
-function AskStatus({ asks }: { asks: AskView[] }) {
+function AskStatus({ asks, city }: { asks: AskView[]; city?: string }) {
   if (!asks.length) return null;
   return (
     <ul className="mt-1.5 flex flex-col gap-1">
@@ -189,7 +228,10 @@ function AskStatus({ asks }: { asks: AskView[] }) {
           <span className={a.status === "done" ? "text-sage font-medium" : a.status === "declined" ? "text-ink-faint" : "text-ink-muted"}>
             · {a.recipient ? STATUS_LABEL[a.status] : "not opened yet"}
           </span>
-          {a.status === "done" && a.guideSlug && <Link href={`/g/${a.guideSlug}`} className="text-terracotta font-medium">Open</Link>}
+          {a.status === "done" && a.guideSlug && <Link href={`/g/${a.guideSlug}`} className="text-terracotta font-medium">Open guide</Link>}
+          {a.status === "done" && !a.guideSlug && a.recipient && city && (
+            <Link href={`/city?${new URLSearchParams({ name: city, friend: a.recipient.username }).toString()}`} className="text-terracotta font-medium">See spots</Link>
+          )}
         </li>
       ))}
     </ul>

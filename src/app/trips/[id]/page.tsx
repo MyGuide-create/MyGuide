@@ -14,6 +14,8 @@ import { placeArea } from "@/lib/places/neighbourhood";
 import { formatTripDates, titleSize } from "@/lib/utils";
 import { isReusable } from "@/lib/reuse";
 import { ForkIcon } from "@/components/Icons";
+import { AskForGuideButton } from "@/components/AskForGuide";
+import { acceptedFollowingIds, citySpots } from "@/lib/citySpots";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Trip" };
@@ -24,9 +26,13 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
   const db = await getDb();
   const trip = await db.query.trips.findFirst({ where: and(eq(trips.id, id), eq(trips.userId, user.id)) });
   if (!trip) notFound();
-  const plan = await planTrip(user.id, trip.city);
+  const [plan, following] = await Promise.all([planTrip(user.id, trip.city), acceptedFollowingIds(user.id)]);
+  // Friends' spots lead, the same as the city page (which has the map, filters and everything else).
+  const friendSpots = following.length ? await citySpots({ city: trip.city, viewerId: user.id, ownerIds: following }) : [];
+  const spots = friendSpots.length ? friendSpots : await citySpots({ city: trip.city, viewerId: user.id });
+  const cityPage = `/city?${new URLSearchParams({ name: trip.city, ...(trip.country ? { country: trip.country } : {}) }).toString()}`;
   const dates = formatTripDates(trip.startDate, trip.endDate);
-  const nothing = !plan.savedGuides.length && !plan.favourites.length && !plan.fromFollowing.length && !plan.more.length;
+  const nothing = !spots.length && !plan.savedGuides.length && !plan.favourites.length && !plan.fromFollowing.length && !plan.more.length;
   const remove = deleteTrip.bind(null, trip.id);
   const tripGuide = trip.guideId ? await db.query.guides.findFirst({ where: eq(guides.id, trip.guideId) }) : undefined;
   const tripGuideCount = tripGuide ? (await db.select({ id: places.id }).from(places).where(eq(places.guideId, tripGuide.id))).length : 0;
@@ -40,6 +46,24 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
           <h1 className="font-display text-[34px] leading-none">{trip.city}</h1>
           <p className="mt-1.5 text-[13px] text-ink-muted">{[trip.country, dates].filter(Boolean).join(" · ") || "Everything for your trip, in one place"}</p>
         </div>
+
+        {spots.length > 0 && (
+          <Section title={friendSpots.length ? "Spots your friends recommend" : `Most recommended in ${trip.city}`} count={spots.length}>
+            <ul className="flex flex-col gap-2">
+              {spots.slice(0, 6).map((sp) => (
+                <PlaceLine
+                  key={sp.key}
+                  href={`/g/${sp.recommenders[0].guideSlug}/p/${sp.recommenders[0].placeId}`}
+                  place={sp.place}
+                  sub={sp.recommenders.length === 1 ? sp.recommenders[0].user.displayName.split(" ")[0] : `${sp.recommenders.length} people recommend it`}
+                />
+              ))}
+            </ul>
+            <LinkButton href={cityPage} variant="outline" className="mt-3 w-full">
+              {spots.length > 6 ? `All ${spots.length} spots, with the map` : `Open ${trip.city}, with the map`}
+            </LinkButton>
+          </Section>
+        )}
 
         {tripGuide && (
           <Link href={`/g/${tripGuide.slug}`} className="flex items-center gap-3 rounded-2xl border border-terracotta-soft bg-terracotta-tint/50 px-4 py-3.5 hover:border-terracotta">
@@ -64,9 +88,9 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
 
         {nothing && (
           <EmptyState
-            title={`No ${trip.city} guides yet`}
-            body="Nobody you can see has published one. Ask a friend who knows it to make one — or start your own and fill it in as you go."
-            action={<LinkButton href="/create" size="sm">Start a guide</LinkButton>}
+            title={`No ${trip.city} spots yet`}
+            body="Nobody you can see has recommended any. Ask friends who know it for their spots — they come straight to you."
+            action={<AskForGuideButton city={{ city: trip.city, country: trip.country }} label={`Ask friends for ${trip.city} spots`} variant="primary" size="md" />}
           />
         )}
 

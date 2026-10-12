@@ -14,7 +14,7 @@ type City = { city: string; country?: string; lat?: number | null; lng?: number 
 export type PassOnWish = { id: string; city: string; country?: string; userId: string; name: string };
 
 /**
- * "Ask a friend for a guide": pick the city, pick people on MyGuide and/or send a link on WhatsApp.
+ * "Ask a friend for spots": pick the city, pick people on MyGuide and/or send a link on WhatsApp.
  * People on MyGuide get a notification; anyone else gets a personal link that signs them up
  * straight into making the guide. Either way the finished guide comes back through your wish list.
  */
@@ -41,7 +41,7 @@ export function AskForGuideButton({
   return (
     <>
       <Button variant={variant} size={size} onClick={() => setOpen(true)} className={className}>
-        <SparkleIcon size={14} /> {label ?? (forWish ? "Pass it on" : person ? `Ask ${person.displayName.split(" ")[0]} for a guide` : city ? `Ask a friend for a ${city.city} guide` : "Ask a friend for a guide")}
+        <SparkleIcon size={14} /> {label ?? (forWish ? "Pass it on" : person ? `Ask ${person.displayName.split(" ")[0]} for spots` : city ? `Ask a friend for ${city.city} spots` : "Ask a friend for spots")}
       </Button>
       {open && <AskSheet city={forWish ? { city: forWish.city, country: forWish.country } : city ?? null} person={person ?? null} forWish={forWish ?? null} onClose={() => setOpen(false)} />}
     </>
@@ -121,10 +121,10 @@ function AskSheet({ city: initialCity, person, forWish, onClose }: { city: City 
         <div className="flex flex-col items-center text-center gap-3 py-4">
           <span className="w-14 h-14 rounded-full bg-sage-tint text-sage flex items-center justify-center"><CheckIcon size={26} /></span>
           <p className="text-[15px] leading-snug">
-            {sentTo ? <>Asked <b>{sentTo.join(", ")}</b> {wisher ? <>to make {wisher} a {city?.city} guide.</> : <>for a {city?.city} guide.</>}</> : copied ? <>Message copied — paste it to your friend.</> : <>Your {city?.city} ask is on its way.</>}
+            {sentTo ? <>Asked <b>{sentTo.join(", ")}</b> {wisher ? <>to send {wisher} their {city?.city} spots.</> : <>for their {city?.city} spots.</>}</> : copied ? <>Message copied — paste it to your friend.</> : <>Your {city?.city} ask is on its way.</>}
           </p>
           <p className="text-[13px] text-ink-muted leading-relaxed">
-            {wisher ? <>We&apos;ve told {wisher}. The guide goes straight to them, and we&apos;ll let you know when it&apos;s made.</> : <>We&apos;ll tell you when they open it and when your guide is ready. You can follow it on your wish list.</>}
+            {wisher ? <>We&apos;ve told {wisher}. Their spots go straight to them, and we&apos;ll let you know when they&apos;re sent.</> : <>We&apos;ll tell you when they open it and when their spots arrive. You can follow it on your wish list.</>}
           </p>
           <div className="mt-2 flex flex-col gap-2 w-full">
             {sentTo && <Button variant="outline" onClick={() => { setSentTo(null); setPicked([]); }}>Ask someone else too</Button>}
@@ -165,10 +165,10 @@ function AskSheet({ city: initialCity, person, forWish, onClose }: { city: City 
   }
 
   return (
-    <Sheet title={wisher ? `Pass on ${wisher}'s wish` : "Ask for a guide"} onClose={onClose}>
+    <Sheet title={wisher ? `Pass on ${wisher}'s wish` : "Ask for spots"} onClose={onClose}>
       <div className="flex flex-col gap-5">
         <div>
-          <Label htmlFor="ask-city">{wisher ? `${wisher} wants a guide to` : "Where are you going?"}</Label>
+          <Label htmlFor="ask-city">{wisher ? `${wisher} wants spots for` : "Where are you going?"}</Label>
           {city ? (
             <div className="flex items-center justify-between rounded-xl border border-line bg-paper px-3.5 h-12">
               <span className="text-[15px] font-medium">{[city.city, city.country].filter(Boolean).join(", ")}</span>
@@ -211,7 +211,7 @@ function AskSheet({ city: initialCity, person, forWish, onClose }: { city: City 
           )}
           <div className={cx("rounded-2xl border border-line bg-paper p-3.5", picked.length ? "" : "border-terracotta-soft")}>
             <p className="text-[13px] font-semibold">Friend not on MyGuide?</p>
-            <p className="text-[12px] text-ink-muted leading-snug">{wisher ? `Send them a personal link — they sign up in a minute and make ${wisher}'s guide straight away.` : "Send them a personal link — they sign up in a minute and land straight in your guide."}</p>
+            <p className="text-[12px] text-ink-muted leading-snug">{wisher ? `Send them a personal link — they sign up in a minute and send ${wisher} their spots.` : "Send them a personal link — they sign up in a minute and send you their spots."}</p>
             <div className="mt-2.5 flex gap-2">
               <Button size="sm" disabled={!city || !!busy} onClick={prepareLink} className="flex-1 bg-[#25D366]! hover:bg-[#1ebe5b]! text-white! border-transparent!">
                 {busy === "link" ? <Spinner /> : <><WhatsAppIcon size={15} /> WhatsApp</>}

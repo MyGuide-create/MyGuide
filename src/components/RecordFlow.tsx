@@ -7,6 +7,7 @@ import { useEffect, useState, useTransition } from "react";
 import { putPlaceInGuide, saveRecordedPlace, type RecordedPlace } from "@/lib/actions/record";
 import { isReservedTitle, myPlacesHref } from "@/lib/stash";
 import { GuideNudge } from "./GuideNudge";
+import { SendSpotsButton } from "./SendSpotsButton";
 import { PhotoPicker } from "./PhotoPicker";
 import { PlaceSearch } from "./PlaceSearch";
 import { PinDropSheet } from "./PinDropSheet";
@@ -45,7 +46,16 @@ const NUDGE_MIN = 4;
  * (recommended or just for you) → done: add another, or put it in a guide. Opened from one of your
  * guides (`intoGuide`), it saves straight into that guide instead.
  */
-export function RecordFlow({ guides, intoGuide }: { guides: GuideOption[]; intoGuide?: { id: string; slug: string; title: string } | null }) {
+export function RecordFlow({
+  guides,
+  intoGuide,
+  forWish,
+}: {
+  guides: GuideOption[];
+  intoGuide?: { id: string; slug: string; title: string } | null;
+  /** Adding spots for someone's wish (their city): the done screen offers to send them. */
+  forWish?: { id: string; city: string; name: string } | null;
+}) {
   const router = useRouter();
   const [step, setStep] = useState<Step>("confirm");
   const [locate, setLocate] = useState<LocateState>("locating");
@@ -213,6 +223,11 @@ export function RecordFlow({ guides, intoGuide }: { guides: GuideOption[]; intoG
             </button>
           </div>
 
+          {forWish && (
+            <div className="mx-4 mt-3 rounded-2xl bg-terracotta-tint/70 px-4 py-3 text-[13px] leading-snug">
+              <b className="font-semibold">{forWish.city} spots for {forWish.name}.</b> Add the places you&apos;d recommend, then send them to {forWish.name} in one tap.
+            </div>
+          )}
           <div className="flex flex-col items-center px-7 pt-6 pb-1 text-center">
             <div className="w-16 h-16 rounded-full bg-terracotta-tint flex items-center justify-center mb-3.5">
               <PinIcon size={30} className="text-terracotta" />
@@ -506,7 +521,18 @@ export function RecordFlow({ guides, intoGuide }: { guides: GuideOption[]; intoG
           </div>
 
           <div className="mt-auto px-5 pt-6 pb-8 flex flex-col gap-2.5">
-            {done.city && done.unguided >= NUDGE_MIN && !putIn && <GuideNudge city={done.city} count={done.unguided} className="mb-2" />}
+            {forWish && done.city.toLowerCase() === forWish.city.toLowerCase() && done.recommended > 0 ? (
+              <div className="mb-2 rounded-2xl bg-ink text-cream px-4 py-3.5 flex flex-col gap-2.5">
+                <p className="text-[14.5px] font-semibold leading-snug">
+                  You recommend {done.recommended} {done.city} spot{done.recommended === 1 ? "" : "s"}. Send {done.recommended === 1 ? "it" : "them"} to {forWish.name}?
+                </p>
+                <SendSpotsButton dark wishIds={[forWish.id]} label={`Send ${forWish.name} your ${done.recommended} spot${done.recommended === 1 ? "" : "s"}`} className="w-full" />
+              </div>
+            ) : forWish && done.city.toLowerCase() === forWish.city.toLowerCase() && !done.shared ? (
+              <p className="mb-1 text-center text-[12.5px] text-ink-muted">Only places you recommend can be sent to {forWish.name}.</p>
+            ) : (
+              done.city && done.unguided >= NUDGE_MIN && !putIn && <GuideNudge city={done.city} count={done.unguided} className="mb-2" />
+            )}
             <Button className="w-full" size="lg" onClick={addAnother}>
               <PlusIcon size={18} /> Add another
             </Button>

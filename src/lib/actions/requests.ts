@@ -33,7 +33,7 @@ async function requireUserOrThrow() {
 
 function cleanAsk(input: AskInput) {
   const city = tidyCity(input.city ?? "").slice(0, 80);
-  if (city.length < 2) throw new UserError("Pick the city you want a guide to.", "invalid");
+  if (city.length < 2) throw new UserError("Pick the city you're going to.", "invalid");
   const ok = validPin(input.lat ?? NaN, input.lng ?? NaN);
   return {
     city,

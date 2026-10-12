@@ -162,13 +162,13 @@ export default async function NotificationsPage() {
                   )}
                   {n.type === "guide_request" && reqMap.get(n.requestId ?? "")?.passedById && (
                     <>
-                      {who} thinks you could make {reqPeople.get(reqMap.get(n.requestId ?? "")!.requesterId) ?? "a friend"} a <b className="font-semibold">{reqMap.get(n.requestId ?? "")!.city}</b> guide.
+                      {who} thinks you could send {reqPeople.get(reqMap.get(n.requestId ?? "")!.requesterId) ?? "a friend"} your <b className="font-semibold">{reqMap.get(n.requestId ?? "")!.city}</b> spots.
                       {reqMap.get(n.requestId ?? "")?.note ? <span className="block text-[12.5px] text-ink-muted italic">“{reqMap.get(n.requestId ?? "")!.note}”</span> : null}
                     </>
                   )}
                   {n.type === "request_passed" && (
                     <>
-                      {who} asked {reqPeople.get(reqMap.get(n.requestId ?? "")?.recipientId ?? "") ?? "a friend"} to make you a <b className="font-semibold">{reqMap.get(n.requestId ?? "")?.city ?? ""}</b> guide. <span className="text-ink-muted">You&apos;ll get it when it&apos;s published.</span>
+                      {who} asked {reqPeople.get(reqMap.get(n.requestId ?? "")?.recipientId ?? "") ?? "a friend"} for their <b className="font-semibold">{reqMap.get(n.requestId ?? "")?.city ?? ""}</b> spots for you. <span className="text-ink-muted">You&apos;ll hear when they&apos;re sent.</span>
                     </>
                   )}
                   {n.type === "request_passed_done" && (
@@ -178,7 +178,7 @@ export default async function NotificationsPage() {
                   )}
                   {n.type === "guide_request" && !reqMap.get(n.requestId ?? "")?.passedById && (
                     <>
-                      {who} asked you for a <b className="font-semibold">{reqMap.get(n.requestId ?? "")?.city ?? ""}</b> guide.
+                      {who} asked you for your <b className="font-semibold">{reqMap.get(n.requestId ?? "")?.city ?? ""}</b> spots.
                       {reqMap.get(n.requestId ?? "")?.note ? <span className="block text-[12.5px] text-ink-muted italic">“{reqMap.get(n.requestId ?? "")!.note}”</span> : null}
                     </>
                   )}

@@ -15,7 +15,7 @@ import { reverseGeocode } from "../places/google";
 import { validPin } from "../places/pins";
 import { notifyPlacesAdded } from "../notify";
 import { fileSavedPlaces } from "./fileSaved";
-import { spotKey } from "../citySpots";
+import { citySpots, spotKey } from "../citySpots";
 import { newId } from "../utils";
 
 export interface RecordPlaceInput {
@@ -46,6 +46,8 @@ export interface RecordedPlace {
   shared: boolean;
   /** Places in My places in this city that aren't in any of your guides yet (for the nudge). */
   unguided: number;
+  /** Spots you recommend in this city (for "Send Tomás your N Kyoto spots"). */
+  recommended: number;
 }
 
 export async function saveRecordedPlace(input: RecordPlaceInput): Promise<RecordedPlace> {
@@ -99,6 +101,7 @@ export async function saveRecordedPlace(input: RecordPlaceInput): Promise<Record
   const tips = input.tips.map((t) => t.trim()).filter(Boolean);
   const cityOut = resolved?.city?.trim() ? canonicalCity(resolved.city) : "";
   const unguidedIn = async () => (toStash && cityOut ? (unguidedByCity((await loadMyPlaces(user.id)).items).get(cityOut)?.length ?? 0) : 0);
+  const recommendedIn = async () => (toStash && cityOut ? (await citySpots({ city: cityOut, viewerId: user.id, ownerIds: [user.id] })).length : 0);
 
   // Already in My places (added twice): update that one instead of keeping two — new words win, tips and photos add up.
   if (toStash && resolved) {
@@ -118,7 +121,7 @@ export async function saveRecordedPlace(input: RecordPlaceInput): Promise<Record
       if (tips.length) await db.insert(placeTips).values(tips.map((body, i) => ({ id: newId(), placeId: same.id, body, position: Number(tipCount) + i, createdAt: now })));
       if (input.photoMediaIds.length) await db.insert(placePhotos).values(input.photoMediaIds.map((mediaId, i) => ({ id: newId(), placeId: same.id, mediaId, position: Number(photoCount) + i, createdAt: now })));
       revalidatePath("/my-places");
-      return { guideSlug: guide.slug, intoGuide: false, placeId: same.id, name: same.name, city: cityOut, shared: !!input.share || !!same.sharedAt, unguided: await unguidedIn() };
+      return { guideSlug: guide.slug, intoGuide: false, placeId: same.id, name: same.name, city: cityOut, shared: !!input.share || !!same.sharedAt, unguided: await unguidedIn(), recommended: await recommendedIn() };
     }
   }
 
@@ -168,7 +171,7 @@ export async function saveRecordedPlace(input: RecordPlaceInput): Promise<Record
   revalidatePath(`/g/${guide.slug}/edit`);
   revalidatePath("/me");
   revalidatePath("/my-places");
-  return { guideSlug: guide.slug, intoGuide: !toStash, placeId, name: resolved?.name ?? input.name, city: cityOut, shared: toStash && !!input.share, unguided: await unguidedIn() };
+  return { guideSlug: guide.slug, intoGuide: !toStash, placeId, name: resolved?.name ?? input.name, city: cityOut, shared: toStash && !!input.share, unguided: await unguidedIn(), recommended: await recommendedIn() };
 }
 
 /** Recommend (or stop recommending) places in My places, so they show on their city's page. */

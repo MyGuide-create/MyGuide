@@ -13,7 +13,7 @@ export function TripForm({ defaultCity }: { defaultCity?: string }) {
         <Input name="city" defaultValue={defaultCity} placeholder="Lisbon, Bali, Tokyo…" required />
       </div>
       {state.error && <p className="text-[12.5px] text-danger">{state.error}</p>}
-      <Button type="submit" disabled={pending}>{pending ? <Spinner /> : "Show me the guides"}</Button>
+      <Button type="submit" disabled={pending}>{pending ? <Spinner /> : "Show me the spots"}</Button>
     </form>
   );
 }

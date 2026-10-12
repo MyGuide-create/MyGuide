@@ -2,14 +2,14 @@ import Link from "next/link";
 import { AppShell, TopBar } from "@/components/AppShell";
 import { PinIcon, SparkleIcon } from "@/components/Icons";
 import { Avatar, EmptyState, LinkButton } from "@/components/ui";
-import { AddWishForm, GrantedLinks, SendGuideButton } from "@/components/WishList";
+import { AddWishForm, GrantedLinks, SendGuideButton, SpotsFromLinks, WishSpotsActions } from "@/components/WishList";
 import { AskForGuideButton } from "@/components/AskForGuide";
 import { getCurrentUser, toPublicUser } from "@/lib/auth";
 import { listAllWishes } from "@/lib/wishes";
 import { timeAgo } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Wanted guides" };
+export const metadata = { title: "Where friends are going" };
 
 export default async function WishesPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const sp = await searchParams;
@@ -20,12 +20,12 @@ export default async function WishesPage({ searchParams }: { searchParams: Promi
 
   return (
     <AppShell>
-      <TopBar back="/search" title="Wanted guides" avatarUser={user ? toPublicUser(user) : null} />
+      <TopBar back="/search" title="Wish lists" avatarUser={user ? toPublicUser(user) : null} />
       <main className="px-4 pt-4 pb-8 flex flex-col gap-4">
         <div className="px-1">
-          <h1 className="font-display text-[30px] leading-[1.05]">Cities people want a guide to</h1>
+          <h1 className="font-display text-[30px] leading-[1.05]">Where people are going</h1>
           <p className="mt-2 text-[13.5px] text-ink-muted leading-relaxed">
-            Know one of these places? Make the guide for them — it&apos;s shared with them the moment you publish. Already have one? Send it.
+            Been to one of these? Send them your spots — one tap if you&apos;ve added some there, or add a few first. A guide you&apos;ve made works too.
           </p>
         </div>
 
@@ -52,7 +52,7 @@ export default async function WishesPage({ searchParams }: { searchParams: Promi
         )}
 
         {cities.length === 0 ? (
-          <EmptyState title={cityFilter ? `No wishes for ${cityFilter} yet` : "No wishes yet"} body="Add the cities you'd love a guide to — they show on your profile and here, so people who know them can make one for you." />
+          <EmptyState title={cityFilter ? `No wishes for ${cityFilter} yet` : "No wishes yet"} body="Add the cities you're going to — they show on your profile and here, so people who know them can send you their spots." />
         ) : (
           <p className="px-1 -mb-1 text-[12px] font-medium uppercase tracking-[0.08em] text-ink-muted">{cities.length} {cities.length === 1 ? "city" : "cities"} · {people} {people === 1 ? "wish" : "wishes"}</p>
         )}
@@ -69,7 +69,7 @@ export default async function WishesPage({ searchParams }: { searchParams: Promi
                 <div className="flex-1 min-w-0">
                   <h2 className="font-display text-[24px] leading-none truncate">{c.city}</h2>
                   <p className="mt-1 text-[12.5px] text-ink-muted">
-                    {c.country ? `${c.country} · ` : ""}{c.people.length} {c.people.length === 1 ? "person wants" : "people want"} a guide
+                    {c.country ? `${c.country} · ` : ""}{c.people.length} {c.people.length === 1 ? "person wants" : "people want"} spots
                   </p>
                 </div>
               </div>
@@ -84,11 +84,13 @@ export default async function WishesPage({ searchParams }: { searchParams: Promi
                       </div>
                       {p.wish.note && <div className="text-[12.5px] text-ink-muted italic leading-snug">{p.wish.note}</div>}
                       <GrantedLinks granted={p.granted} />
+                      <SpotsFromLinks spotsFrom={p.spotsFrom} />
                     </div>
                     {!p.isViewer && user && (
                       <div className="shrink-0 self-center flex flex-col items-end gap-1">
+                        <WishSpotsActions w={p} firstName={p.user.displayName.split(" ")[0]} signedIn next="/wishes" />
                         <SendGuideButton wishId={p.wish.id} guides={p.viewerGuides} sent={p.viewerSent} wisherName={p.user.displayName.split(" ")[0]} />
-                        {p.granted.length === 0 && (
+                        {p.granted.length === 0 && p.spotsFrom.length === 0 && (
                           <AskForGuideButton variant="ghost" forWish={{ id: p.wish.id, city: p.wish.city, country: p.wish.country, userId: p.user.id, name: p.user.displayName }} />
                         )}
                       </div>
@@ -98,9 +100,15 @@ export default async function WishesPage({ searchParams }: { searchParams: Promi
               </ul>
               {others.length > 0 && (
                 <div className="px-4 py-3 border-t border-line/70 bg-cream/40">
-                  <LinkButton href={user ? `/create?wish=${makeFor}` : `/signup?why=create&next=${encodeURIComponent("/wishes")}`} size="sm" className="w-full">
-                    Make a {c.city} guide for {forWhom}
-                  </LinkButton>
+                  {user ? (
+                    <Link href={`/create?wish=${makeFor}`} className="block text-center text-[13px] font-medium text-terracotta-deep">
+                      Or make {forWhom} a guide →
+                    </Link>
+                  ) : (
+                    <LinkButton href={`/signup?why=ask&next=${encodeURIComponent("/wishes")}`} size="sm" className="w-full">
+                      Send {forWhom} your {c.city} spots
+                    </LinkButton>
+                  )}
                 </div>
               )}
             </section>

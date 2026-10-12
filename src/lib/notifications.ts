@@ -108,19 +108,19 @@ export async function addNotifications(rows: NewNotification[]): Promise<void> {
             break;
           case "guide_request":
             title = q?.passedById
-              ? `${who} thinks you could make ${firstOf(q.requesterId) ?? "a friend"} a ${q.city} guide`
-              : `${who} asked you for a ${q?.city ?? ""} guide`.replace("a  guide", "a guide");
-            body = q?.note || "You know it — tap to make them a guide or send one you've made.";
+              ? `${who} thinks you could send ${firstOf(q.requesterId) ?? "a friend"} your ${q.city} spots`
+              : `${who} asked you for your ${q?.city ?? ""} spots`.replace("your  spots", "your spots");
+            body = q?.note || "You know it — tap to send them your spots.";
             if (q) url = `/ask/${q.token}`;
             break;
           case "request_joined":
             title = `${shortName(who)} joined MyGuide from your ask`;
-            body = q ? `You now follow each other. They can make your ${q.city} guide.` : "You now follow each other.";
+            body = q ? `You now follow each other. They can send you their ${q.city} spots.` : "You now follow each other.";
             if (a) url = `/u/${a.username}`;
             break;
           case "request_passed":
-            title = `${who} asked ${firstOf(q?.recipientId) ?? "a friend"} to make you a ${q?.city ?? ""} guide`.replace("a  guide", "a guide");
-            body = "They passed your wish on. You'll get the guide as soon as it's published.";
+            title = `${who} asked ${firstOf(q?.recipientId) ?? "a friend"} for their ${q?.city ?? ""} spots for you`.replace("their  spots", "their spots");
+            body = "They passed your wish on. You'll hear as soon as the spots are sent.";
             url = "/wishes";
             break;
           case "request_passed_done":
