@@ -13,6 +13,7 @@ import { copyBranches, copyPlace, freshGuideSlug, isReusable, notifyGuideUsed, p
 import { newId, newToken } from "../utils";
 import { canViewSharedPlace } from "../citySpots";
 import { isStash } from "../stash";
+import { settleGuides } from "../settleCities";
 import { canonicalCity } from "../places/cities";
 
 type Result = { ok: true; slug: string; title: string; added: number } | { ok: false; error: string };
@@ -108,6 +109,7 @@ async function copyInto(user: User, target: Guide, placeIds: string[]): Promise<
     const photos = await db.select().from(placePhotos).where(inArray(placePhotos.placeId, srcIds));
     if (photos.length) await db.insert(placePhotos).values(photos.map((ph) => ({ ...ph, id: newId(), placeId: newOf.get(ph.placeId)!, createdAt: now })));
   }
+  await settleGuides(db, [target.id]);
   await db.update(guides).set({ updatedAt: now }).where(eq(guides.id, target.id));
   for (const [gid, n] of perSource) {
     const g = usable.get(gid)!;

@@ -22,6 +22,7 @@ import { mapLimit, newId, newToken, slugify } from "../utils";
 import { addNotifications } from "../notifications";
 import { isReservedTitle, isStash } from "../stash";
 import { addToStash, copyPlaceExtras } from "../myPlaces";
+import { settleGuides } from "../settleCities";
 import { normaliseInstagram, normaliseReserve, normaliseWebsite, normaliseWhatsapp, type Normalised } from "@/lib/placeLinks";
 
 /** Owner or invited co-editor. Use for editing places, notes, tips and guide details. */
@@ -130,6 +131,7 @@ export async function createGuide(input: {
   if (!known && !input.country?.trim() && derivedCity) {
     await db.update(guides).set({ city: derivedCity.city, country: derivedCity.country }).where(eq(guides.id, id));
   }
+  await settleGuides(db, [id]);
   if (input.alsoMyPlaces && rows.length) {
     const { pairs } = await addToStash(user.id, rows, { share: input.alsoMyPlaces.share });
     await copyPlaceExtras(pairs);
@@ -208,6 +210,7 @@ export async function importToMyPlaces(input: {
     });
     const copies = rows.map((r, i) => ({ ...r, id: newId(), guideId: id, position: i, createdAt: now, sharedAt: null }));
     for (let i = 0; i < copies.length; i += 50) await db.insert(places).values(copies.slice(i, i + 50));
+    await settleGuides(db, [id]);
   }
   revalidatePath(`/g/${stash.slug}`);
   revalidatePath("/my-places");
@@ -319,6 +322,8 @@ export async function updateGuideMeta(
     set.coverCreditUrl = null;
   }
   await db.update(guides).set(set).where(eq(guides.id, guideId));
+  // A new city (or centre) changes which of its places count as that city.
+  if (patch.city !== undefined || patch.lat !== undefined) await settleGuides(db, [guideId]);
   revalidateGuide(guide.slug);
 }
 
@@ -446,6 +451,7 @@ export async function addPinnedPlace(guideId: string, input: { name: string; lat
   if (!guide.city && where?.city) {
     await db.update(guides).set({ city: where.city, country: where.country }).where(eq(guides.id, guideId));
   }
+  await settleGuides(db, [guideId]);
   await touch(guideId);
   await notifyPlacesAdded(guide, values.id!, userId);
   revalidateGuide(guide.slug);
@@ -621,6 +627,7 @@ export async function addPlace(guideId: string, input: { providerId?: string; na
   if (!guide.city && resolved?.city) {
     await db.update(guides).set({ city: resolved.city, country: resolved.country }).where(eq(guides.id, guideId));
   }
+  await settleGuides(db, [guideId]);
   await touch(guideId);
   await notifyPlacesAdded(guide, values.id!, userId);
   revalidateGuide(guide.slug);
@@ -641,6 +648,7 @@ export async function replacePlace(guideId: string, placeId: string, providerId:
       address: resolved.address,
       area: resolved.area ?? "",
       city: resolved.city,
+      sourceCity: "",
       country: resolved.country,
       lat: resolved.lat,
       lng: resolved.lng,
@@ -655,6 +663,7 @@ export async function replacePlace(guideId: string, placeId: string, providerId:
       businessStatus: resolved.businessStatus,
     })
     .where(and(eq(places.id, placeId), eq(places.guideId, guideId)));
+  await settleGuides(db, [guideId]);
   await touch(guideId);
   revalidateGuide(guide.slug);
   return (await db.query.places.findFirst({ where: eq(places.id, placeId) })) ?? null;

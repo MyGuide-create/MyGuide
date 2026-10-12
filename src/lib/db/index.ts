@@ -37,6 +37,9 @@ function init() {
     await migrate(db, { migrationsFolder: path.join(process.cwd(), "drizzle") });
     const { maybeSeed } = await import("../seed");
     await maybeSeed(db);
+    // One-off data jobs (each runs once per database).
+    const { settleAllOnce } = await import("../settleCities");
+    await settleAllOnce(db);
   })();
 
   g.__myguideDb = { db, client, ready };

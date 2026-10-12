@@ -9,6 +9,7 @@ import { canonicalCity, findCityExact } from "../places/cities";
 import { isReservedTitle } from "../stash";
 import { copyPlaceExtras, findStash } from "../myPlaces";
 import { spotKey } from "../citySpots";
+import { settleGuides } from "../settleCities";
 import { UserError } from "../userError";
 import { newId, newToken, slugify } from "../utils";
 
@@ -110,6 +111,7 @@ export async function fileSavedPlaces(input: {
     await copyPlaceExtras(pairs);
   }
 
+  await settleGuides(db, [target.id]);
   await db.update(guides).set({ updatedAt: now }).where(inArray(guides.id, [target.id, stash.id]));
   for (const slug of [target.slug, stash.slug]) {
     revalidatePath(`/g/${slug}`);

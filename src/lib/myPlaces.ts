@@ -11,6 +11,7 @@ import { spotKey } from "./citySpots";
 import { canonicalCity } from "./places/cities";
 import { STASH_TITLE, STASH_TITLES } from "./stash";
 import { newId, newToken, slugify } from "./utils";
+import { settleGuides } from "./settleCities";
 
 /** The user's My places list (either name, never a published guide), if they have one. */
 export async function findStash(userId: string): Promise<Guide | undefined> {
@@ -162,6 +163,7 @@ export async function addToStash(
     const values = fresh.map((r, i) => ({ ...r, position: start + i, createdAt: now, sharedAt: opts.share ? now : null }));
     for (let i = 0; i < values.length; i += 50) await db.insert(places).values(values.slice(i, i + 50));
     await db.update(guides).set({ updatedAt: now }).where(eq(guides.id, stash.id));
+    await settleGuides(db, [stash.id]);
   }
   return { stash, pairs, skipped: rows.length - fresh.length };
 }

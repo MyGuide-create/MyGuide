@@ -152,6 +152,11 @@ export const places = sqliteTable(
      */
     sourcePlaceId: text("source_place_id"),
     /**
+     * The town Google gave for the place, before it was settled into an area (12 Oct 2026): a
+     * Grândola beach in a Comporta guide has city "Comporta", source_city "Grândola". "" = not settled yet.
+     */
+    sourceCity: text("source_city").notNull().default(""),
+    /**
      * Set when the owner recommends this place on its own, outside a published guide (a place in
      * Saved places): it then shows on the city page's spots. Copies never inherit it.
      */
@@ -616,3 +621,9 @@ export const cityPhotos = sqliteTable("city_photos", {
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 });
 export type CityPhoto = typeof cityPhotos.$inferSelect;
+
+/** One-off data jobs run at startup (e.g. settling place cities into areas), so each runs once per database. */
+export const appJobs = sqliteTable("app_jobs", {
+  name: text("name").primaryKey(),
+  doneAt: integer("done_at", { mode: "timestamp_ms" }).notNull(),
+});

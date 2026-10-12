@@ -16,6 +16,7 @@ import { validPin } from "../places/pins";
 import { notifyPlacesAdded } from "../notify";
 import { fileSavedPlaces } from "./fileSaved";
 import { citySpots, spotKey } from "../citySpots";
+import { settleGuides } from "../settleCities";
 import { newId } from "../utils";
 
 export interface RecordPlaceInput {
@@ -99,7 +100,8 @@ export async function saveRecordedPlace(input: RecordPlaceInput): Promise<Record
   const now = new Date();
   const liked = input.special.trim();
   const tips = input.tips.map((t) => t.trim()).filter(Boolean);
-  const cityOut = resolved?.city?.trim() ? canonicalCity(resolved.city) : "";
+  // The area the place ends up in (settled below: a North Vancouver café counts as Vancouver).
+  let cityOut = resolved?.city?.trim() ? canonicalCity(resolved.city) : "";
   const unguidedIn = async () => (toStash && cityOut ? (unguidedByCity((await loadMyPlaces(user.id)).items).get(cityOut)?.length ?? 0) : 0);
   const recommendedIn = async () => (toStash && cityOut ? (await citySpots({ city: cityOut, viewerId: user.id, ownerIds: [user.id] })).length : 0);
 
@@ -108,6 +110,7 @@ export async function saveRecordedPlace(input: RecordPlaceInput): Promise<Record
     const key = spotKey({ googlePlaceId: resolved.providerId || null, name: resolved.name, lat: resolved.lat ?? null, lng: resolved.lng ?? null });
     const same = (await db.select().from(places).where(eq(places.guideId, guide.id))).find((p) => spotKey(p) === key);
     if (same) {
+      if (same.city.trim()) cityOut = canonicalCity(same.city);
       const [{ n: tipCount }] = await db.select({ n: sql<number>`count(*)` }).from(placeTips).where(eq(placeTips.placeId, same.id));
       const [{ n: photoCount }] = await db.select({ n: sql<number>`count(*)` }).from(placePhotos).where(eq(placePhotos.placeId, same.id));
       await db
@@ -166,6 +169,9 @@ export async function saveRecordedPlace(input: RecordPlaceInput): Promise<Record
     await db.update(guides).set({ updatedAt: now }).where(eq(guides.id, guide.id));
   }
 
+  await settleGuides(db, [guide.id]);
+  const settled = await db.query.places.findFirst({ where: eq(places.id, placeId) });
+  if (settled?.city.trim()) cityOut = canonicalCity(settled.city);
   await notifyPlacesAdded(guide, placeId, user.id);
   revalidatePath(`/g/${guide.slug}`);
   revalidatePath(`/g/${guide.slug}/edit`);
