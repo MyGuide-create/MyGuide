@@ -24,8 +24,11 @@ import { isStash } from "./stash";
 
 const GUIDE_KM = 40;
 const NEAR_KM = 12;
-/** v2 (12 Oct 2026): adds countries that are one area (Maldives, Seychelles…), so it runs again over everything. */
-export const SETTLE_JOB = "settle-cities-v2";
+/**
+ * v2: countries that are one area (Maldives…). v3: a place in its guide's own city stays there (live data had
+ * Comporta spots pulled into Grândola because more spots were tagged Grândola). Each bump re-runs over everything.
+ */
+export const SETTLE_JOB = "settle-cities-v3";
 
 type Row = {
   id: string;
@@ -49,8 +52,10 @@ const median = (xs: number[]) => {
 async function townStats(db: Db): Promise<Map<string, { name: string; lat: number; lng: number; n: number }>> {
   const rows = await db.select({ city: places.city, sourceCity: places.sourceCity, lat: places.lat, lng: places.lng }).from(places);
   const by = new Map<string, { name: string; lats: number[]; lngs: number[]; n: number }>();
+  // Counted by area (the settled city), so a town Google uses a lot inside a guide's area
+  // (Grândola, around Comporta) doesn't outweigh the area itself.
   for (const r of rows) {
-    const src = (r.sourceCity || r.city).trim();
+    const src = (r.city || r.sourceCity).trim();
     if (!src) continue;
     const k = key(src);
     const e = by.get(k) ?? { name: canonicalCity(src), lats: [], lngs: [], n: 0 };
@@ -82,7 +87,9 @@ function settle(r: Row, stats: Awaited<ReturnType<typeof townStats>>): string {
   const g = r.guide;
   if (g.city.trim() && !isStash(g) && !knownBase) {
     const gc = canonicalCity(g.city);
-    if (key(gc) !== key(base)) {
+    // Already the guide's own city: it stays (a bigger neighbour mustn't pull Comporta into Grândola).
+    if (key(gc) === key(base)) return base;
+    {
       const known = findCityExact(gc);
       const centre = g.lat != null && g.lng != null ? { lat: g.lat, lng: g.lng } : known ? { lat: known.lat, lng: known.lng } : stats.get(key(gc)) ?? null;
       if (centre && km(here, centre) <= GUIDE_KM) return gc;
@@ -132,7 +139,9 @@ async function settlePlaces(db: Db, where: { guideIds?: string[] } = {}): Promis
   for (const r of rows) {
     const src = (r.sourceCity || r.city).trim();
     const city = settle(r, stats);
-    const area = r.area.trim() || (src && src.toLowerCase() !== city.toLowerCase() ? src : "");
+    // The area line shows the town when it differs from the area; never the area's own name again.
+    let area = r.area.trim() || (src && src.toLowerCase() !== city.toLowerCase() ? src : "");
+    if (area.toLowerCase() === city.toLowerCase()) area = "";
     if (city === r.city && src === r.sourceCity && area === r.area) continue;
     updates.push(db.update(places).set({ city, sourceCity: src, area }).where(eq(places.id, r.id)));
   }

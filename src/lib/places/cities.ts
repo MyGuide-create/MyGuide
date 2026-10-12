@@ -23,6 +23,7 @@ export const CITIES: CityInfo[] = [
   { city: "Marrakech", country: "Morocco", lat: 31.6295, lng: -7.9811, aliases: ["marrakesh", "medina", "gueliz"] },
   { city: "New York", country: "United States", lat: 40.7128, lng: -74.006, aliases: ["nyc", "new york city", "manhattan", "brooklyn", "williamsburg", "queens"] },
   { city: "Los Angeles", country: "United States", lat: 34.0522, lng: -118.2437, aliases: ["la", "silver lake", "venice", "santa monica"] },
+  { city: "Reno", country: "United States", lat: 39.5296, lng: -119.8138, aliases: ["sparks"] },
   { city: "San Francisco", country: "United States", lat: 37.7749, lng: -122.4194, aliases: ["sf"] },
   { city: "Chicago", country: "United States", lat: 41.8781, lng: -87.6298 },
   { city: "Istanbul", country: "Türkiye", lat: 41.0082, lng: 28.9784, aliases: ["kadikoy", "kadıköy", "beyoglu", "beyoğlu", "karakoy", "karaköy"] },
