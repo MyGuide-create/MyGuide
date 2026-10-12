@@ -21,6 +21,8 @@ export interface SpotRecommender {
   /** Their own words about the place: their description, else their first tip. "" when none. */
   tip: string;
   addedAt: Date;
+  /** The viewer's own place that nobody else can see (draft/private guide, unshared Saved place). */
+  isPrivate?: boolean;
 }
 
 export interface CitySpot {
@@ -61,6 +63,8 @@ export interface Recommendation {
   at: Date;
   /** The spot's city, tidied ("Lisboa" → Lisbon); "" when unknown. */
   city: string;
+  /** The viewer's own place that only they can see. */
+  isPrivate?: boolean;
 }
 
 /**
@@ -125,8 +129,48 @@ export async function loadRecommendations(opts: { viewerId?: string | null; owne
   return out;
 }
 
+/**
+ * Every place the viewer has in `city` — published, draft and private guides and all of Saved
+ * places — so their own spots sit with their friends' on the city page and map. Only ever shown
+ * to the viewer; `isPrivate` marks the ones nobody else can see.
+ */
+export async function loadOwnPlaces(viewerId: string, city: string): Promise<Recommendation[]> {
+  const db = await getDb();
+  const variants = cityNameVariants(city);
+  const rows = await db
+    .select({ place: places, guide: { id: guides.id, slug: guides.slug, title: guides.title, city: guides.city, country: guides.country, publishedAt: guides.publishedAt, visibility: guides.visibility }, owner: users })
+    .from(places)
+    .innerJoin(guides, eq(guides.id, places.guideId))
+    .innerJoin(users, eq(users.id, guides.ownerId))
+    .where(and(eq(guides.ownerId, viewerId), or(inArray(sql`lower(trim(${places.city}))`, variants), inArray(sql`lower(trim(${guides.city}))`, variants))!))
+    .limit(2000);
+  const mine = rows.filter((r) => r.place.city.trim() === "" || sameCity(r.place.city, city));
+  const ids = mine.map((r) => r.place.id);
+  const firstTip = new Map<string, string>();
+  for (let i = 0; i < ids.length; i += 500) {
+    const tips = await db.select({ placeId: placeTips.placeId, body: placeTips.body, position: placeTips.position }).from(placeTips).where(inArray(placeTips.placeId, ids.slice(i, i + 500)));
+    tips.sort((a, b) => a.position - b.position);
+    for (const t of tips) if (!firstTip.has(t.placeId) && t.body.trim()) firstTip.set(t.placeId, t.body);
+  }
+  return mine.map((r) => {
+    const isPublic = r.guide.visibility === "public" && !!r.guide.publishedAt;
+    const theirs = !r.place.noteAuthorId || r.place.noteAuthorId === viewerId;
+    const { visibility: _v, ...guide } = r.guide;
+    void _v;
+    return {
+      place: r.place,
+      guide,
+      owner: toPublicUser(r.owner),
+      tip: clip((theirs ? r.place.note : "") || firstTip.get(r.place.id) || ""),
+      at: r.place.sharedAt ?? r.place.createdAt,
+      city: canonicalCity(r.place.city.trim() || r.guide.city.trim() || city),
+      isPrivate: !isPublic && !r.place.sharedAt,
+    };
+  });
+}
+
 /** Merge recommendations into one spot per place, most recommended first. */
-function mergeSpots(recs: Recommendation[]): CitySpot[] {
+export function mergeSpots(recs: Recommendation[]): CitySpot[] {
   const groups = new Map<string, CitySpot>();
   for (const r of recs) {
     const k = spotKey(r.place);
@@ -137,10 +181,12 @@ function mergeSpots(recs: Recommendation[]): CitySpot[] {
     }
     const existing = g.recommenders.find((x) => x.user.id === r.owner.id);
     if (existing) {
-      if (!existing.tip && r.tip) Object.assign(existing, { tip: r.tip, placeId: r.place.id, guideSlug: r.guide.slug, guideTitle: r.guide.title });
+      // Prefer the copy others can see, then one with words.
+      if ((existing.isPrivate && !r.isPrivate) || (!existing.tip && r.tip && !!existing.isPrivate === !!r.isPrivate))
+        Object.assign(existing, { tip: r.tip || existing.tip, placeId: r.place.id, guideSlug: r.guide.slug, guideTitle: r.guide.title, isPrivate: r.isPrivate });
       continue;
     }
-    g.recommenders.push({ user: r.owner, placeId: r.place.id, guideSlug: r.guide.slug, guideTitle: r.guide.title, tip: r.tip, addedAt: r.at });
+    g.recommenders.push({ user: r.owner, placeId: r.place.id, guideSlug: r.guide.slug, guideTitle: r.guide.title, tip: r.tip, addedAt: r.at, isPrivate: r.isPrivate });
     // Prefer a copy with a photo for the card.
     if (!g.place.photoMediaId && !g.place.photoUrl && (r.place.photoMediaId || r.place.photoUrl)) g.place = r.place;
   }
@@ -153,9 +199,15 @@ function mergeSpots(recs: Recommendation[]): CitySpot[] {
  * Spots in `city`. With `ownerIds`, only those people's (friends); without, everyone's (the
  * fallback when you don't follow anyone there). Sorted by how many people recommend the spot.
  */
-export async function citySpots(opts: { city: string; viewerId?: string | null; ownerIds?: string[] }): Promise<CitySpot[]> {
+export async function citySpots(opts: { city: string; viewerId?: string | null; ownerIds?: string[]; withOwn?: boolean }): Promise<CitySpot[]> {
   if (!opts.city) return [];
-  return mergeSpots(await loadRecommendations(opts));
+  const recs = await loadRecommendations(opts);
+  // The viewer's own places (all of them, private ones too), replacing their public copies.
+  if (opts.withOwn && opts.viewerId) {
+    const own = await loadOwnPlaces(opts.viewerId, opts.city);
+    return mergeSpots([...recs.filter((r) => r.owner.id !== opts.viewerId), ...own]);
+  }
+  return mergeSpots(recs);
 }
 
 export interface FriendCity {

@@ -66,16 +66,16 @@ export default async function PickPage({ searchParams }: { searchParams: Promise
   } else if (cityParam) {
     back = `/city?${new URLSearchParams({ name: cityParam, ...(friendParam ? { friend: friendParam } : {}) }).toString()}`;
     const following = await acceptedFollowingIds(user.id);
-    let spots = await citySpots({ city: cityParam, viewerId: user.id, ownerIds: following });
-    const fromFriends = spots.length > 0;
-    if (!fromFriends) spots = await citySpots({ city: cityParam, viewerId: user.id });
+    // Your own spots too (private ones included), so your guide can mix your favourites with your friends'.
+    let spots = await citySpots({ city: cityParam, viewerId: user.id, ownerIds: following, withOwn: true });
+    const fromFriends = spots.some((s) => s.recommenders.some((r) => r.user.id !== user.id));
+    if (!fromFriends) spots = await citySpots({ city: cityParam, viewerId: user.id, withOwn: true });
     const friend = friendParam ? spots.flatMap((s) => s.recommenders).find((r) => r.user.username.toLowerCase() === friendParam)?.user : null;
     if (friend) spots = spots.filter((s) => s.recommenders.some((r) => r.user.id === friend.id));
-    spots = spots.filter((s) => s.recommenders.some((r) => r.user.id !== user.id));
     const byCat = new Map<string, PickItem[]>();
     for (const s of spots) {
-      const lead = (friend && s.recommenders.find((r) => r.user.id === friend.id)) || s.recommenders[0];
-      const names = s.recommenders.map((r) => firstName(r.user.displayName));
+      const lead = (friend && s.recommenders.find((r) => r.user.id === friend.id)) || s.recommenders.find((r) => r.user.id !== user.id) || s.recommenders[0];
+      const names = [...s.recommenders].sort((a, b) => Number(b.user.id === user.id) - Number(a.user.id === user.id)).map((r) => (r.user.id === user.id ? "You" : firstName(r.user.displayName)));
       const item: PickItem = {
         id: lead.placeId,
         name: s.place.name,
@@ -92,7 +92,7 @@ export default async function PickPage({ searchParams }: { searchParams: Promise
       return i === -1 ? 99 : i;
     };
     groups = [...byCat.entries()].sort((a, b) => order(a[0]) - order(b[0])).map(([label, items]) => ({ label, items }));
-    heading = friend ? `Pick from ${firstName(friend.displayName)}’s ${cityParam}` : `Pick ${cityParam} spots`;
+    heading = friend ? (friend.id === user.id ? `Pick from your ${cityParam}` : `Pick from ${firstName(friend.displayName)}’s ${cityParam}`) : `Pick ${cityParam} spots`;
     intro = "Tick the spots you want, then make them a guide of your own (or add them to one).";
   }
 

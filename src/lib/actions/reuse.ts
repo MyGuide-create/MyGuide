@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 import { getCurrentUser } from "../auth";
 import { hiddenUserIds } from "../blocks";
 import { getDb } from "../db";
-import { guides, places, trips, type Guide, type Place, type Trip, type User } from "../db/schema";
+import { guides, placePhotos, placeTips, places, trips, type Guide, type Place, type Trip, type User } from "../db/schema";
 import { canViewGuide, isCollaborator } from "../guides";
 import { findCity } from "../places/cities";
 import { copyBranches, copyPlace, freshGuideSlug, isReusable, notifyGuideUsed, placeKey } from "../reuse";
@@ -62,7 +62,8 @@ async function copyInto(user: User, target: Guide, placeIds: string[]): Promise<
   const sharedOnly = new Set<string>();
   for (const g of sources) {
     if (g.id === target.id || hidden.has(g.ownerId)) continue;
-    if (!isReusable(g) || (g.ownerId !== user.id && !(await canViewGuide(g, user.id)))) {
+    // Your own places can always go into another guide of yours.
+    if (g.ownerId !== user.id && (!isReusable(g) || !(await canViewGuide(g, user.id)))) {
       if (!isStash(g) || !(await canViewSharedPlace(g.ownerId, user.id))) continue;
       sharedOnly.add(g.id);
     }
@@ -76,6 +77,7 @@ async function copyInto(user: User, target: Guide, placeIds: string[]): Promise<
   const rows: (typeof places.$inferInsert)[] = [];
   const perSource = new Map<string, number>();
   const pairs: Array<[string, string]> = [];
+  const ownPairs: Array<[string, string]> = [];
   for (const id of ids) {
     const p: Place | undefined = byId.get(id);
     const source = p && usable.get(p.guideId);
@@ -84,19 +86,33 @@ async function copyInto(user: User, target: Guide, placeIds: string[]): Promise<
     const key = placeKey(p);
     if (have.has(key)) continue;
     have.add(key);
-    const row = copyPlace(p, source, { guideId: target.id, position: position++, now });
+    const row =
+      source.ownerId === user.id
+        ? // Your own place: a straight copy, your words included (not a credited quote of yourself).
+          { ...p, id: newId(), guideId: target.id, position: position++, createdAt: now, sharedAt: null }
+        : copyPlace(p, source, { guideId: target.id, position: position++, now });
     rows.push(row);
     pairs.push([p.id, row.id!]);
+    if (source.ownerId === user.id) ownPairs.push([p.id, row.id!]);
     perSource.set(source.id, (perSource.get(source.id) ?? 0) + 1);
   }
   if (!rows.length) return 0;
   await db.insert(places).values(rows);
   await copyBranches(pairs);
+  // Your own places bring their tips and photos along (other people's stay theirs, credited).
+  if (ownPairs.length) {
+    const newOf = new Map(ownPairs);
+    const srcIds = ownPairs.map(([a]) => a);
+    const tips = await db.select().from(placeTips).where(inArray(placeTips.placeId, srcIds));
+    if (tips.length) await db.insert(placeTips).values(tips.map((t) => ({ ...t, id: newId(), placeId: newOf.get(t.placeId)!, createdAt: now })));
+    const photos = await db.select().from(placePhotos).where(inArray(placePhotos.placeId, srcIds));
+    if (photos.length) await db.insert(placePhotos).values(photos.map((ph) => ({ ...ph, id: newId(), placeId: newOf.get(ph.placeId)!, createdAt: now })));
+  }
   await db.update(guides).set({ updatedAt: now }).where(eq(guides.id, target.id));
   for (const [gid, n] of perSource) {
     const g = usable.get(gid)!;
     // Creators who keep their notes to themselves aren't told — nothing of theirs was copied.
-    if (g.allowFork) await notifyGuideUsed(g, user.id, n);
+    if (g.allowFork && g.ownerId !== user.id) await notifyGuideUsed(g, user.id, n);
   }
   return rows.length;
 }
