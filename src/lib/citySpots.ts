@@ -255,10 +255,11 @@ export async function friendCities(viewerId: string | null | undefined, recs?: R
       mine.set(k, o.keys.size);
     }
   }
-  // People who know the city (friends, plus you), then spots.
+  // Your own cities first (they're the ones you'll use — a Maldives list only you have shouldn't sit
+  // behind cities three friends know), then people who know the city, then spots.
   return [...by.entries()]
     .map(([k, c]) => ({ city: c.city, country: c.country, spots: c.keys.size, friends: [...c.owners.values()].sort((a, b) => b.n - a.n).map((o) => o.user), photo: c.photo, mine: mine.get(k) ?? 0 }))
-    .sort((a, b) => b.friends.length + Number(b.mine > 0) - (a.friends.length + Number(a.mine > 0)) || b.spots - a.spots);
+    .sort((a, b) => Number(b.mine > 0) - Number(a.mine > 0) || b.friends.length - a.friends.length || b.spots - a.spots);
 }
 
 export type ActivityItem =

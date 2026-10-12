@@ -18,7 +18,10 @@ export default async function CitiesPage() {
   const friends = mineAndFriends.map((c) => (c.friends.length ? c : { ...c, spots: Math.max(c.spots, byCity.get(cityKey(c.city))?.spots ?? 0) }));
   const friendKeys = new Set(friends.map((c) => cityKey(c.city)));
   const rest = [...byCity.values()].filter((t) => !friendKeys.has(cityKey(t.city))).sort((a, b) => b.spots - a.spots || b.guides - a.guides);
-  const photos = await cityPhotosFor([...friends.map((c) => c.city), ...rest.map((t) => t.city)]);
+  const photos = await cityPhotosFor(
+    [...friends.map((c) => c.city), ...rest.map((t) => t.city)],
+    new Map([...friends, ...rest].filter((c) => c.country).map((c) => [cityPhotoKey(c.city), c.country])),
+  );
   const thumb = (city: string) => {
     const p = photos.get(cityPhotoKey(city));
     // eslint-disable-next-line @next/next/no-img-element

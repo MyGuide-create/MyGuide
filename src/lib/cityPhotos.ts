@@ -64,9 +64,22 @@ const ICONIC: Record<string, string> = {
   tashkent: "Tashkent Khast Imam",
   tbilisi: "Tbilisi old town",
   baku: "Baku Flame Towers",
+  // Resort areas and islands: the place itself, not a skyline it doesn't have.
+  maldives: "Maldives overwater villas",
+  seychelles: "Seychelles La Digue beach",
+  mauritius: "Mauritius Le Morne beach",
+  fiji: "Fiji island beach",
+  "french polynesia": "Bora Bora lagoon",
+  sotogrande: "Sotogrande marina",
+  marbella: "Marbella Puerto Banus",
+  comporta: "Comporta beach Portugal",
+  mykonos: "Mykonos windmills",
+  santorini: "Santorini Oia",
+  ibiza: "Ibiza Dalt Vila",
 };
 
-export async function cityPhotosFor(cities: string[]): Promise<Map<string, CityPhoto>> {
+/** `countries`: city key → country, for towns not in the built-in list (helps the last search). */
+export async function cityPhotosFor(cities: string[], countries?: Map<string, string>): Promise<Map<string, CityPhoto>> {
   const out = new Map<string, CityPhoto>();
   const keys = [...new Set(cities.filter((c) => c.trim()).map(keyOf))];
   if (!keys.length) return out;
@@ -83,8 +96,15 @@ export async function cityPhotosFor(cities: string[]): Promise<Map<string, CityP
   for (const k of missing.slice(0, MAX_LOOKUPS)) {
     try {
       const city = findCityExact(k)?.city ?? cities.find((c) => keyOf(c) === k) ?? k;
-      let found = await firstUnsplashPhoto(ICONIC[k] ?? `${city} landmark skyline`);
-      if (!found.failed && !found.photo) found = await firstUnsplashPhoto(`${city} city`);
+      // Landmark first; small towns and resorts have no skyline, so then just the name (Sotogrande
+      // found nothing for "landmark skyline" or "city"), then the name with its country.
+      const country = findCityExact(k)?.country ?? countries?.get(k) ?? "";
+      const queries = [ICONIC[k] ?? `${city} landmark skyline`, city, ...(country && country.toLowerCase() !== k ? [`${city} ${country}`] : [])];
+      let found: Awaited<ReturnType<typeof firstUnsplashPhoto>> = { photo: null, failed: false };
+      for (const q of queries) {
+        found = await firstUnsplashPhoto(q);
+        if (found.failed || found.photo) break;
+      }
       // Couldn't ask (rate limit etc.): store nothing, so the city is tried again soon — not a week later.
       if (found.failed) {
         pausedUntil = Date.now() + PAUSE_MS;

@@ -31,6 +31,8 @@ const FEED_DAYS = 45;
 const FEED_TARGET = 15;
 /** City tiles before "Explore more cities": friends' cities first, then the most active on MyGuide. */
 const CITY_TILES = 8;
+/** You have places in more cities than CITY_TILES: show them all, up to this many. */
+const MAX_OWN_TILES = 14;
 
 /**
  * Home, places first: Going somewhere? → your trip → your friends' cities (then popular ones) → new
@@ -52,15 +54,20 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   ]);
   // Your friends' cities and yours. Where only you have places, the city page lists everyone's spots
   // with yours, so the tile counts the same (everyone's ∪ yours).
-  const cities = (user ? await friendCities(user.id, recs, { withOwn: true }) : [])
-    .slice(0, CITY_TILES)
+  const known = user ? await friendCities(user.id, recs, { withOwn: true }) : [];
+  // All your own cities make the row (up to MAX_OWN_TILES), then friends' cities up to CITY_TILES.
+  const cities = known
+    .slice(0, Math.max(CITY_TILES, Math.min(MAX_OWN_TILES, known.filter((c) => c.mine > 0).length)))
     .map((c) => (c.friends.length ? c : { ...c, spots: Math.max(c.spots, byCity.get(cityKey(c.city))?.spots ?? 0) }));
   // Then the most active cities on MyGuide (most spots) up to CITY_TILES.
   const friendCityKeys = new Set(cities.map((c) => cityKey(c.city)));
   const popular = moreCities.filter((t) => !friendCityKeys.has(cityKey(t.city))).sort((a, b) => b.spots - a.spots || b.guides - a.guides);
   const popularTiles = popular.slice(0, Math.max(0, CITY_TILES - cities.length));
   const moreToExplore = popular.length - popularTiles.length;
-  const photos = await cityPhotosFor([...(trip ? [trip.trip.city] : []), ...cities.map((c) => c.city), ...popularTiles.map((t) => t.city)]);
+  const photos = await cityPhotosFor(
+    [...(trip ? [trip.trip.city] : []), ...cities.map((c) => c.city), ...popularTiles.map((t) => t.city)],
+    new Map([...cities, ...popularTiles].filter((c) => c.country).map((c) => [cityPhotoKey(c.city), c.country])),
+  );
   const photoFor = (city: string) => photos.get(cityPhotoKey(city));
   const cityOf = new Map(cities.map((c) => [cityKey(c.city), c]));
   const tripCity = trip ? cityOf.get(cityKey(trip.trip.city)) : undefined;
