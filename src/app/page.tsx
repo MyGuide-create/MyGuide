@@ -15,7 +15,9 @@ import type { CityPhoto } from "@/lib/db/schema";
 import { getDb } from "@/lib/db";
 import { savedPlaces } from "@/lib/db/schema";
 import { listFeed, type GuideCard } from "@/lib/guides";
-import { cityKey, cityTiles, homeFeed, nameList, nextTrip, wantedGuides, type FeedEntry } from "@/lib/homeV2";
+import { cityKey, cityTiles, everyoneFeed, feedOwner, homeFeed, nameList, nextTrip, wantedGuides, type FeedEntry } from "@/lib/homeV2";
+import { capRuns } from "@/lib/fill";
+import { FollowPill } from "@/components/FollowPill";
 import { placeArea } from "@/lib/places/neighbourhood";
 import { timeAgo } from "@/lib/utils";
 
@@ -25,11 +27,16 @@ const cityHref = (t: { city: string; country?: string }, friend?: string) =>
   `/city?${new URLSearchParams({ name: t.city, ...(t.country ? { country: t.country } : {}), ...(friend ? { friend } : {}) }).toString()}`;
 const first = (u: { displayName: string }) => u.displayName.split(" ")[0];
 const FEED_DAYS = 45;
+/** Home feed: about this many items, friends' first, the rest from everyone ("New on MyGuide"). */
+const FEED_TARGET = 15;
+/** City tiles before "Explore more cities": friends' cities first, then the most active on MyGuide. */
+const CITY_TILES = 8;
 
 /**
- * Home, places first: Going somewhere? → your trip → your friends' cities (spots and who) → new
- * from friends (spots they recommend, spots several friends now share, new guides) → friends heading
- * somewhere (wish lists: send them your spots). The old guide feed lives at /feed, every city at /cities.
+ * Home, places first: Going somewhere? → your trip → your friends' cities (then popular ones) → new
+ * from friends (spots they recommend, spots several friends now share, new guides) then new on
+ * MyGuide from everyone → friends heading somewhere (then other people's wishes). Friends always
+ * come first and are labelled; everyone's public content fills the rest, so Home is never empty.
  */
 export default async function HomePage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const sp = await searchParams;
@@ -39,19 +46,27 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   const [{ moreCities }, trip, wanted, recs, followingGuides] = await Promise.all([
     cityTiles(user?.id),
     user ? nextTrip(user.id) : Promise.resolve(null),
-    wantedGuides(user?.id, 3),
+    wantedGuides(user?.id, 5),
     user ? loadRecommendations({ viewerId: user.id, ownerIds: followingIds }) : Promise.resolve([]),
     user ? listFeed({ viewerId: user.id, scope: "following", limit: 40 }) : Promise.resolve([] as GuideCard[]),
   ]);
-  const cities = user ? await friendCities(user.id, recs) : [];
-  const photos = await cityPhotosFor([...(trip ? [trip.trip.city] : []), ...cities.slice(0, 12).map((c) => c.city), ...(cities.length ? [] : moreCities.slice(0, 8).map((t) => t.city))]);
+  const cities = (user ? await friendCities(user.id, recs) : []).slice(0, CITY_TILES);
+  // Then the most active cities on MyGuide (most spots) up to CITY_TILES.
+  const friendCityKeys = new Set(cities.map((c) => cityKey(c.city)));
+  const popular = moreCities.filter((t) => !friendCityKeys.has(cityKey(t.city))).sort((a, b) => b.spots - a.spots || b.guides - a.guides);
+  const popularTiles = popular.slice(0, Math.max(0, CITY_TILES - cities.length));
+  const moreToExplore = popular.length - popularTiles.length;
+  const photos = await cityPhotosFor([...(trip ? [trip.trip.city] : []), ...cities.map((c) => c.city), ...popularTiles.map((t) => t.city)]);
   const photoFor = (city: string) => photos.get(cityPhotoKey(city));
   const cityOf = new Map(cities.map((c) => [cityKey(c.city), c]));
   const tripCity = trip ? cityOf.get(cityKey(trip.trip.city)) : undefined;
 
   // New from friends: their spots, spots several friends now share, and newly published guides.
-  const feed = homeFeed(recs, followingGuides, FEED_DAYS).slice(0, 10);
-  const feedPlaceIds = feed.flatMap((f) => (f.kind === "spots" && f.recs.length === 1 ? [f.recs[0].place.id] : []));
+  // Then "New on MyGuide": everyone else's, filling up to FEED_TARGET (all of it when you follow nobody).
+  const feed = capRuns(homeFeed(recs, followingGuides, FEED_DAYS), feedOwner).slice(0, FEED_TARGET);
+  const fillCount = feed.length >= FEED_TARGET ? 0 : Math.max(FEED_TARGET - feed.length, 4);
+  const everyone = fillCount ? await everyoneFeed(user?.id, new Set([...(user ? [user.id] : []), ...followingIds]), { days: 30, limit: fillCount }) : [];
+  const feedPlaceIds = [...feed, ...everyone].flatMap((f) => (f.kind === "spots" && f.recs.length === 1 ? [f.recs[0].place.id] : []));
   const savedIds = new Set<string>();
   if (user && feedPlaceIds.length) {
     const db = await getDb();
@@ -71,24 +86,6 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
           : trip.daysAway < 14
             ? `Your trip · in ${trip.daysAway} days`
             : `Your trip · in ${Math.round(trip.daysAway / 7)} weeks`;
-
-  const citiesGrid = moreCities.length > 0 && (
-    <section className="px-4 pt-8 flex flex-col gap-3">
-      <h2 className="px-1 font-display text-[22px]">Cities on MyGuide</h2>
-      <div className="grid grid-cols-2 gap-2.5">
-        {moreCities.slice(0, 8).map((t) => (
-          <Link key={t.city} href={cityHref(t)} className="flex items-center gap-2.5 rounded-2xl border border-line/80 bg-paper p-2 hover:border-terracotta-soft">
-            <CityImage photo={photoFor(t.city)} className="w-11 h-11 rounded-[10px]" />
-            <span className="min-w-0">
-              <span className="block font-semibold text-[14.5px] truncate">{t.city}</span>
-              <span className="block text-[12px] text-ink-muted">{t.spots ? `${t.spots} spot${t.spots === 1 ? "" : "s"}` : `${t.guides} guide${t.guides === 1 ? "" : "s"}`}</span>
-            </span>
-          </Link>
-        ))}
-      </div>
-      {moreCities.length > 8 && <Link href="/cities" className="self-start px-1 text-[14px] font-medium text-terracotta-deep">See every city</Link>}
-    </section>
-  );
 
   const help = wanted.help;
   const wishIds = (w: NonNullable<typeof help>) => w.others.map((p) => p.wish.id);
@@ -140,17 +137,19 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
           </div>
         )}
 
-        {cities.length > 0 ? (
+        {user && cities.length === 0 && (
+          <div className="mx-4 mt-6 rounded-2xl bg-cream-deep/50 px-4 py-3 text-[13.5px] leading-snug">
+            Follow people you know and the cities they recommend spots in show up first.{" "}
+            <Link href="/search" className="font-medium text-terracotta-deep">Find people</Link>
+          </div>
+        )}
+        {(cities.length > 0 || popularTiles.length > 0) && (
           <section className="pt-8 flex flex-col gap-3">
-            <h2 className="px-5 font-display text-[22px]">Your friends&apos; cities</h2>
+            <h2 className="px-5 font-display text-[22px]">{cities.length ? "Your friends\u2019 cities" : "Popular on MyGuide"}</h2>
             <div className="flex gap-3 overflow-x-auto no-scrollbar px-5">
-              {cities.slice(0, 12).map((c) => (
+              {cities.map((c) => (
                 <Link key={c.city} href={cityHref(c)} className="shrink-0 w-[150px] flex flex-col gap-2">
-                  <span className="relative block">
-                    <CityImage photo={photoFor(c.city)} className="h-[170px] w-full rounded-2xl" />
-                    <span aria-hidden className="absolute inset-x-0 bottom-0 h-20 rounded-b-2xl bg-gradient-to-t from-black/50 to-transparent" />
-                    <span className="absolute left-3 bottom-2.5 right-2 font-display text-[20px] leading-tight text-white drop-shadow-[0_1px_4px_rgb(0_0_0/0.45)] truncate">{c.city}</span>
-                  </span>
+                  <CityTileImage photo={photoFor(c.city)} city={c.city} />
                   <span className="px-0.5 flex items-center gap-1.5 text-[12.5px] text-ink-muted">
                     <Faces users={c.friends} ring="ring-cream" />
                     {c.friends.length > 3 && <span>+{c.friends.length - 3}</span>}
@@ -158,27 +157,32 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
                   <span className="px-0.5 -mt-1 text-[13px] font-semibold">{c.spots} spot{c.spots === 1 ? "" : "s"}</span>
                 </Link>
               ))}
-              {moreCities.length > 0 && (
-                <Link href="/cities" className="shrink-0 w-[150px] h-[170px] rounded-2xl border-[1.5px] border-dashed border-cream-line flex flex-col items-center justify-center gap-1.5 text-center px-3">
-                  <span className="font-semibold text-[14px]">Explore more cities</span>
-                  <span className="text-[12px] text-ink-muted">
-                    {moreCities.slice(0, 3).map((t) => t.city).join(", ")}
-                    {moreCities.length > 3 ? ` +${moreCities.length - 3}` : ""}
-                  </span>
-                </Link>
+              {cities.length > 0 && popularTiles.length > 0 && (
+                <span className="shrink-0 w-[64px] h-[170px] flex items-center justify-center">
+                  <span className="[writing-mode:vertical-rl] rotate-180 text-[11.5px] font-semibold uppercase tracking-[0.1em] text-ink-muted">Popular on MyGuide</span>
+                </span>
               )}
+              {popularTiles.map((t) => (
+                <Link key={t.city} href={cityHref(t)} className="shrink-0 w-[150px] flex flex-col gap-2">
+                  <CityTileImage photo={photoFor(t.city)} city={t.city} />
+                  <span className="px-0.5 text-[13px] font-semibold">{t.spots ? `${t.spots} spot${t.spots === 1 ? "" : "s"}` : `${t.guides} guide${t.guides === 1 ? "" : "s"}`}</span>
+                </Link>
+              ))}
+              <Link href="/cities" className="shrink-0 w-[150px] h-[170px] rounded-2xl border-[1.5px] border-dashed border-cream-line flex flex-col items-center justify-center gap-1.5 text-center px-3">
+                <span className="font-semibold text-[14px]">Explore more cities</span>
+                <span className="text-[12px] text-ink-muted">
+                  {moreToExplore > 0 ? (
+                    <>
+                      {popular.slice(popularTiles.length, popularTiles.length + 3).map((t) => t.city).join(", ")}
+                      {moreToExplore > 3 ? ` +${moreToExplore - 3}` : ""}
+                    </>
+                  ) : (
+                    "Every city on MyGuide"
+                  )}
+                </span>
+              </Link>
             </div>
           </section>
-        ) : (
-          <>
-            {user && (
-              <div className="mx-4 mt-6 rounded-2xl bg-cream-deep/50 px-4 py-3 text-[13.5px] leading-snug">
-                Follow people you know and the cities they recommend spots in show up here.{" "}
-                <Link href="/search" className="font-medium text-terracotta-deep">Find people</Link>
-              </div>
-            )}
-            {citiesGrid}
-          </>
         )}
 
         {feed.length > 0 && (
@@ -187,10 +191,19 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
             {feed.map((f) => <FeedCard key={feedKey(f)} f={f} savedIds={savedIds} signedIn={!!user} />)}
           </section>
         )}
+        {everyone.length > 0 && (
+          <section className="px-4 pt-8 flex flex-col gap-3">
+            <div className="px-1">
+              <h2 className="font-display text-[22px]">New on MyGuide</h2>
+              <p className="text-[13px] text-ink-muted">{feed.length ? "More from people you don\u2019t follow yet." : "What people are recommending right now. Follow anyone whose taste you like."}</p>
+            </div>
+            {everyone.map((f) => <FeedCard key={feedKey(f)} f={f} savedIds={savedIds} signedIn={!!user} followable />)}
+          </section>
+        )}
 
         <section className="px-4 pt-8 flex flex-col gap-3">
           <div className="flex items-baseline justify-between px-1">
-            <h2 className="font-display text-[22px]">Friends heading somewhere</h2>
+            <h2 className="font-display text-[22px]">{help || wanted.list.some((w) => w.known.length > 0) ? "Friends heading somewhere" : "Where people are going"}</h2>
             <Link href="/wishes" className="text-[14px] font-medium text-terracotta-deep">See all</Link>
           </div>
           {help && (
@@ -225,19 +238,27 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
           )}
           {wanted.list.length > 0 && (
             <ul className="flex flex-col">
-              {wanted.list.map((w) => {
+              {wanted.list.map((w, i) => {
                 const lead = w.known[0] ?? w.others[0];
                 const extra = w.others.length - 1;
+                const friend = w.known.length > 0;
+                // Label where friends' wishes end and other people's begin.
+                const startsOthers = !friend && (i === 0 ? !!help : wanted.list[i - 1].known.length > 0);
                 return (
-                  <li key={w.group.city} className="flex items-center gap-3 py-2.5 border-b border-line/80">
-                    <Avatar user={lead.user} size={40} />
+                  <li key={w.group.city} className="flex flex-col">
+                    {startsOthers && <span className="pt-3 pb-1 px-1 text-[11.5px] font-semibold uppercase tracking-[0.08em] text-ink-muted">Others on MyGuide</span>}
+                  <span className="flex items-center gap-3 py-2.5 border-b border-line/80">
+                    <Link href={`/u/${lead.user.username}`} className="shrink-0"><Avatar user={lead.user} size={40} /></Link>
                     <span className="flex-1 min-w-0">
-                      <span className="block font-semibold text-[15px] truncate">
-                        {first(lead.user)}
-                        {extra > 0 ? ` +${extra}` : ""} · {w.group.city}
+                      <span className="flex items-center gap-2 min-w-0">
+                        <span className="font-semibold text-[15px] truncate">
+                          {first(lead.user)}
+                          {extra > 0 ? ` +${extra}` : ""} · {w.group.city}
+                        </span>
+                        {!friend && user && <FollowPill userId={lead.user.id} signedIn next="/" />}
                       </span>
                       <span className="block text-[12.5px] text-ink-muted">
-                        {w.viewerSpots > 0 ? `Wants spots · you recommend ${w.viewerSpots} there` : cityOf.get(cityKey(w.group.city)) ? "Wants spots · your friends have some" : "Wants spots · nobody you follow has been yet"}
+                        {w.viewerSpots > 0 ? `Wants spots · you recommend ${w.viewerSpots} there` : cityOf.get(cityKey(w.group.city)) ? "Wants spots · your friends have some" : friend ? "Wants spots · nobody you follow has been yet" : "Wants spots"}
                       </span>
                     </span>
                     {w.viewerSpots > 0 ? (
@@ -252,6 +273,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
                         />
                       )
                     )}
+                  </span>
                   </li>
                 );
               })}
@@ -289,6 +311,17 @@ function CityImage({ photo, className }: { photo?: CityPhoto; className?: string
   return <span className={cx("shrink-0 block bg-gradient-to-br from-terracotta-soft to-terracotta", className)} />;
 }
 
+/** A city tile's picture with the name over a dark fade. */
+function CityTileImage({ photo, city }: { photo?: CityPhoto; city: string }) {
+  return (
+    <span className="relative block">
+      <CityImage photo={photo} className="h-[170px] w-full rounded-2xl" />
+      <span aria-hidden className="absolute inset-x-0 bottom-0 h-20 rounded-b-2xl bg-gradient-to-t from-black/50 to-transparent" />
+      <span className="absolute left-3 bottom-2.5 right-2 font-display text-[20px] leading-tight text-white drop-shadow-[0_1px_4px_rgb(0_0_0/0.45)] truncate">{city}</span>
+    </span>
+  );
+}
+
 function Faces({ users, ring }: { users: PublicUser[]; ring: string }) {
   return (
     <span className="flex shrink-0">
@@ -299,25 +332,30 @@ function Faces({ users, ring }: { users: PublicUser[]; ring: string }) {
   );
 }
 
-function FeedCard({ f, savedIds, signedIn }: { f: FeedEntry; savedIds: Set<string>; signedIn: boolean }) {
+/**
+ * One item on Home. `followable`: from someone you don't follow ("New on MyGuide") — a small
+ * Follow sits next to their name.
+ */
+function FeedCard({ f, savedIds, signedIn, followable = false }: { f: FeedEntry; savedIds: Set<string>; signedIn: boolean; followable?: boolean }) {
   if (f.kind === "guide") {
     const g = f.card;
     return (
-      <Link href={`/g/${g.guide.slug}`} className="rounded-2xl border border-line/80 bg-paper overflow-hidden">
-        <span className="relative block">
+      <div className="rounded-2xl border border-line/80 bg-paper overflow-hidden">
+        <Link href={`/g/${g.guide.slug}`} className="relative block">
           <GuideCover guide={g.guide} ownerUsername={g.owner.username} bare thumb className="h-[110px]" />
           <span className="absolute left-2.5 bottom-2.5 rounded-full bg-paper/95 px-2.5 py-1 text-[12px] font-semibold">
             New guide · {g.placeCount} place{g.placeCount === 1 ? "" : "s"}
           </span>
-        </span>
+        </Link>
         <span className="flex items-center gap-2.5 px-3.5 py-3">
-          <Avatar user={g.owner} size={32} />
-          <span className="flex-1 min-w-0 text-[13.5px] leading-snug">
+          <Link href={`/u/${g.owner.username}`} className="shrink-0"><Avatar user={g.owner} size={32} /></Link>
+          <Link href={`/g/${g.guide.slug}`} className="flex-1 min-w-0 text-[13.5px] leading-snug">
             <b className="font-semibold">{first(g.owner)}</b> published <b className="font-semibold">{g.guide.title}</b>
             <span className="block text-[12px] text-ink-muted">{[g.guide.city, timeAgo(f.at)].filter(Boolean).join(" · ")}</span>
-          </span>
+          </Link>
+          {followable && <FollowPill userId={g.owner.id} signedIn={signedIn} next="/" />}
         </span>
-      </Link>
+      </div>
     );
   }
   if (f.kind === "overlap") {
@@ -336,13 +374,14 @@ function FeedCard({ f, savedIds, signedIn }: { f: FeedEntry; savedIds: Set<strin
   const one = f.recs.length === 1;
   return (
     <div className="rounded-2xl border border-line/80 bg-paper p-3.5 flex flex-col gap-2.5">
-      <Link href={cityHref({ city: f.city }, f.user.username)} className="flex items-center gap-2.5">
-        <Avatar user={f.user} size={32} />
-        <span className="flex-1 min-w-0 text-[13.5px] leading-snug">
-          <b className="font-semibold">{first(f.user)}</b> recommended {one ? "a spot" : `${f.recs.length} spots`}{f.city ? <> in <b className="font-semibold">{f.city}</b></> : null}
+      <span className="flex items-center gap-2.5">
+        <Link href={followable ? `/u/${f.user.username}` : cityHref({ city: f.city }, f.user.username)} className="shrink-0"><Avatar user={f.user} size={32} /></Link>
+        <Link href={followable ? `/u/${f.user.username}` : cityHref({ city: f.city }, f.user.username)} className="flex-1 min-w-0 text-[13.5px] leading-snug">
+          <b className="font-semibold">{followable ? f.user.displayName : first(f.user)}</b> recommended {one ? "a spot" : `${f.recs.length} spots`}{f.city ? <> in <b className="font-semibold">{f.city}</b></> : null}
           <span className="block text-[12px] text-ink-muted">{timeAgo(f.at)}</span>
-        </span>
-      </Link>
+        </Link>
+        {followable && <FollowPill userId={f.user.id} signedIn={signedIn} next="/" />}
+      </span>
       {one ? (
         <>
           <Link href={`/g/${r0.guide.slug}/p/${r0.place.id}`} className="flex gap-3 rounded-xl bg-cream-deep/40 p-2.5">

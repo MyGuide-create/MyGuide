@@ -6,6 +6,8 @@ import { HeartIcon, LockIcon, MapIcon, PlusIcon, SparkleIcon } from "@/component
 import { findCity } from "@/lib/places/cities";
 import { AskForGuideButton } from "@/components/AskForGuide";
 import { SendSpotsButton } from "@/components/SendSpotsButton";
+import { FollowPill } from "@/components/FollowPill";
+import { capRuns } from "@/lib/fill";
 import { GuideMap } from "@/components/GuideMap";
 import { PlaceTile } from "@/components/PlaceTile";
 import { Avatar, EmptyState, LinkButton, cx } from "@/components/ui";
@@ -28,6 +30,8 @@ export async function generateMetadata({ searchParams }: { searchParams: Promise
 }
 
 const SPOTS_SHOWN = 20;
+/** "More from MyGuide" rows before "Show all". */
+const MORE_SHOWN = 10;
 const first = (u: PublicUser) => u.displayName.split(" ")[0] || u.username;
 /** "You" for the viewer, else their first name. */
 const nm = (u: PublicUser, viewerId?: string | null) => (viewerId && u.id === viewerId ? "You" : first(u));
@@ -94,6 +98,23 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
   const cat = cats.find((c) => c === catParam) ?? null;
   const shownSpots = cat ? bySomeone.filter((s) => s.place.category === cat) : bySomeone;
   const listed = showAll ? shownSpots : shownSpots.slice(0, SPOTS_SHOWN);
+  // After friends' spots: everyone else's on MyGuide ("More from MyGuide"), most recommended first,
+  // never more than 2 in a row led by the same person. Not when a friend (or you) is picked.
+  const showMore = one(sp.more) === "1";
+  const following = new Set(followingIds);
+  const friendKeys = new Set(spots.map((s) => s.key));
+  const moreAll =
+    city && fromFriends && !picked
+      ? capRuns(
+          (await citySpots({ city, viewerId })).filter((s) => !friendKeys.has(s.key) && s.recommenders.some((r) => r.user.id !== viewerId) && (!cat || s.place.category === cat)),
+          (s) => leadFor(s, null, viewerId).user.id,
+        )
+      : [];
+  const moreListed = showMore ? moreAll : moreAll.slice(0, MORE_SHOWN);
+  const canFollow = (s: CitySpot) => {
+    const lead = leadFor(s, picked, viewerId).user.id;
+    return lead !== viewerId && !following.has(lead);
+  };
   const friendGuides = isMe ? ownGuides : picked ? mine.filter((g) => g.owner.id === picked.id) : mine.filter((g) => g.owner.id !== viewerId);
 
   const centre = findCity(city);
@@ -309,11 +330,30 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
                   {isMe ? `You haven\u2019t added any ${cat ?? ""} spots here yet.` : picked ? `${first(picked)} hasn\u2019t added any ${cat ?? ""} spots here yet.` : `No ${cat ?? ""} spots yet.`}
                 </p>
               )}
-              {listed.map((s) => <SpotRow key={s.key} spot={s} picked={picked} fromFriends={fromFriends} viewerId={viewerId} />)}
+              {listed.map((s) => (
+                <SpotRow key={s.key} spot={s} picked={picked} fromFriends={fromFriends} viewerId={viewerId} follow={!fromFriends && canFollow(s)} signedIn={!!user} next={cityHref({})} />
+              ))}
               {!showAll && shownSpots.length > SPOTS_SHOWN && (
                 <LinkButton href={cityHref({ all: "1" })} variant="outline">Show all {shownSpots.length} spots</LinkButton>
               )}
             </div>
+            {moreAll.length > 0 && (
+              <div className="px-4 pt-7 flex flex-col gap-2.5">
+                <div className="px-1">
+                  <div className="flex items-baseline justify-between">
+                    <h2 className="font-display text-[22px]">More from MyGuide</h2>
+                    <span className="text-[13px] text-ink-muted">{moreAll.length} spot{moreAll.length === 1 ? "" : "s"}</span>
+                  </div>
+                  <p className="text-[13px] text-ink-muted">{cat ? `${cat} spots` : "Spots"} recommended by people you don&apos;t follow yet.</p>
+                </div>
+                {moreListed.map((s) => (
+                  <SpotRow key={s.key} spot={s} picked={null} fromFriends={false} viewerId={viewerId} follow={canFollow(s)} signedIn={!!user} next={cityHref({})} />
+                ))}
+                {!showMore && moreAll.length > MORE_SHOWN && (
+                  <LinkButton href={`${cityHref({})}&more=1`} variant="outline">Show all {moreAll.length}</LinkButton>
+                )}
+              </div>
+            )}
           </section>
         )}
 
@@ -436,13 +476,31 @@ function recommendLabel(s: CitySpot, picked: PublicUser | null, fromFriends: boo
 }
 
 /** A spot in the list: who recommends it (faces + count) and one of their tips. */
-function SpotRow({ spot, picked, fromFriends, viewerId }: { spot: CitySpot; picked: PublicUser | null; fromFriends: boolean; viewerId: string | null }) {
+function SpotRow({
+  spot,
+  picked,
+  fromFriends,
+  viewerId,
+  follow = false,
+  signedIn = false,
+  next = "/",
+}: {
+  spot: CitySpot;
+  picked: PublicUser | null;
+  fromFriends: boolean;
+  viewerId: string | null;
+  /** Lead recommender is someone you don't follow: a small Follow sits on the row. */
+  follow?: boolean;
+  signedIn?: boolean;
+  next?: string;
+}) {
   const lead = leadFor(spot, picked, viewerId);
   const onlyMinePrivate = spot.recommenders.every((r) => r.user.id === viewerId && r.isPrivate);
   const faces = [lead, ...spot.recommenders.filter((r) => r !== lead)].slice(0, 3);
   const p = spot.place;
   const many = spot.recommenders.length >= 3;
   return (
+    <div className="relative">
     <Link href={`/g/${lead.guideSlug}/p/${lead.placeId}`} className="flex gap-3 rounded-2xl border border-line/80 bg-paper p-3 hover:border-terracotta-soft">
       <PlaceTile place={p} size={68} />
       <span className="flex-1 min-w-0 flex flex-col gap-1">
@@ -463,8 +521,11 @@ function SpotRow({ spot, picked, fromFriends, viewerId }: { spot: CitySpot; pick
             {onlyMinePrivate && <LockIcon size={12} />}
             {recommendLabel(spot, picked, fromFriends, viewerId)}
           </span>
+          {follow && <span className="w-[72px] shrink-0 ml-auto" aria-hidden />}
         </span>
       </span>
     </Link>
+    {follow && <FollowPill userId={lead.user.id} signedIn={signedIn} next={next} className="absolute right-3 bottom-3" />}
+    </div>
   );
 }

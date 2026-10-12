@@ -15,9 +15,22 @@ import { formatTripDates, titleSize } from "@/lib/utils";
 import { isReusable } from "@/lib/reuse";
 import { ForkIcon } from "@/components/Icons";
 import { AskForGuideButton } from "@/components/AskForGuide";
-import { acceptedFollowingIds, citySpots } from "@/lib/citySpots";
+import { acceptedFollowingIds, citySpots, type CitySpot } from "@/lib/citySpots";
+import { capRuns, friendsThenEveryone } from "@/lib/fill";
 
 export const dynamic = "force-dynamic";
+/** Spots shown on a trip before "All N spots": friends' first, then everyone's. */
+const TRIP_SPOTS = 8;
+
+/** "Yara", "Yara & 2 others", "3 people recommend it". */
+function whoRecommends(sp: CitySpot, viewerId: string, following: Set<string>): string {
+  const rs = sp.recommenders.filter((r) => r.user.id !== viewerId);
+  const friends = rs.filter((r) => following.has(r.user.id));
+  const lead = friends[0] ?? rs[0];
+  if (!lead) return "You";
+  const name = lead.user.displayName.split(" ")[0];
+  return rs.length === 1 ? name : friends.length ? `${name} & ${rs.length - 1} other${rs.length === 2 ? "" : "s"}` : `${rs.length} people recommend it`;
+}
 export const metadata = { title: "Trip" };
 
 export default async function TripPage({ params }: { params: Promise<{ id: string }> }) {
@@ -28,8 +41,17 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
   if (!trip) notFound();
   const [plan, following] = await Promise.all([planTrip(user.id, trip.city), acceptedFollowingIds(user.id)]);
   // Friends' spots lead, the same as the city page (which has the map, filters and everything else).
+  // Friends first, then everyone else's on MyGuide to fill up to TRIP_SPOTS (labelled separately).
   const friendSpots = following.length ? await citySpots({ city: trip.city, viewerId: user.id, ownerIds: following }) : [];
-  const spots = friendSpots.length ? friendSpots : await citySpots({ city: trip.city, viewerId: user.id });
+  const allSpots = await citySpots({ city: trip.city, viewerId: user.id });
+  const { friends: topFriends, fill: topEveryone } = friendsThenEveryone(
+    friendSpots,
+    capRuns(allSpots.filter((s) => s.recommenders.some((r) => r.user.id !== user.id)), (s) => s.recommenders[0].user.id),
+    TRIP_SPOTS,
+    (s) => s.key,
+  );
+  const spots = allSpots;
+  const followingSet = new Set(following);
   const cityPage = `/city?${new URLSearchParams({ name: trip.city, ...(trip.country ? { country: trip.country } : {}) }).toString()}`;
   const dates = formatTripDates(trip.startDate, trip.endDate);
   const nothing = !spots.length && !plan.savedGuides.length && !plan.favourites.length && !plan.fromFollowing.length && !plan.more.length;
@@ -47,22 +69,28 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
           <p className="mt-1.5 text-[13px] text-ink-muted">{[trip.country, dates].filter(Boolean).join(" · ") || "Everything for your trip, in one place"}</p>
         </div>
 
-        {spots.length > 0 && (
-          <Section title={friendSpots.length ? "Spots your friends recommend" : `Most recommended in ${trip.city}`} count={spots.length}>
+        {topFriends.length > 0 && (
+          <Section title="Spots your friends recommend" count={friendSpots.length}>
             <ul className="flex flex-col gap-2">
-              {spots.slice(0, 6).map((sp) => (
-                <PlaceLine
-                  key={sp.key}
-                  href={`/g/${sp.recommenders[0].guideSlug}/p/${sp.recommenders[0].placeId}`}
-                  place={sp.place}
-                  sub={sp.recommenders.length === 1 ? sp.recommenders[0].user.displayName.split(" ")[0] : `${sp.recommenders.length} people recommend it`}
-                />
+              {topFriends.map((sp) => (
+                <PlaceLine key={sp.key} href={`/g/${sp.recommenders[0].guideSlug}/p/${sp.recommenders[0].placeId}`} place={sp.place} sub={whoRecommends(sp, user.id, followingSet)} />
               ))}
             </ul>
-            <LinkButton href={cityPage} variant="outline" className="mt-3 w-full">
-              {spots.length > 6 ? `All ${spots.length} spots, with the map` : `Open ${trip.city}, with the map`}
-            </LinkButton>
           </Section>
+        )}
+        {topEveryone.length > 0 && (
+          <Section title={topFriends.length ? "More from MyGuide" : `Popular in ${trip.city} on MyGuide`} count={topEveryone.length}>
+            <ul className="flex flex-col gap-2">
+              {topEveryone.map((sp) => (
+                <PlaceLine key={sp.key} href={`/g/${sp.recommenders[0].guideSlug}/p/${sp.recommenders[0].placeId}`} place={sp.place} sub={whoRecommends(sp, user.id, followingSet)} />
+              ))}
+            </ul>
+          </Section>
+        )}
+        {spots.length > 0 && (
+          <LinkButton href={cityPage} variant="outline" className="-mt-3 w-full">
+            {spots.length > TRIP_SPOTS ? `All ${spots.length} spots, with the map` : `Open ${trip.city}, with the map`}
+          </LinkButton>
         )}
 
         {tripGuide && (

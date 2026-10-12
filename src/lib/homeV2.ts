@@ -8,6 +8,7 @@ import { follows, guides, notifications, places, savedGuides, savedPlaces, trips
 import { friendCities, friendsActivity, loadRecommendations, spotKey, type ActivityItem, type Recommendation } from "./citySpots";
 import { listFeed, type GuideCard } from "./guides";
 import { listAllWishes, type CityWishes } from "./wishes";
+import { capRuns } from "./fill";
 import { canonicalCity, cityNameVariants, findCityExact } from "./places/cities";
 
 /** Grouping key: "Dubai Marina", "dubai " and "Dubai" are one city. */
@@ -173,7 +174,11 @@ export async function wantedGuides(viewerId: string | null | undefined, limit = 
     all
       .filter((w) => w.known.length > 0 && (w.viewerSpots > 0 || w.viewerPlaces > 0 || w.viewerGuides.length > 0))
       .sort((a, b) => b.viewerSpots - a.viewerSpots || b.known.length - a.known.length || b.viewerPlaces - a.viewerPlaces)[0] ?? null;
-  const list = all.filter((w) => w !== help).slice(0, limit);
+  // Friends' wishes first, then other people's where the viewer has spots ("you recommend 4 there"),
+  // then everyone else's open wishes; never more than 2 in a row from the same person.
+  const tier = (w: WantedCity) => (w.known.length > 0 ? 0 : w.viewerSpots > 0 ? 1 : 2);
+  const ordered = all.filter((w) => w !== help).map((w, i) => ({ w, i })).sort((a, b) => tier(a.w) - tier(b.w) || a.i - b.i).map((x) => x.w);
+  const list = capRuns(ordered, (w) => (w.known[0] ?? w.others[0]).user.id).slice(0, limit);
   return { help, list };
 }
 
@@ -211,4 +216,50 @@ export function homeFeed(recs: Recommendation[], followingGuides: GuideCard[], d
       .filter((g) => g.guide.publishedAt && g.guide.publishedAt.getTime() >= since)
       .map((card) => ({ kind: "guide" as const, at: card.guide.publishedAt!, card })),
   ].sort((a, b) => b.at.getTime() - a.at.getTime());
+}
+
+/**
+ * Home's "New on MyGuide": everyone else's recent recommended spots and published guides (not
+ * yours, not people you follow — those are "New from friends"), last `days` days. Ranked by recency
+ * and quality: guides by their feed rank (feedScore), spots by how many people recommend them.
+ * Same visibility rules as everywhere: blocks, private accounts, never private places or drafts.
+ */
+export async function everyoneFeed(viewerId: string | null | undefined, exclude: Set<string>, opts: { days?: number; limit?: number } = {}): Promise<FeedEntry[]> {
+  const days = opts.days ?? 30;
+  const since = Date.now() - days * 86_400_000;
+  const [recs, guidesPool] = await Promise.all([loadRecommendations({ viewerId }), listFeed({ viewerId, scope: "public", limit: 80 })]);
+  // How many people recommend each spot (all of MyGuide), for the spots' quality.
+  const people = new Map<string, Set<string>>();
+  for (const r of recs) {
+    const k = spotKey(r.place);
+    const set = people.get(k) ?? new Set<string>();
+    set.add(r.owner.id);
+    people.set(k, set);
+  }
+  const theirs = recs.filter((r) => !exclude.has(r.owner.id) && r.at.getTime() >= since);
+  const spotItems = friendsActivity(theirs, { days }).filter((f): f is ActivityItem & { kind: "spots" } => f.kind === "spots");
+  const freshGuides = guidesPool.filter((g) => !exclude.has(g.owner.id) && g.guide.publishedAt && g.guide.publishedAt.getTime() >= since);
+  const recency = (at: Date) => Math.max(0, 1 - (Date.now() - at.getTime()) / (days * 86_400_000));
+  const scored: Array<{ e: FeedEntry; score: number; owner: string }> = [
+    ...spotItems.map((f) => {
+      const top = Math.max(...f.recs.map((r) => people.get(spotKey(r.place))?.size ?? 1));
+      const quality = Math.min(1, (top - 1) / 3 + Math.min(f.recs.length, 5) * 0.06);
+      return { e: f as FeedEntry, score: 0.6 * recency(f.at) + 0.4 * quality, owner: f.user.id };
+    }),
+    // listFeed is already ranked by feedScore (quality + freshness): earlier = better.
+    ...freshGuides.map((card, i) => ({
+      e: { kind: "guide" as const, at: card.guide.publishedAt!, card },
+      score: 0.6 * recency(card.guide.publishedAt!) + 0.4 * (1 - i / Math.max(1, freshGuides.length)),
+      owner: card.owner.id,
+    })),
+  ];
+  scored.sort((a, b) => b.score - a.score);
+  return capRuns(scored, (x) => x.owner).slice(0, opts.limit ?? 15).map((x) => x.e);
+}
+
+/** Who an entry on Home is from (for "max 2 in a row" and the Follow button). */
+export function feedOwner(f: FeedEntry): string {
+  if (f.kind === "guide") return f.card.owner.id;
+  if (f.kind === "overlap") return `overlap:${f.spot.key}`;
+  return f.user.id;
 }
