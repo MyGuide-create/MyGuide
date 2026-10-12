@@ -9,11 +9,13 @@ import { SaveButton } from "@/components/SaveButton";
 import { SendSpotsButton } from "@/components/SendSpotsButton";
 import { Avatar, LinkButton, cx } from "@/components/ui";
 import { getCurrentUser, type PublicUser } from "@/lib/auth";
-import { acceptedFollowingIds, friendCities, loadRecommendations, type FriendCity } from "@/lib/citySpots";
+import { acceptedFollowingIds, friendCities, loadRecommendations } from "@/lib/citySpots";
+import { cityPhotoKey, cityPhotosFor } from "@/lib/cityPhotos";
+import type { CityPhoto } from "@/lib/db/schema";
 import { getDb } from "@/lib/db";
 import { savedPlaces } from "@/lib/db/schema";
 import { listFeed, type GuideCard } from "@/lib/guides";
-import { cityKey, cityTiles, homeFeed, nameList, nextTrip, wantedGuides, type CityTile, type FeedEntry } from "@/lib/homeV2";
+import { cityKey, cityTiles, homeFeed, nameList, nextTrip, wantedGuides, type FeedEntry } from "@/lib/homeV2";
 import { placeArea } from "@/lib/places/neighbourhood";
 import { timeAgo } from "@/lib/utils";
 
@@ -34,7 +36,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   const user = await getCurrentUser();
   const followingIds = user ? await acceptedFollowingIds(user.id) : [];
 
-  const [{ moreCities, byCity }, trip, wanted, recs, followingGuides] = await Promise.all([
+  const [{ moreCities }, trip, wanted, recs, followingGuides] = await Promise.all([
     cityTiles(user?.id),
     user ? nextTrip(user.id) : Promise.resolve(null),
     wantedGuides(user?.id, 3),
@@ -42,9 +44,10 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
     user ? listFeed({ viewerId: user.id, scope: "following", limit: 40 }) : Promise.resolve([] as GuideCard[]),
   ]);
   const cities = user ? await friendCities(user.id, recs) : [];
+  const photos = await cityPhotosFor([...(trip ? [trip.trip.city] : []), ...cities.slice(0, 12).map((c) => c.city), ...(cities.length ? [] : moreCities.slice(0, 8).map((t) => t.city))]);
+  const photoFor = (city: string) => photos.get(cityPhotoKey(city));
   const cityOf = new Map(cities.map((c) => [cityKey(c.city), c]));
   const tripCity = trip ? cityOf.get(cityKey(trip.trip.city)) : undefined;
-  const tripTile = trip ? byCity.get(cityKey(trip.trip.city)) : undefined;
 
   // New from friends: their spots, spots several friends now share, and newly published guides.
   const feed = homeFeed(recs, followingGuides, FEED_DAYS).slice(0, 10);
@@ -76,7 +79,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
       <div className="grid grid-cols-2 gap-2.5">
         {moreCities.slice(0, 8).map((t) => (
           <Link key={t.city} href={cityHref(t)} className="flex items-center gap-2.5 rounded-2xl border border-line/80 bg-paper p-2 hover:border-terracotta-soft">
-            <GuideCover guide={t.cover.guide} ownerUsername={t.cover.owner.username} bare thumb className="w-11 h-11 rounded-[10px] shrink-0" />
+            <CityImage photo={photoFor(t.city)} className="w-11 h-11 rounded-[10px]" />
             <span className="min-w-0">
               <span className="block font-semibold text-[14.5px] truncate">{t.city}</span>
               <span className="block text-[12px] text-ink-muted">{t.guides} guide{t.guides === 1 ? "" : "s"}</span>
@@ -120,7 +123,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
         {trip && (
           <div className="px-4 pt-4">
             <Link href={cityHref({ city: trip.trip.city, country: trip.trip.country })} className="flex items-center gap-3.5 rounded-[20px] bg-ink text-cream p-3">
-              <CityImage tile={tripTile} city={tripCity} className="w-16 h-16 rounded-xl" />
+              <CityImage photo={photoFor(trip.trip.city)} className="w-16 h-16 rounded-xl" />
               <span className="flex-1 min-w-0 flex flex-col gap-1">
                 <span className="text-[11.5px] font-semibold uppercase tracking-[0.08em] text-cream-deep">{tripWhen}</span>
                 <span className="font-display text-[22px] leading-tight truncate">{trip.trip.city}</span>
@@ -145,7 +148,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
               {cities.slice(0, 12).map((c) => (
                 <Link key={c.city} href={cityHref(c)} className="shrink-0 w-[150px] flex flex-col gap-2">
                   <span className="relative block">
-                    <CityImage tile={byCity.get(cityKey(c.city))} city={c} className="h-[170px] w-full rounded-2xl" />
+                    <CityImage photo={photoFor(c.city)} className="h-[170px] w-full rounded-2xl" />
                     <span aria-hidden className="absolute inset-x-0 bottom-0 h-20 rounded-b-2xl bg-gradient-to-t from-black/50 to-transparent" />
                     <span className="absolute left-3 bottom-2.5 right-2 font-display text-[20px] leading-tight text-white drop-shadow-[0_1px_4px_rgb(0_0_0/0.45)] truncate">{c.city}</span>
                   </span>
@@ -273,16 +276,16 @@ function feedKey(f: FeedEntry): string {
   return `s:${f.user.id}:${f.city}:${f.at.getTime()}`;
 }
 
-/** A city's picture: a guide cover when there is one, else a friend's spot photo, else a warm tile. */
-function CityImage({ tile, city, className }: { tile?: CityTile; city?: FriendCity; className?: string }) {
-  if (tile) return <GuideCover guide={tile.cover.guide} ownerUsername={tile.cover.owner.username} bare thumb className={cx("shrink-0", className)} />;
-  const src = city?.photo ? (city.photo.photoMediaId ? `/api/media/${city.photo.photoMediaId}` : city.photo.photoUrl) : null;
-  return src ? (
+/**
+ * A city's picture: its iconic photo (Unsplash, see lib/cityPhotos), else a warm tile. Never a
+ * guide cover or place photo, which can be anything (a plate of steak for Dubai).
+ */
+function CityImage({ photo, className }: { photo?: CityPhoto; className?: string }) {
+  if (photo?.url) {
     // eslint-disable-next-line @next/next/no-img-element
-    <img src={src} alt="" className={cx("shrink-0 object-cover", className)} loading="lazy" />
-  ) : (
-    <span className={cx("shrink-0 block bg-gradient-to-br from-terracotta-soft to-terracotta", className)} />
-  );
+    return <img src={photo.url} alt="" className={cx("shrink-0 object-cover bg-cream-deep", className)} loading="lazy" />;
+  }
+  return <span className={cx("shrink-0 block bg-gradient-to-br from-terracotta-soft to-terracotta", className)} />;
 }
 
 function Faces({ users, ring }: { users: PublicUser[]; ring: string }) {

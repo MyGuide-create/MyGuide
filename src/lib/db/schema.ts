@@ -602,3 +602,17 @@ export type GuideRequest = typeof guideRequests.$inferSelect;
 
 export type GuideWish = typeof guideWishes.$inferSelect;
 export type WishGrant = typeof wishGrants.$inferSelect;
+
+/**
+ * One photo per city (Unsplash, hotlinked and credited) for city tiles, so a city never shows a
+ * plate of food from someone's guide cover. Filled on first use; key = canonical city, lower case.
+ */
+export const cityPhotos = sqliteTable("city_photos", {
+  cityKey: text("city_key").primaryKey(),
+  url: text("url"),
+  author: text("author"),
+  authorUrl: text("author_url"),
+  unsplashId: text("unsplash_id"),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+});
+export type CityPhoto = typeof cityPhotos.$inferSelect;
