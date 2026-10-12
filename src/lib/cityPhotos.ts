@@ -7,13 +7,16 @@
 import { inArray } from "drizzle-orm";
 import { getDb } from "./db";
 import { cityPhotos, type CityPhoto } from "./db/schema";
-import { claimUnsplashPhoto, hasUnsplashKey, searchUnsplash } from "./covers/unsplash";
+import { firstUnsplashPhoto, hasUnsplashKey } from "./covers/unsplash";
 import { canonicalCity, findCityExact } from "./places/cities";
 
-/** New lookups per page load, to stay well inside Unsplash's hourly limit. */
-const MAX_LOOKUPS = 3;
-/** Retry a city that found nothing after a week. */
-const RETRY_MS = 7 * 86_400_000;
+/** New lookups per page load, to stay well inside Unsplash's hourly limit (50/hour on the demo tier; ~2 requests per city). */
+const MAX_LOOKUPS = 4;
+/** Retry a city whose searches really found nothing after a day. */
+const RETRY_MS = 86_400_000;
+/** After Unsplash refuses (rate limit, bad key, outage), stop asking for a while instead of failing on every page. */
+const PAUSE_MS = 15 * 60_000;
+let pausedUntil = 0;
 
 const keyOf = (city: string) => canonicalCity(city).toLowerCase();
 
@@ -70,7 +73,7 @@ export async function cityPhotosFor(cities: string[]): Promise<Map<string, CityP
   const db = await getDb();
   const rows = await db.select().from(cityPhotos).where(inArray(cityPhotos.cityKey, keys));
   for (const r of rows) if (r.url) out.set(r.cityKey, r);
-  if (!hasUnsplashKey()) return out;
+  if (!hasUnsplashKey() || Date.now() < pausedUntil) return out;
 
   const known = new Map(rows.map((r) => [r.cityKey, r]));
   const missing = keys.filter((k) => {
@@ -80,8 +83,14 @@ export async function cityPhotosFor(cities: string[]): Promise<Map<string, CityP
   for (const k of missing.slice(0, MAX_LOOKUPS)) {
     try {
       const city = findCityExact(k)?.city ?? cities.find((c) => keyOf(c) === k) ?? k;
-      const hit = (await searchUnsplash(ICONIC[k] ?? `${city} landmark skyline`))[0] ?? (await searchUnsplash(`${city} city`))[0];
-      const photo = hit ? await claimUnsplashPhoto(hit.id) : null;
+      let found = await firstUnsplashPhoto(ICONIC[k] ?? `${city} landmark skyline`);
+      if (!found.failed && !found.photo) found = await firstUnsplashPhoto(`${city} city`);
+      // Couldn't ask (rate limit etc.): store nothing, so the city is tried again soon — not a week later.
+      if (found.failed) {
+        pausedUntil = Date.now() + PAUSE_MS;
+        break;
+      }
+      const photo = found.photo;
       const row: CityPhoto = {
         cityKey: k,
         url: photo?.url ?? null,

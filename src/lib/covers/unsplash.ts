@@ -71,3 +71,25 @@ export async function claimUnsplashPhoto(id: string): Promise<UnsplashPhoto | nu
   void ufetch(dl.startsWith("/") ? dl : `/photos/${id}/download`);
   return toPhoto(raw);
 }
+
+/**
+ * One photo for a search (city tiles): the first result, with its download registered.
+ * Unlike searchUnsplash, says when Unsplash refused or failed (rate limit, bad key, outage) so the
+ * caller doesn't mistake "couldn't ask" for "nothing found". Two requests: search + download ping.
+ */
+export async function firstUnsplashPhoto(query: string): Promise<{ photo: UnsplashPhoto | null; failed: boolean; status?: number }> {
+  if (!hasUnsplashKey() || !query.trim()) return { photo: null, failed: true };
+  const res = await fetch(`${API}/search/photos?query=${encodeURIComponent(query.trim())}&per_page=1&orientation=landscape&content_filter=high`, {
+    headers: { Authorization: `Client-ID ${process.env.UNSPLASH_ACCESS_KEY?.trim()}`, "Accept-Version": "v1" },
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    console.warn(`[unsplash] search "${query}" -> ${res.status} (remaining ${res.headers.get("x-ratelimit-remaining") ?? "?"})`);
+    return { photo: null, failed: true, status: res.status };
+  }
+  const raw = ((await res.json()) as { results?: RawPhoto[] }).results?.[0];
+  if (!raw) return { photo: null, failed: false };
+  const dl = raw.links.download_location.replace(API, "");
+  void ufetch(dl.startsWith("/") ? dl : `/photos/${raw.id}/download`);
+  return { photo: toPhoto(raw), failed: false };
+}
