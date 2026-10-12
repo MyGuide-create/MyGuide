@@ -13,7 +13,7 @@ const cityHref = (t: { city: string; country?: string }) => `/city?${new URLSear
 /** Every city on MyGuide: the ones your friends recommend spots in first, then the rest. */
 export default async function CitiesPage() {
   const user = await getCurrentUser();
-  const [{ byCity }, friends] = await Promise.all([cityTiles(user?.id), friendCities(user?.id)]);
+  const [{ byCity }, friends] = await Promise.all([cityTiles(user?.id), friendCities(user?.id, undefined, { withOwn: true })]);
   const friendKeys = new Set(friends.map((c) => cityKey(c.city)));
   const rest = [...byCity.values()].filter((t) => !friendKeys.has(cityKey(t.city))).sort((a, b) => b.spots - a.spots || b.guides - a.guides);
   const photos = await cityPhotosFor([...friends.map((c) => c.city), ...rest.map((t) => t.city)]);

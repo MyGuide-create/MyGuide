@@ -50,7 +50,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
     user ? loadRecommendations({ viewerId: user.id, ownerIds: followingIds }) : Promise.resolve([]),
     user ? listFeed({ viewerId: user.id, scope: "following", limit: 40 }) : Promise.resolve([] as GuideCard[]),
   ]);
-  const cities = (user ? await friendCities(user.id, recs) : []).slice(0, CITY_TILES);
+  const cities = (user ? await friendCities(user.id, recs, { withOwn: true }) : []).slice(0, CITY_TILES);
   // Then the most active cities on MyGuide (most spots) up to CITY_TILES.
   const friendCityKeys = new Set(cities.map((c) => cityKey(c.city)));
   const popular = moreCities.filter((t) => !friendCityKeys.has(cityKey(t.city))).sort((a, b) => b.spots - a.spots || b.guides - a.guides);

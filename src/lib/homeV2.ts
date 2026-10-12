@@ -5,7 +5,7 @@
 import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { getDb } from "./db";
 import { follows, guides, notifications, places, savedGuides, savedPlaces, trips, type Trip } from "./db/schema";
-import { friendCities, friendsActivity, loadRecommendations, spotKey, type ActivityItem, type Recommendation } from "./citySpots";
+import { friendCities, friendsActivity, loadRecommendations, ownSpotKeys, spotKey, type ActivityItem, type Recommendation } from "./citySpots";
 import { listFeed, type GuideCard } from "./guides";
 import { listAllWishes, type CityWishes } from "./wishes";
 import { capRuns } from "./fill";
@@ -49,13 +49,24 @@ export interface CityTile {
 
 /** Every city with a public guide the viewer can see, split into ones friends know and the rest. */
 export async function cityTiles(viewerId: string | null | undefined): Promise<{ friendCities: CityTile[]; moreCities: CityTile[]; byCity: Map<string, CityTile> }> {
-  const [cards, followed, recs] = await Promise.all([listFeed({ viewerId, limit: 300 }), followedIds(viewerId), loadRecommendations({ viewerId })]);
+  const [cards, followed, recs, own] = await Promise.all([
+    listFeed({ viewerId, limit: 300 }),
+    followedIds(viewerId),
+    loadRecommendations({ viewerId }),
+    viewerId ? ownSpotKeys(viewerId) : Promise.resolve(new Map<string, Set<string>>()),
+  ]);
+  // Everyone's spots there, plus your own (private ones too: only you see this count, as on the city page).
   const spotsBy = new Map<string, Set<string>>();
   for (const r of recs) {
     if (!r.city) continue;
     const k = key(r.city);
     const set = spotsBy.get(k) ?? new Set<string>();
     set.add(spotKey(r.place));
+    spotsBy.set(k, set);
+  }
+  for (const [k, keys] of own) {
+    const set = spotsBy.get(k) ?? new Set<string>();
+    for (const x of keys) set.add(x);
     spotsBy.set(k, set);
   }
   const groups = new Map<string, { tile: CityTile; owners: Set<string> }>();

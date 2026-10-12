@@ -221,7 +221,7 @@ export interface FriendCity {
 }
 
 /** Cities where people the viewer follows recommend spots, most friends first. */
-export async function friendCities(viewerId: string | null | undefined, recs?: Recommendation[]): Promise<FriendCity[]> {
+export async function friendCities(viewerId: string | null | undefined, recs?: Recommendation[], opts: { withOwn?: boolean } = {}): Promise<FriendCity[]> {
   if (!viewerId) return [];
   const all = recs ?? (await loadRecommendations({ viewerId, ownerIds: await acceptedFollowingIds(viewerId) }));
   const by = new Map<string, { city: string; country: string; keys: Set<string>; owners: Map<string, { user: PublicUser; n: number }>; photo: Place | null }>();
@@ -238,6 +238,11 @@ export async function friendCities(viewerId: string | null | undefined, recs?: R
     o.n++;
     c.owners.set(r.owner.id, o);
     if (!c.photo && (r.place.photoMediaId || r.place.photoUrl)) c.photo = r.place;
+  }
+  // The viewer's own places count too (the same number as the city page): friends' spots ∪ yours.
+  if (opts.withOwn) {
+    const own = await ownSpotKeys(viewerId);
+    for (const [k, c] of by) for (const key of own.get(k) ?? []) c.keys.add(key);
   }
   return [...by.values()]
     .map((c) => ({ city: c.city, country: c.country, spots: c.keys.size, friends: [...c.owners.values()].sort((a, b) => b.n - a.n).map((o) => o.user), photo: c.photo }))
@@ -293,4 +298,29 @@ export async function canViewSharedPlace(ownerId: string, viewerId: string | nul
   if (!owner) return false;
   if (owner.profileVisibility !== "private") return true;
   return !!viewerId && (await acceptedFollowingIds(viewerId)).includes(ownerId);
+}
+
+/**
+ * Every place the viewer has (all their guides, drafts and private ones, and My places), as spot
+ * keys per city (lower-case canonical city). For counts the viewer alone sees, matching the city
+ * page, which always includes your own spots.
+ */
+export async function ownSpotKeys(viewerId: string): Promise<Map<string, Set<string>>> {
+  const db = await getDb();
+  const rows = await db
+    .select({ googlePlaceId: places.googlePlaceId, name: places.name, lat: places.lat, lng: places.lng, city: places.city, guideCity: guides.city })
+    .from(places)
+    .innerJoin(guides, eq(guides.id, places.guideId))
+    .where(eq(guides.ownerId, viewerId))
+    .limit(5000);
+  const out = new Map<string, Set<string>>();
+  for (const r of rows) {
+    const raw = r.city.trim() || r.guideCity.trim();
+    if (!raw) continue;
+    const k = canonicalCity(raw).toLowerCase();
+    const set = out.get(k) ?? new Set<string>();
+    set.add(spotKey(r));
+    out.set(k, set);
+  }
+  return out;
 }
