@@ -4,7 +4,8 @@
  */
 import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { getDb } from "./db";
-import { follows, guides, places, savedGuides, savedPlaces, trips, type Trip } from "./db/schema";
+import { follows, guides, notifications, places, savedGuides, savedPlaces, trips, type Trip } from "./db/schema";
+import { friendCities, friendsActivity, loadRecommendations, type ActivityItem, type Recommendation } from "./citySpots";
 import { listFeed, type GuideCard } from "./guides";
 import { listAllWishes, type CityWishes } from "./wishes";
 import { canonicalCity, cityNameVariants, findCityExact } from "./places/cities";
@@ -99,6 +100,8 @@ export interface WantedCity {
   viewerPlaces: number;
   /** The viewer's published guides to this city (for "Send my guide"). */
   viewerGuides: Array<{ id: string; slug: string; title: string }>;
+  /** Spots the viewer recommends there (for "Send your spots"). */
+  viewerSpots: number;
 }
 
 async function viewerPlaceCounts(viewerId: string, cities: string[]): Promise<Map<string, number>> {
@@ -131,11 +134,20 @@ export async function wantedGuides(viewerId: string | null | undefined, limit = 
   const groups = await listAllWishes(viewerId);
   const known = viewerId ? await knownIds(viewerId) : new Set<string>();
   const counts = viewerId ? await viewerPlaceCounts(viewerId, groups.map((g) => g.city)) : new Map<string, number>();
+  // The viewer's recommended spots per city, and who they've already sent spots to.
+  const spotCounts = new Map<string, number>();
+  const sentSpots = new Set<string>();
+  if (viewerId) {
+    for (const c of await friendCities(viewerId, await loadRecommendations({ viewerId, ownerIds: [viewerId] }))) spotCounts.set(key(c.city), c.spots);
+    const db = await getDb();
+    const sent = await db.select({ userId: notifications.userId, city: notifications.city }).from(notifications).where(and(eq(notifications.actorId, viewerId), eq(notifications.type, "spots_sent")));
+    for (const n of sent) sentSpots.add(`${n.userId}|${key(n.city ?? "")}`);
+  }
   const all: WantedCity[] = groups
     .map((g) => {
       // Open wishes only: not the viewer's own, and nobody has sent a guide for it yet
       // (the viewer's own sends included). Granted wishes stay on /wishes and profiles.
-      const others = g.people.filter((p) => !p.isViewer && p.viewerSent.length === 0 && p.granted.length === 0);
+      const others = g.people.filter((p) => !p.isViewer && p.viewerSent.length === 0 && p.granted.length === 0 && !sentSpots.has(`${p.user.id}|${key(g.city)}`));
       const firstOther = others[0];
       return {
         group: g,
@@ -143,13 +155,14 @@ export async function wantedGuides(viewerId: string | null | undefined, limit = 
         known: others.filter((p) => known.has(p.user.id)),
         viewerPlaces: counts.get(key(g.city)) ?? 0,
         viewerGuides: firstOther?.viewerGuides ?? [],
+        viewerSpots: spotCounts.get(key(g.city)) ?? 0,
       };
     })
     .filter((w) => w.others.length > 0);
   const help =
     all
-      .filter((w) => w.known.length > 0 && (w.viewerPlaces > 0 || w.viewerGuides.length > 0))
-      .sort((a, b) => b.known.length - a.known.length || b.viewerPlaces - a.viewerPlaces)[0] ?? null;
+      .filter((w) => w.known.length > 0 && (w.viewerSpots > 0 || w.viewerPlaces > 0 || w.viewerGuides.length > 0))
+      .sort((a, b) => b.viewerSpots - a.viewerSpots || b.known.length - a.known.length || b.viewerPlaces - a.viewerPlaces)[0] ?? null;
   const list = all.filter((w) => w !== help).slice(0, limit);
   return { help, list };
 }
@@ -175,4 +188,17 @@ export function nameList(names: string[]): string {
   if (first.length === 2) return `${first[0]} and ${first[1]}`;
   if (first.length === 3) return `${first[0]}, ${first[1]} and ${first[2]}`;
   return `${first[0]}, ${first[1]} and ${first.length - 2} others`;
+}
+
+export type FeedEntry = ActivityItem | { kind: "guide"; at: Date; card: GuideCard };
+
+/** Home's "New from friends": spots they recommend, spots several now share, and guides they published, newest first. */
+export function homeFeed(recs: Recommendation[], followingGuides: GuideCard[], days = 45): FeedEntry[] {
+  const since = Date.now() - days * 86_400_000;
+  return [
+    ...friendsActivity(recs, { days }),
+    ...followingGuides
+      .filter((g) => g.guide.publishedAt && g.guide.publishedAt.getTime() >= since)
+      .map((card) => ({ kind: "guide" as const, at: card.guide.publishedAt!, card })),
+  ].sort((a, b) => b.at.getTime() - a.at.getTime());
 }

@@ -87,6 +87,11 @@ export async function addNotifications(rows: NewNotification[]): Promise<void> {
             body = g ? `${g.title} — for their own trip guide` : "";
             if (g) url = `/g/${g.slug}`;
             break;
+          case "spots_sent":
+            title = `${who} sent you ${n} ${r.city ? `${r.city} ` : ""}spot${n === 1 ? "" : "s"}`;
+            body = "For your wish list. See where they'd go.";
+            if (a && r.city) url = `/city?${new URLSearchParams({ name: r.city, friend: a.username }).toString()}`;
+            break;
           case "wish_granted":
             title = g?.city ? `${who} made you a ${g.city} guide` : `${who} made you a guide`;
             body = g ? `From your wish list · ${g.title}` : "From your wish list";

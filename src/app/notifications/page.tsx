@@ -117,6 +117,11 @@ export default async function NotificationsPage() {
                     </>
                   )}
                   {n.type === "wish_granted" && !rawGuide && <span className="text-ink-muted">A guide made for your wish list that has since been deleted.</span>}
+                  {n.type === "spots_sent" && (
+                    <>
+                      {who} sent you {n.count} {n.city ? `${n.city} ` : ""}spot{n.count === 1 ? "" : "s"} for your wish list.
+                    </>
+                  )}
                   {n.type === "user_joined" && (
                     <>
                       {who} joined MyGuide.{" "}
@@ -202,11 +207,15 @@ export default async function NotificationsPage() {
                     {n.type === "guide_published" && <PlusIcon size={12} />}
                     {n.type === "places_added" && <PinIcon size={12} />}
                     {n.type === "guide_used" && <ForkIcon size={12} />}
+                    {n.type === "spots_sent" && <PinIcon size={12} />}
                     {(n.type === "wish_granted" || n.type === "guide_request" || n.type === "request_declined" || n.type === "request_passed" || n.type === "request_passed_done") && <SparkleIcon size={12} />}
                     {n.type === "request_joined" && <UserIcon size={12} />}
                     {timeAgo(n.createdAt)}
                   </span>
                   {n.type === "wish_granted" && rawGuide && <Link href={`/g/${rawGuide.slug}`} className="font-medium text-terracotta">Open your guide →</Link>}
+                  {n.type === "spots_sent" && actor && n.city && (
+                    <Link href={`/city?${new URLSearchParams({ name: n.city, friend: actor.username }).toString()}`} className="font-medium text-terracotta">See their spots →</Link>
+                  )}
                   {n.type === "guide_request" && reqMap.get(n.requestId ?? "") && <Link href={`/ask/${reqMap.get(n.requestId ?? "")!.token}`} className="font-medium text-terracotta">Reply →</Link>}
                   {n.type === "request_joined" && actor && <Link href={`/u/${actor.username}`} className="font-medium text-terracotta">View profile →</Link>}
                   {n.type === "request_declined" && <Link href={`/u/${user.username}#wishes`} className="font-medium text-terracotta">Your wish list →</Link>}

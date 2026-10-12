@@ -279,7 +279,7 @@ export const notifications = sqliteTable(
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    /** "guide_shared" | "new_follower" | "follow_request" | "follow_accepted" | "place_comment" | "guide_published" | "places_added" | "guide_used" | "collab_invite" | "user_joined" | "wish_granted" | "guide_request" | "request_joined" | "request_declined" | "request_passed" | "request_passed_done" */
+    /** "guide_shared" | "new_follower" | "follow_request" | "follow_accepted" | "place_comment" | "guide_published" | "places_added" | "guide_used" | "collab_invite" | "user_joined" | "wish_granted" | "guide_request" | "request_joined" | "request_declined" | "request_passed" | "request_passed_done" | "spots_sent" */
     type: text("type").notNull(),
     actorId: text("actor_id").references(() => users.id, { onDelete: "cascade" }),
     guideId: text("guide_id").references(() => guides.id, { onDelete: "cascade" }),
@@ -287,6 +287,8 @@ export const notifications = sqliteTable(
     placeId: text("place_id"),
     /** Soft reference to a guide request ("Hisham asked you for a Tashkent guide"). */
     requestId: text("request_id"),
+    /** The city a notification is about, when there's no guide ("spots_sent": Hisham sent you his Lisbon spots). */
+    city: text("city"),
     readAt: integer("read_at", { mode: "timestamp_ms" }),
     /** How many things this notification covers (e.g. places added in one batch). */
     count: integer("count").notNull().default(1),

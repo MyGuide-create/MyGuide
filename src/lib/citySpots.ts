@@ -1,5 +1,5 @@
 /**
- * "Friends' spots" for the city page: every place from published guides in a city (plus places people
+ * Recommendations, places first. "Friends' spots" for the city page: every place from published guides in a city (plus places people
  * recommended on their own from Saved places), merged so the
  * same spot added by several people shows once, with who recommends it and their tip.
  * Reads only; nothing here changes stored data.
@@ -50,30 +50,45 @@ export async function acceptedFollowingIds(viewerId: string | null | undefined):
   return rows.map((r) => r.id);
 }
 
+/** One person's recommendation of one place, as stored (before merging by spot). */
+export interface Recommendation {
+  place: Place;
+  guide: { id: string; slug: string; title: string; city: string; country: string; publishedAt: Date | null };
+  owner: PublicUser;
+  /** Their own words: description, else first tip. */
+  tip: string;
+  /** When it became a recommendation: shared from Saved places, else added. */
+  at: Date;
+  /** The spot's city, tidied ("Lisboa" → Lisbon); "" when unknown. */
+  city: string;
+}
+
 /**
- * Spots in `city` from public, published guides. With `ownerIds`, only those people's guides
- * (friends); without, everyone's (the fallback when you don't follow anyone there).
- * Sorted by how many people recommend the spot, then most recent.
+ * Places people recommend: in a public, published guide, or shared on their own from Saved
+ * places. Filtered for blocks and private accounts; places copied from someone else (or in a
+ * copied guide) only count once the person adds their own words. Optional `city` / `ownerIds`.
  */
-export async function citySpots(opts: { city: string; viewerId?: string | null; ownerIds?: string[] }): Promise<CitySpot[]> {
-  const { city, viewerId, ownerIds } = opts;
-  if (!city) return [];
+export async function loadRecommendations(opts: { viewerId?: string | null; ownerIds?: string[]; city?: string }): Promise<Recommendation[]> {
+  const { viewerId, ownerIds, city } = opts;
   if (ownerIds && !ownerIds.length) return [];
   const db = await getDb();
-  const variants = cityNameVariants(city);
-  const conds: SQL[] = [
-    // In a public guide, or recommended on its own (a shared place in Saved places).
-    or(and(eq(guides.visibility, "public"), isNotNull(guides.publishedAt)), isNotNull(places.sharedAt))!,
-    or(inArray(sql`lower(trim(${places.city}))`, variants), inArray(sql`lower(trim(${guides.city}))`, variants))!,
-  ];
+  const conds: SQL[] = [or(and(eq(guides.visibility, "public"), isNotNull(guides.publishedAt)), isNotNull(places.sharedAt))!];
+  if (city) {
+    const variants = cityNameVariants(city);
+    conds.push(or(inArray(sql`lower(trim(${places.city}))`, variants), inArray(sql`lower(trim(${guides.city}))`, variants))!);
+  }
   if (ownerIds) conds.push(inArray(guides.ownerId, ownerIds));
   const rows = await db
-    .select({ place: places, guide: { id: guides.id, slug: guides.slug, title: guides.title, ownerId: guides.ownerId, forkedFrom: guides.forkedFromGuideId }, owner: users })
+    .select({
+      place: places,
+      guide: { id: guides.id, slug: guides.slug, title: guides.title, city: guides.city, country: guides.country, publishedAt: guides.publishedAt, forkedFrom: guides.forkedFromGuideId },
+      owner: users,
+    })
     .from(places)
     .innerJoin(guides, eq(guides.id, places.guideId))
     .innerJoin(users, eq(users.id, guides.ownerId))
     .where(and(...conds))
-    .limit(3000);
+    .limit(5000);
 
   const hidden = await hiddenUserIds(viewerId);
   const followed = ownerIds ? new Set(ownerIds) : new Set(await acceptedFollowingIds(viewerId));
@@ -81,7 +96,7 @@ export async function citySpots(opts: { city: string; viewerId?: string | null; 
     (r) =>
       !hidden.has(r.owner.id) &&
       // A day trip in a Lisbon guide (place city Sintra) isn't a Lisbon spot.
-      (r.place.city.trim() === "" || sameCity(r.place.city, city)) &&
+      (!city || r.place.city.trim() === "" || sameCity(r.place.city, city)) &&
       (r.owner.profileVisibility !== "private" || r.owner.id === viewerId || followed.has(r.owner.id)),
   );
 
@@ -94,34 +109,127 @@ export async function citySpots(opts: { city: string; viewerId?: string | null; 
     for (const t of tips) if (!firstTip.has(t.placeId) && t.body.trim()) firstTip.set(t.placeId, t.body);
   }
 
-  const groups = new Map<string, CitySpot>();
+  const out: Recommendation[] = [];
   for (const r of visible) {
+    // Their own words only: a note written by someone else (a copied or forked place) isn't theirs.
+    const notTheirs = (r.place.noteAuthorId && r.place.noteAuthorId !== r.owner.id) || (r.place.sourcePlaceId && r.place.noteAuthorId !== r.owner.id);
+    const tip = clip((notTheirs ? "" : r.place.note) || firstTip.get(r.place.id) || "");
+    // Picked/copied from someone else (or in a copied guide): "want to try", not a recommendation,
+    // until they add words of their own.
+    if ((r.place.sourcePlaceId || r.guide.forkedFrom) && !tip) continue;
+    const rawCity = r.place.city.trim() || r.guide.city.trim();
+    const { forkedFrom: _f, ...guide } = r.guide;
+    void _f;
+    out.push({ place: r.place, guide, owner: toPublicUser(r.owner), tip, at: r.place.sharedAt ?? r.place.createdAt, city: rawCity ? canonicalCity(rawCity) : "" });
+  }
+  return out;
+}
+
+/** Merge recommendations into one spot per place, most recommended first. */
+function mergeSpots(recs: Recommendation[]): CitySpot[] {
+  const groups = new Map<string, CitySpot>();
+  for (const r of recs) {
     const k = spotKey(r.place);
     let g = groups.get(k);
     if (!g) {
       g = { key: k, place: r.place, recommenders: [] };
       groups.set(k, g);
     }
-    // Their own words only: a note written by someone else (a copied or forked place) isn't theirs.
-    const notTheirs = (r.place.noteAuthorId && r.place.noteAuthorId !== r.owner.id) || (r.place.sourcePlaceId && r.place.noteAuthorId !== r.owner.id);
-    const ownNote = notTheirs ? "" : r.place.note;
-    const tip = clip(ownNote || firstTip.get(r.place.id) || "");
-    // Picked/copied from someone else (or in a copied guide): "want to try", not a recommendation,
-    // until they add words of their own.
-    if ((r.place.sourcePlaceId || r.guide.forkedFrom) && !tip) continue;
     const existing = g.recommenders.find((x) => x.user.id === r.owner.id);
     if (existing) {
-      if (!existing.tip && tip) Object.assign(existing, { tip, placeId: r.place.id, guideSlug: r.guide.slug, guideTitle: r.guide.title });
+      if (!existing.tip && r.tip) Object.assign(existing, { tip: r.tip, placeId: r.place.id, guideSlug: r.guide.slug, guideTitle: r.guide.title });
       continue;
     }
-    g.recommenders.push({ user: toPublicUser(r.owner), placeId: r.place.id, guideSlug: r.guide.slug, guideTitle: r.guide.title, tip, addedAt: r.place.createdAt });
+    g.recommenders.push({ user: r.owner, placeId: r.place.id, guideSlug: r.guide.slug, guideTitle: r.guide.title, tip: r.tip, addedAt: r.at });
     // Prefer a copy with a photo for the card.
     if (!g.place.photoMediaId && !g.place.photoUrl && (r.place.photoMediaId || r.place.photoUrl)) g.place = r.place;
   }
-
   const latest = (s: CitySpot) => Math.max(...s.recommenders.map((x) => x.addedAt.getTime()));
   for (const g of groups.values()) g.recommenders.sort((a, b) => Number(!!b.tip) - Number(!!a.tip) || b.addedAt.getTime() - a.addedAt.getTime());
   return [...groups.values()].filter((g) => g.recommenders.length > 0).sort((a, b) => b.recommenders.length - a.recommenders.length || latest(b) - latest(a));
+}
+
+/**
+ * Spots in `city`. With `ownerIds`, only those people's (friends); without, everyone's (the
+ * fallback when you don't follow anyone there). Sorted by how many people recommend the spot.
+ */
+export async function citySpots(opts: { city: string; viewerId?: string | null; ownerIds?: string[] }): Promise<CitySpot[]> {
+  if (!opts.city) return [];
+  return mergeSpots(await loadRecommendations(opts));
+}
+
+export interface FriendCity {
+  city: string;
+  country: string;
+  spots: number;
+  /** Friends with spots here, most spots first. */
+  friends: PublicUser[];
+  /** A spot with a photo, for the tile when there's no guide cover. */
+  photo: Place | null;
+}
+
+/** Cities where people the viewer follows recommend spots, most friends first. */
+export async function friendCities(viewerId: string | null | undefined, recs?: Recommendation[]): Promise<FriendCity[]> {
+  if (!viewerId) return [];
+  const all = recs ?? (await loadRecommendations({ viewerId, ownerIds: await acceptedFollowingIds(viewerId) }));
+  const by = new Map<string, { city: string; country: string; keys: Set<string>; owners: Map<string, { user: PublicUser; n: number }>; photo: Place | null }>();
+  for (const r of all) {
+    if (!r.city) continue;
+    const k = r.city.toLowerCase();
+    let c = by.get(k);
+    if (!c) {
+      c = { city: r.city, country: r.place.country || r.guide.country, keys: new Set(), owners: new Map(), photo: null };
+      by.set(k, c);
+    }
+    c.keys.add(spotKey(r.place));
+    const o = c.owners.get(r.owner.id) ?? { user: r.owner, n: 0 };
+    o.n++;
+    c.owners.set(r.owner.id, o);
+    if (!c.photo && (r.place.photoMediaId || r.place.photoUrl)) c.photo = r.place;
+  }
+  return [...by.values()]
+    .map((c) => ({ city: c.city, country: c.country, spots: c.keys.size, friends: [...c.owners.values()].sort((a, b) => b.n - a.n).map((o) => o.user), photo: c.photo }))
+    .sort((a, b) => b.friends.length - a.friends.length || b.spots - a.spots);
+}
+
+export type ActivityItem =
+  | { kind: "spots"; at: Date; user: PublicUser; city: string; recs: Recommendation[] }
+  | { kind: "overlap"; at: Date; city: string; spot: CitySpot };
+
+/**
+ * "New from friends" on Home: friends recommending spots (grouped per person, city and day) and
+ * spots that just reached 3+ friends. Places that went in with a newly published guide are left
+ * out — the guide itself is the news (the page adds those).
+ */
+export function friendsActivity(recs: Recommendation[], opts: { days?: number } = {}): ActivityItem[] {
+  const since = Date.now() - (opts.days ?? 45) * 86_400_000;
+  const fresh = recs.filter((r) => {
+    if (r.at.getTime() < since) return false;
+    if (r.place.sharedAt) return true;
+    const pub = r.guide.publishedAt?.getTime();
+    return !!pub && r.place.createdAt.getTime() > pub + 10 * 60_000;
+  });
+  const groups = new Map<string, ActivityItem & { kind: "spots" }>();
+  for (const r of fresh) {
+    const k = `${r.owner.id}|${r.city.toLowerCase()}|${r.at.toISOString().slice(0, 10)}`;
+    const g = groups.get(k);
+    if (g) {
+      if (!g.recs.some((x) => spotKey(x.place) === spotKey(r.place))) g.recs.push(r);
+      if (r.at > g.at) g.at = r.at;
+    } else groups.set(k, { kind: "spots", at: r.at, user: r.owner, city: r.city, recs: [r] });
+  }
+  const items: ActivityItem[] = [...groups.values()];
+  // Spots that now have 3+ friends, where the latest one came recently.
+  const byCity = new Map<string, Recommendation[]>();
+  for (const r of recs) if (r.city) byCity.set(r.city.toLowerCase(), [...(byCity.get(r.city.toLowerCase()) ?? []), r]);
+  for (const [, cityRecs] of byCity) {
+    for (const spot of mergeSpots(cityRecs)) {
+      if (spot.recommenders.length < 3) break;
+      const last = Math.max(...spot.recommenders.map((x) => x.addedAt.getTime()));
+      if (last >= since) items.push({ kind: "overlap", at: new Date(last), city: cityRecs[0].city, spot });
+    }
+  }
+  return items.sort((a, b) => b.at.getTime() - a.at.getTime());
 }
 
 /** Can the viewer see a place its owner recommended on its own (outside a public guide)? Same rules as a public guide. */
