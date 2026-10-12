@@ -33,6 +33,23 @@ export const CITIES: CityInfo[] = [
   { city: "Milan", country: "Italy", lat: 45.4642, lng: 9.19, aliases: ["milano"] },
   { city: "Naples", country: "Italy", lat: 40.8518, lng: 14.2681, aliases: ["napoli"] },
   { city: "Berlin", country: "Germany", lat: 52.52, lng: 13.405, aliases: ["kreuzberg", "neukolln", "neukölln", "mitte"] },
+  // Island and small-country destinations: one area for the whole country (Hisham, 12 Oct 2026:
+  // "a place like Maldives or Seychelles should have all its recommendations in one place").
+  { city: "Maldives", country: "Maldives", lat: 3.2028, lng: 73.2207, aliases: ["hulhumale", "hulhumalé", "maafushi"] },
+  { city: "Seychelles", country: "Seychelles", lat: -4.6796, lng: 55.492, aliases: ["mahe", "mahé", "praslin", "la digue", "beau vallon"] },
+  { city: "Mauritius", country: "Mauritius", lat: -20.3484, lng: 57.5522, aliases: ["port louis", "grand baie", "flic en flac", "le morne", "belle mare"] },
+  { city: "Fiji", country: "Fiji", lat: -17.7134, lng: 178.065, aliases: ["nadi", "denarau", "suva", "mamanuca islands", "yasawa islands"] },
+  { city: "French Polynesia", country: "French Polynesia", lat: -17.6797, lng: -149.4068, aliases: ["bora bora", "moorea", "mo'orea", "papeete", "tahiti"] },
+  { city: "Malta", country: "Malta", lat: 35.8989, lng: 14.5146, aliases: ["valletta", "sliema", "st julian's", "saint julian's", "gozo", "mdina"] },
+  { city: "Bahamas", country: "Bahamas", lat: 25.0343, lng: -77.3963, aliases: ["the bahamas", "nassau", "exuma", "harbour island", "paradise island"] },
+  { city: "Turks and Caicos", country: "Turks and Caicos Islands", lat: 21.694, lng: -71.7979, aliases: ["turks and caicos islands", "providenciales", "grace bay"] },
+  { city: "Barbados", country: "Barbados", lat: 13.1939, lng: -59.5432, aliases: ["bridgetown", "holetown", "speightstown"] },
+  { city: "St Lucia", country: "Saint Lucia", lat: 13.9094, lng: -60.9789, aliases: ["saint lucia", "st. lucia", "castries", "soufriere", "soufrière", "rodney bay"] },
+  { city: "Antigua", country: "Antigua and Barbuda", lat: 17.0608, lng: -61.7964, aliases: ["antigua and barbuda", "st. john's antigua", "english harbour"] },
+  { city: "Bermuda", country: "Bermuda", lat: 32.3078, lng: -64.7505, aliases: ["hamilton bermuda"] },
+  { city: "Cayman Islands", country: "Cayman Islands", lat: 19.3133, lng: -81.2546, aliases: ["grand cayman", "george town cayman", "seven mile beach"] },
+  { city: "Bahrain", country: "Bahrain", lat: 26.0667, lng: 50.5577, aliases: ["manama", "muharraq", "seef", "juffair", "adliya", "amwaj islands"] },
+  { city: "Monaco", country: "Monaco", lat: 43.7384, lng: 7.4246, aliases: ["monte carlo", "monte-carlo"] },
   { city: "Brussels", country: "Belgium", lat: 50.8503, lng: 4.3517, aliases: ["bruxelles", "brussel", "city of brussels", "ville de bruxelles", "stad brussel"] },
   { city: "Amsterdam", country: "Netherlands", lat: 52.3676, lng: 4.9041, aliases: ["jordaan", "de pijp"] },
   { city: "Copenhagen", country: "Denmark", lat: 55.6761, lng: 12.5683, aliases: ["kobenhavn", "københavn", "norrebro", "nørrebro", "vesterbro"] },
@@ -168,6 +185,37 @@ for (const [metro, names] of Object.entries(DISTRICTS)) {
   for (const n of names) DISTRICT_OF.set(norm(n), metro);
 }
 
+/**
+ * Countries that are one area on MyGuide: islands and small countries where people move around the
+ * whole place (Maldives atolls, Seychelles islands, Malta and Gozo). Every place there counts as the country.
+ */
+const COUNTRY_AREA: Record<string, string> = {
+  maldives: "Maldives",
+  seychelles: "Seychelles",
+  mauritius: "Mauritius",
+  fiji: "Fiji",
+  "french polynesia": "French Polynesia",
+  malta: "Malta",
+  bahamas: "Bahamas",
+  "the bahamas": "Bahamas",
+  "turks and caicos islands": "Turks and Caicos",
+  "turks & caicos islands": "Turks and Caicos",
+  barbados: "Barbados",
+  "saint lucia": "St Lucia",
+  "st lucia": "St Lucia",
+  "antigua and barbuda": "Antigua",
+  "antigua & barbuda": "Antigua",
+  bermuda: "Bermuda",
+  "cayman islands": "Cayman Islands",
+  bahrain: "Bahrain",
+  monaco: "Monaco",
+};
+
+/** "Maldives" for any place in the Maldives (an atoll, an island, a resort): see COUNTRY_AREA. */
+export function areaForCountry(country: string | null | undefined): string | undefined {
+  return country ? COUNTRY_AREA[norm(country)] : undefined;
+}
+
 /** "Üsküdar" → "Istanbul", "Shibuya City" → "Tokyo": the main city a district belongs to (undefined if it isn't one). */
 export function metroOfDistrict(name: string | null | undefined): string | undefined {
   return name ? DISTRICT_OF.get(norm(name)) : undefined;
@@ -177,8 +225,8 @@ export function metroOfDistrict(name: string | null | undefined): string | undef
  * Group a place under its main city. `regions` are Google's administrative areas (province/state,
  * then county). Returns the city to store and, when it was a district, the district (for the area).
  */
-export function groupUnderCity(city: string, regions: string[]): { city: string; district: string } {
-  const metro = metroOfDistrict(city) ?? regions.map((r) => REGION_CITY[norm(r)]).find(Boolean);
+export function groupUnderCity(city: string, regions: string[], country?: string): { city: string; district: string } {
+  const metro = areaForCountry(country) ?? metroOfDistrict(city) ?? regions.map((r) => REGION_CITY[norm(r)]).find(Boolean);
   if (!metro || norm(metro) === norm(city)) return { city, district: "" };
   return { city: metro, district: city };
 }

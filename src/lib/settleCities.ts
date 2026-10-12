@@ -4,6 +4,7 @@
  * split from North Vancouver. A place's `city` is now its area; the town Google gave stays in
  * `source_city` (and becomes the place's area line when it had none). Rules, in order:
  *
+ * 0. Countries that are one area (Maldives, Seychelles, Mauritius, Malta…): the country. cities.ts COUNTRY_AREA.
  * 1. Districts of a big city (Üsküdar → Istanbul): cities.ts, already applied by canonicalCity.
  * 2. The guide's city: a place in a guide (not My places) within GUIDE_KM of the guide's centre
  *    counts as the guide's city ("Shaz's Comporta guide" → all its nearby spots are Comporta).
@@ -17,18 +18,20 @@
 import { eq, inArray } from "drizzle-orm";
 import type { Db } from "./db";
 import { appJobs, guides, places } from "./db/schema";
-import { CITIES, canonicalCity, findCityExact } from "./places/cities";
+import { CITIES, areaForCountry, canonicalCity, findCityExact } from "./places/cities";
 import { haversineMeters } from "./places/geo";
 import { isStash } from "./stash";
 
 const GUIDE_KM = 40;
 const NEAR_KM = 12;
-export const SETTLE_JOB = "settle-cities-v1";
+/** v2 (12 Oct 2026): adds countries that are one area (Maldives, Seychelles…), so it runs again over everything. */
+export const SETTLE_JOB = "settle-cities-v2";
 
 type Row = {
   id: string;
   city: string;
   sourceCity: string;
+  country: string;
   area: string;
   lat: number | null;
   lng: number | null;
@@ -66,6 +69,9 @@ async function townStats(db: Db): Promise<Map<string, { name: string; lat: numbe
 /** The area a place belongs to (see the rules above). */
 function settle(r: Row, stats: Awaited<ReturnType<typeof townStats>>): string {
   const src = (r.sourceCity || r.city).trim();
+  // 0. Countries that are one area: every atoll, island and resort in the Maldives is "Maldives".
+  const whole = areaForCountry(r.country);
+  if (whole) return whole;
   if (!src) return r.city;
   const base = canonicalCity(src);
   if (r.lat == null || r.lng == null) return base;
@@ -113,6 +119,7 @@ async function settlePlaces(db: Db, where: { guideIds?: string[] } = {}): Promis
       id: places.id,
       city: places.city,
       sourceCity: places.sourceCity,
+      country: places.country,
       area: places.area,
       lat: places.lat,
       lng: places.lng,
@@ -128,6 +135,12 @@ async function settlePlaces(db: Db, where: { guideIds?: string[] } = {}): Promis
     const area = r.area.trim() || (src && src.toLowerCase() !== city.toLowerCase() ? src : "");
     if (city === r.city && src === r.sourceCity && area === r.area) continue;
     updates.push(db.update(places).set({ city, sourceCity: src, area }).where(eq(places.id, r.id)));
+  }
+  // Guides in a one-area country ("Baa Atoll" guide in the Maldives) take the area as their city too.
+  const gq = db.select({ id: guides.id, city: guides.city, country: guides.country }).from(guides);
+  for (const g of await (where.guideIds ? gq.where(inArray(guides.id, where.guideIds)) : gq)) {
+    const whole = areaForCountry(g.country);
+    if (whole && g.city !== whole) updates.push(db.update(guides).set({ city: whole }).where(eq(guides.id, g.id)));
   }
   // In batches: one round trip each (the first run touches every place).
   for (let i = 0; i < updates.length; i += 100) {

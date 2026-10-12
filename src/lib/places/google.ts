@@ -53,6 +53,7 @@ function toResult(p: GooglePlace): PlaceResult {
   const grouped = groupUnderCity(
     tidyCity(comp("locality") || comp("postal_town") || comp("administrative_area_level_2") || comp("administrative_area_level_1")),
     [comp("administrative_area_level_1"), comp("administrative_area_level_2")],
+    comp("country"),
   );
   const city = grouped.city;
   const country = comp("country");
@@ -318,6 +319,7 @@ export async function reverseGeocode(lat: number, lng: number): Promise<{ area: 
     const grouped = groupUnderCity(
       tidyCity(find("locality", "postal_town") || find("administrative_area_level_2") || find("administrative_area_level_1")),
       [find("administrative_area_level_1"), find("administrative_area_level_2")],
+      find("country"),
     );
     const city = grouped.city;
     const near = tidyArea(find("neighborhood", "sublocality", "sublocality_level_1")) || grouped.district;
