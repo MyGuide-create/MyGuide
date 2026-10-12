@@ -7,47 +7,16 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "../auth";
 import { getDb } from "../db";
 import { guides, placePhotos, placeTips, places, type Guide } from "../db/schema";
+import { findOrCreateStash, findStash, loadMyPlaces, unguidedByCity } from "../myPlaces";
+import { canonicalCity } from "../places/cities";
 import { getGuideById } from "../guides";
 import { getPlacesProvider, isCategory, resolvePlaceByName, type PlaceResult } from "../places";
 import { reverseGeocode } from "../places/google";
 import { validPin } from "../places/pins";
-import { findCity } from "../places/cities";
 import { notifyPlacesAdded } from "../notify";
-import { newId, newToken, slugify } from "../utils";
-
-const STASH_TITLE = "Saved places";
-
-async function uniqueSlug(title: string): Promise<string> {
-  const db = await getDb();
-  const base = slugify(title) || "guide";
-  for (let i = 0; i < 5; i++) {
-    const slug = `${base}-${newId().slice(0, 6)}`;
-    const exists = await db.query.guides.findFirst({ where: eq(guides.slug, slug) });
-    if (!exists) return slug;
-  }
-  return `${base}-${newId()}`;
-}
-
-/** A private, unpublished guide that holds places recorded on the go until the user files them elsewhere. */
-async function findOrCreateStash(userId: string): Promise<Guide> {
-  const db = await getDb();
-  const existing = await db.query.guides.findFirst({ where: and(eq(guides.ownerId, userId), eq(guides.title, STASH_TITLE)) });
-  if (existing) return existing;
-  const id = newId();
-  const slug = await uniqueSlug(STASH_TITLE);
-  const now = new Date();
-  await db.insert(guides).values({
-    id,
-    ownerId: userId,
-    slug,
-    title: STASH_TITLE,
-    description: "Places you've recorded on the go — add them to a guide whenever you're ready.",
-    shareToken: newToken(),
-    createdAt: now,
-    updatedAt: now,
-  });
-  return (await db.query.guides.findFirst({ where: eq(guides.id, id) }))!;
-}
+import { fileSavedPlaces } from "./fileSaved";
+import { spotKey } from "../citySpots";
+import { newId } from "../utils";
 
 export interface RecordPlaceInput {
   providerId?: string;
@@ -59,17 +28,27 @@ export interface RecordPlaceInput {
   /** As many expert tips as the person captured. */
   tips: string[];
   photoMediaIds: string[];
-  /** Add to this existing guide (must belong to the current user). */
+  /** Opened from one of your guides (/record?guide=): straight into that guide (must be yours). */
   guideId?: string;
-  /** Or start a brand-new guide with this title. */
-  newGuideTitle?: string;
-  /** Neither set: the place goes into the user's private "Saved places" stash. */
-  /** Saved places only: recommend it, so it shows on the city page (Save & recommend). */
+  /** Otherwise it goes into My places. Recommend it, so it shows on the city page (Save & recommend). */
   share?: boolean;
 }
 
 /** Finishes the "record a place" flow: resolves the place, files it into a guide, and saves what was captured. */
-export async function saveRecordedPlace(input: RecordPlaceInput): Promise<{ guideSlug: string; editing: boolean }> {
+export interface RecordedPlace {
+  guideSlug: string;
+  /** Saved into a guide it was opened from (not My places). */
+  intoGuide: boolean;
+  placeId: string;
+  name: string;
+  /** The place's city, tidied ("" when unknown). */
+  city: string;
+  shared: boolean;
+  /** Places in My places in this city that aren't in any of your guides yet (for the nudge). */
+  unguided: number;
+}
+
+export async function saveRecordedPlace(input: RecordPlaceInput): Promise<RecordedPlace> {
   const user = await getCurrentUser();
   if (!user) redirect("/login?next=/record");
   const db = await getDb();
@@ -105,41 +84,47 @@ export async function saveRecordedPlace(input: RecordPlaceInput): Promise<{ guid
   }
 
   let guide: Guide;
-  let editing = false;
   let toStash = false;
   if (input.guideId) {
     const g = await getGuideById(input.guideId);
     if (!g || g.ownerId !== user.id) throw new UserError("You can only add to your own guides.", "forbidden");
     guide = g;
-  } else if (input.newGuideTitle?.trim()) {
-    const known = findCity(resolved?.city || input.cityHint);
-    const id = newId();
-    const slug = await uniqueSlug(input.newGuideTitle);
-    const now = new Date();
-    await db.insert(guides).values({
-      id,
-      ownerId: user.id,
-      slug,
-      title: input.newGuideTitle.trim(),
-      city: known?.city ?? resolved?.city ?? "",
-      country: known?.country ?? resolved?.country ?? "",
-      shareToken: newToken(),
-      createdAt: now,
-      updatedAt: now,
-    });
-    guide = (await db.query.guides.findFirst({ where: eq(guides.id, id) }))!;
-    editing = true;
   } else {
     guide = await findOrCreateStash(user.id);
     toStash = true;
   }
 
-  // Newest place goes to the top of the guide.
-  const [{ min }] = await db.select({ min: sql<number>`coalesce(min(${places.position}), 1)` }).from(places).where(eq(places.guideId, guide.id));
-  const placeId = newId();
   const now = new Date();
   const liked = input.special.trim();
   const tips = input.tips.map((t) => t.trim()).filter(Boolean);
+  const cityOut = resolved?.city?.trim() ? canonicalCity(resolved.city) : "";
+  const unguidedIn = async () => (toStash && cityOut ? (unguidedByCity((await loadMyPlaces(user.id)).items).get(cityOut)?.length ?? 0) : 0);
+
+  // Already in My places (added twice): update that one instead of keeping two — new words win, tips and photos add up.
+  if (toStash && resolved) {
+    const key = spotKey({ googlePlaceId: resolved.providerId || null, name: resolved.name, lat: resolved.lat ?? null, lng: resolved.lng ?? null });
+    const same = (await db.select().from(places).where(eq(places.guideId, guide.id))).find((p) => spotKey(p) === key);
+    if (same) {
+      const [{ n: tipCount }] = await db.select({ n: sql<number>`count(*)` }).from(placeTips).where(eq(placeTips.placeId, same.id));
+      const [{ n: photoCount }] = await db.select({ n: sql<number>`count(*)` }).from(placePhotos).where(eq(placePhotos.placeId, same.id));
+      await db
+        .update(places)
+        .set({
+          ...(liked ? { note: liked, noteAuthorId: user.id } : {}),
+          ...(input.share && !same.sharedAt ? { sharedAt: now } : {}),
+          ...(!same.photoMediaId && input.photoMediaIds[0] ? { photoMediaId: input.photoMediaIds[0] } : {}),
+        })
+        .where(eq(places.id, same.id));
+      if (tips.length) await db.insert(placeTips).values(tips.map((body, i) => ({ id: newId(), placeId: same.id, body, position: Number(tipCount) + i, createdAt: now })));
+      if (input.photoMediaIds.length) await db.insert(placePhotos).values(input.photoMediaIds.map((mediaId, i) => ({ id: newId(), placeId: same.id, mediaId, position: Number(photoCount) + i, createdAt: now })));
+      revalidatePath("/my-places");
+      return { guideSlug: guide.slug, intoGuide: false, placeId: same.id, name: same.name, city: cityOut, shared: !!input.share || !!same.sharedAt, unguided: await unguidedIn() };
+    }
+  }
+
+  // Newest place goes to the top of the guide.
+  const [{ min }] = await db.select({ min: sql<number>`coalesce(min(${places.position}), 1)` }).from(places).where(eq(places.guideId, guide.id));
+  const placeId = newId();
   await db.insert(places).values({
     id: placeId,
     guideId: guide.id,
@@ -182,23 +167,33 @@ export async function saveRecordedPlace(input: RecordPlaceInput): Promise<{ guid
   revalidatePath(`/g/${guide.slug}`);
   revalidatePath(`/g/${guide.slug}/edit`);
   revalidatePath("/me");
-  return { guideSlug: guide.slug, editing };
+  revalidatePath("/my-places");
+  return { guideSlug: guide.slug, intoGuide: !toStash, placeId, name: resolved?.name ?? input.name, city: cityOut, shared: toStash && !!input.share, unguided: await unguidedIn() };
 }
 
-/** Recommend (or stop recommending) places in your Saved places, so they show on their city's page. */
+/** Recommend (or stop recommending) places in My places, so they show on their city's page. */
 export async function setPlacesShared(placeIds: string[], shared: boolean): Promise<number> {
   const user = await getCurrentUser();
   if (!user) throw new UserError("Sign in first.", "auth");
   const ids = [...new Set(placeIds)].slice(0, 500);
   if (!ids.length) return 0;
   const db = await getDb();
-  const stash = await db.query.guides.findFirst({ where: and(eq(guides.ownerId, user.id), eq(guides.title, STASH_TITLE)) });
+  const stash = await findStash(user.id);
   if (!stash) return 0;
   const res = await db
     .update(places)
     .set({ sharedAt: shared ? new Date() : null })
     .where(and(eq(places.guideId, stash.id), inArray(places.id, ids)));
-  revalidatePath("/saved/places");
+  revalidatePath("/my-places");
   revalidatePath("/city");
   return res.rowsAffected ?? ids.length;
+}
+
+/**
+ * Done screen → "Put it in a guide": copy a place from My places into one of your guides (or a new
+ * one, title required). It stays in My places.
+ */
+export async function putPlaceInGuide(placeId: string, target: { guideId: string } | { newTitle: string }): Promise<{ slug: string; created: boolean; already: boolean }> {
+  const res = await fileSavedPlaces({ placeIds: [placeId], keepCopy: true, ...target });
+  return { slug: res.slug, created: res.created, already: res.already > 0 };
 }

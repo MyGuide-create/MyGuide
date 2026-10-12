@@ -1,6 +1,6 @@
 /**
  * Recommendations, places first. "Friends' spots" for the city page: every place from published guides in a city (plus places people
- * recommended on their own from Saved places), merged so the
+ * recommended on their own from My places), merged so the
  * same spot added by several people shows once, with who recommends it and their tip.
  * Reads only; nothing here changes stored data.
  */
@@ -32,7 +32,7 @@ export interface CitySpot {
 }
 
 /** Same spot across guides: Google place id, else name + location (~100 m), else name. */
-function spotKey(p: Place): string {
+export function spotKey(p: Pick<Place, "googlePlaceId" | "name" | "lat" | "lng">): string {
   if (p.googlePlaceId) return `g:${p.googlePlaceId}`;
   const name = p.name.trim().toLowerCase().replace(/\s+/g, " ");
   if (p.lat != null && p.lng != null) return `n:${name}@${p.lat.toFixed(3)},${p.lng.toFixed(3)}`;
@@ -59,7 +59,7 @@ export interface Recommendation {
   owner: PublicUser;
   /** Their own words: description, else first tip. */
   tip: string;
-  /** When it became a recommendation: shared from Saved places, else added. */
+  /** When it became a recommendation: shared from My places, else added. */
   at: Date;
   /** The spot's city, tidied ("Lisboa" → Lisbon); "" when unknown. */
   city: string;

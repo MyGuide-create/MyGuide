@@ -23,7 +23,8 @@ import { places } from "@/lib/db/schema";
 import { and, eq } from "drizzle-orm";
 import { canViewGuide, getGuideBySlug, getGuideDetail } from "@/lib/guides";
 import { canViewSharedPlace } from "@/lib/citySpots";
-import { isStash } from "@/lib/stash";
+import { isStash, myPlacesHref } from "@/lib/stash";
+import { canonicalCity } from "@/lib/places/cities";
 import { RecommendToggle } from "@/components/RecommendToggle";
 import { getPlacesProvider } from "@/lib/places";
 import { getGoogleRatings } from "@/lib/places/ratings";
@@ -70,7 +71,7 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
   const guide = await getGuideBySlug(slug);
   if (!guide) notFound();
   const user = await getCurrentUser();
-  // A place recommended on its own from someone's Saved places can be opened without the (private) list.
+  // A place recommended on its own from someone's My places can be opened without the (private) list.
   let sharedOnly = false;
   if (!(await canViewGuide(guide, user?.id, key))) {
     const db = await getDb();
@@ -343,7 +344,7 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
         {stashPlace && !detail.viewerCanEdit ? (
           <Link href={`/u/${detail.owner.username}`} className="text-[12.5px] text-ink-muted hover:text-terracotta">← {detail.owner.displayName}</Link>
         ) : (
-          <Link href={stashPlace ? "/saved/places" : `/g/${slug}${keyQuery}`} className="text-[12.5px] text-ink-muted hover:text-terracotta">← Back to {detail.guide.title}</Link>
+          <Link href={stashPlace ? myPlacesHref(place.city ? canonicalCity(place.city) : "") : `/g/${slug}${keyQuery}`} className="text-[12.5px] text-ink-muted hover:text-terracotta">← Back to {stashPlace ? "My places" : detail.guide.title}</Link>
         )}
       </div>
     </AppShell>

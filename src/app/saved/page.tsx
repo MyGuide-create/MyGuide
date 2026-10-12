@@ -9,9 +9,10 @@ import { listSavedGuides, listSavedPlaces } from "@/lib/guides";
 import { GuideCard } from "@/components/GuideCard";
 import { cx } from "@/components/ui";
 import { placeArea } from "@/lib/places/neighbourhood";
-import { and, eq, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
+import { findStash } from "@/lib/myPlaces";
 import { getDb } from "@/lib/db";
-import { guides as guidesTable, places as placesTable } from "@/lib/db/schema";
+import { places as placesTable } from "@/lib/db/schema";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Favourites" };
@@ -20,9 +21,9 @@ export default async function SavedPage({ searchParams }: { searchParams: Promis
   const sp = await searchParams;
   const user = await requireUser("/saved");
   const [saved, guides] = await Promise.all([listSavedPlaces(user.id), listSavedGuides(user.id)]);
-  // Places recorded on the go land in the private "Saved places" guide (Record a place → Save to my Saved places).
+  // Your own places (My places) have their own page; Favourites are other people's places and guides you hearted.
   const db = await getDb();
-  const stashGuide = await db.query.guides.findFirst({ where: and(eq(guidesTable.ownerId, user.id), eq(guidesTable.title, "Saved places")) });
+  const stashGuide = await findStash(user.id);
   const stash = stashGuide
     ? { slug: stashGuide.slug, n: (await db.select({ n: sql<number>`count(*)` }).from(placesTable).where(eq(placesTable.guideId, stashGuide.id)))[0]?.n ?? 0 }
     : null;
@@ -58,10 +59,10 @@ export default async function SavedPage({ searchParams }: { searchParams: Promis
       ) : (
       <div className="px-4 pt-4 pb-8 flex flex-col gap-6">
         {stash && Number(stash.n) > 0 && (
-          <Link href="/saved/places" className="flex items-center justify-between gap-3 rounded-2xl border border-line/80 bg-paper px-4 py-3 hover:border-terracotta-soft">
+          <Link href="/my-places" className="flex items-center justify-between gap-3 rounded-2xl border border-line/80 bg-paper px-4 py-3 hover:border-terracotta-soft">
             <span className="min-w-0">
-              <span className="block font-semibold text-[15px]">Saved places</span>
-              <span className="block text-[12.5px] text-ink-muted">{Number(stash.n)} place{Number(stash.n) === 1 ? "" : "s"} you recorded on the go · tap to sort into guides</span>
+              <span className="block font-semibold text-[15px]">My places</span>
+              <span className="block text-[12.5px] text-ink-muted">{Number(stash.n)} place{Number(stash.n) === 1 ? "" : "s"} you&apos;ve added · Favourites below are other people&apos;s you hearted</span>
             </span>
             <span aria-hidden className="text-[20px] text-terracotta">›</span>
           </Link>

@@ -216,7 +216,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
                 ) : (
                   <LinkButton href={makeHref(wishIds(help).join(","))}>Make it for them</LinkButton>
                 )}
-                <Link href={help.viewerSpots > 0 || help.viewerPlaces > 0 ? "/saved/places" : "/record"} className="inline-flex items-center h-11 px-4 rounded-full border border-cream/40 text-[14px] font-medium">
+                <Link href={help.viewerSpots > 0 || help.viewerPlaces > 0 ? "/my-places" : "/record"} className="inline-flex items-center h-11 px-4 rounded-full border border-cream/40 text-[14px] font-medium">
                   Recommend more
                 </Link>
               </div>

@@ -12,7 +12,7 @@ import { getGuideById, isCollaborator } from "../guides";
 import { notifyGuidePublished, notifyPlacesAdded } from "../notify";
 import { sendWishGrants, wishesForMaking } from "../wishes";
 import { getPlacesProvider, isCategory, resolvePlaceByName, type PlaceResult } from "../places";
-import { findCity } from "../places/cities";
+import { canonicalCity, findCity } from "../places/cities";
 import { correctTypedCity } from "../places/correctCity";
 import { getPlacePhotos, reverseGeocode } from "../places/google";
 import { validPin } from "../places/pins";
@@ -20,6 +20,8 @@ import type { BranchCandidate } from "../places/branches";
 import { claimUnsplashPhoto } from "../covers/unsplash";
 import { mapLimit, newId, newToken, slugify } from "../utils";
 import { addNotifications } from "../notifications";
+import { isReservedTitle, isStash } from "../stash";
+import { addToStash, copyPlaceExtras } from "../myPlaces";
 import { normaliseInstagram, normaliseReserve, normaliseWebsite, normaliseWhatsapp, type Normalised } from "@/lib/placeLinks";
 
 /** Owner or invited co-editor. Use for editing places, notes, tips and guide details. */
@@ -78,13 +80,26 @@ export interface DraftPlaceInput {
 const CREATE_CONCURRENCY = 6;
 
 /** Create a guide (optionally with already-resolved places) and go to the editor. */
-export async function createGuide(input: { title: string; city?: string; country?: string; lat?: number | null; lng?: number | null; places?: DraftPlaceInput[]; wishIds?: string[]; /** Made for an "Ask a friend" request. */ askId?: string }): Promise<string> {
+export async function createGuide(input: {
+  title: string;
+  city?: string;
+  country?: string;
+  lat?: number | null;
+  lng?: number | null;
+  places?: DraftPlaceInput[];
+  wishIds?: string[];
+  /** Made for an "Ask a friend" request. */
+  askId?: string;
+  /** Imported places are the maker's too: also put them in My places (recommended or private). */
+  alsoMyPlaces?: { share: boolean };
+}): Promise<string> {
   const user = await getCurrentUser();
   if (!user) redirect("/login?next=/create");
   const db = await getDb();
   // Every guide is named by its creator — no automatic titles.
   const title = input.title.trim();
   if (!title) throw new UserError("Give your guide a title.", "invalid");
+  if (isReservedTitle(title)) throw new UserError("“My places” is the name of your own list — give the guide another title.", "invalid");
   // Typed by hand (no country from Google): a clear misspelling ("Brussles") is saved as the real city.
   const fixed = input.city?.trim() && !input.country?.trim() && !findCity(input.city) ? await correctTypedCity(input.city) : null;
   if (fixed) input = { ...input, city: fixed.city, country: fixed.country, lat: Number.isFinite(fixed.lat) ? fixed.lat : input.lat, lng: Number.isFinite(fixed.lng) ? fixed.lng : input.lng };
@@ -107,8 +122,106 @@ export async function createGuide(input: { title: string; city?: string; country
     updatedAt: now,
   });
 
+  const rows = await resolveDrafts(id, input.places ?? [], user.id, input.city, known);
+  // Insert in chunks to keep each statement a reasonable size.
+  for (let i = 0; i < rows.length; i += 50) await db.insert(places).values(rows.slice(i, i + 50));
+  // If the guide city was unknown, borrow it from the first place (in list order) that has one.
+  const derivedCity = rows.find((r) => r.city);
+  if (!known && !input.country?.trim() && derivedCity) {
+    await db.update(guides).set({ city: derivedCity.city, country: derivedCity.country }).where(eq(guides.id, id));
+  }
+  if (input.alsoMyPlaces && rows.length) {
+    const { pairs } = await addToStash(user.id, rows, { share: input.alsoMyPlaces.share });
+    await copyPlaceExtras(pairs);
+    revalidatePath("/my-places");
+  }
+  // Made for an ask: the ask now points at this guide ("working on it"), and its wish gets the guide on publish.
+  if (input.askId) {
+    const ask = await db.query.guideRequests.findFirst({ where: eq(guideRequests.id, input.askId) });
+    if (ask && ask.recipientId === user.id) {
+      await db.update(guideRequests).set({ guideId: id, status: "making" }).where(eq(guideRequests.id, ask.id));
+      if (ask.wishId && !(input.wishIds ?? []).includes(ask.wishId)) input.wishIds = [...(input.wishIds ?? []), ask.wishId];
+    }
+  }
+  // Made from someone's wish list: remember who it's for; it's sent to them when published.
+  if (input.wishIds?.length) {
+    const wanted = await wishesForMaking(input.wishIds, user.id);
+    if (wanted.length) await db.insert(wishGrants).values(wanted.map((w) => ({ wishId: w.wish.id, guideId: id, grantedById: user.id, createdAt: now }))).onConflictDoNothing();
+  }
+  revalidatePath("/me");
+  return slug;
+}
+
+
+/**
+ * Import (Google Maps list, pasted list, screenshots, Takeout CSV) → My places. Recommended unless
+ * `share` is false. With `guideTitle`, a private draft guide is made from them too (they stay in My
+ * places). Spots already in My places aren't added twice.
+ */
+export async function importToMyPlaces(input: {
+  places: DraftPlaceInput[];
+  share: boolean;
+  cityHint?: string;
+  guideTitle?: string;
+}): Promise<{ added: number; skipped: number; city: string; guideSlug: string | null }> {
+  const user = await getCurrentUser();
+  if (!user) redirect("/login?next=/create%3Fimport%3D1");
+  const drafts = (input.places ?? []).slice(0, 300);
+  if (!drafts.length) throw new UserError("Keep at least one place.", "invalid");
+  const guideTitle = input.guideTitle?.trim().slice(0, 120) ?? "";
+  if (input.guideTitle !== undefined && !guideTitle) throw new UserError("Give your guide a title.", "invalid");
+  if (guideTitle && isReservedTitle(guideTitle)) throw new UserError("“My places” is the name of your own list — give the guide another title.", "invalid");
+  const db = await getDb();
+  const known = findCity(input.cityHint);
+  const rows = await resolveDrafts("", drafts, user.id, input.cityHint, known);
+  const { stash, skipped } = await addToStash(user.id, rows, { share: input.share });
+
+  // The most common city among them: where they land on My places, and the guide's city.
+  const counts = new Map<string, { city: string; country: string; n: number }>();
+  for (const r of rows) {
+    if (!r.city?.trim()) continue;
+    const c = canonicalCity(r.city);
+    const e = counts.get(c.toLowerCase()) ?? { city: c, country: r.country ?? "", n: 0 };
+    e.n++;
+    counts.set(c.toLowerCase(), e);
+  }
+  const main = [...counts.values()].sort((a, b) => b.n - a.n)[0] ?? { city: known?.city ?? "", country: known?.country ?? "" };
+
+  let guideSlug: string | null = null;
+  if (guideTitle) {
+    const where = findCity(main.city);
+    const id = newId();
+    const now = new Date();
+    guideSlug = await uniqueSlug(guideTitle);
+    await db.insert(guides).values({
+      id,
+      ownerId: user.id,
+      slug: guideSlug,
+      title: guideTitle,
+      city: main.city,
+      country: main.country || where?.country || "",
+      lat: where?.lat ?? null,
+      lng: where?.lng ?? null,
+      shareToken: newToken(),
+      createdAt: now,
+      updatedAt: now,
+    });
+    const copies = rows.map((r, i) => ({ ...r, id: newId(), guideId: id, position: i, createdAt: now, sharedAt: null }));
+    for (let i = 0; i < copies.length; i += 50) await db.insert(places).values(copies.slice(i, i + 50));
+  }
+  revalidatePath(`/g/${stash.slug}`);
+  revalidatePath("/my-places");
+  revalidatePath("/me");
+  return { added: rows.length - skipped, skipped, city: main.city, guideSlug };
+}
+
+/** Look up imported/typed places on Google (or keep dropped pins) as rows for `guideId`, in list order. */
+async function resolveDrafts(guideId: string, drafts: DraftPlaceInput[], userId: string, cityHint: string | undefined, known: ReturnType<typeof findCity>): Promise<(typeof places.$inferInsert)[]> {
+  const id = guideId;
+  const user = { id: userId };
+  const input = { city: cityHint };
   const provider = getPlacesProvider();
-  const rows = await mapLimit(input.places ?? [], CREATE_CONCURRENCY, async (p, position) => {
+  const rows = await mapLimit(drafts, CREATE_CONCURRENCY, async (p, position) => {
     const name = p.name.trim().slice(0, 120) || "Unnamed place";
     const note = (p.note ?? "").trim().slice(0, 5000);
     if (p.pin && validPin(p.pin.lat, p.pin.lng)) {
@@ -134,28 +247,7 @@ export async function createGuide(input: { title: string; city?: string; country
     }
     return { ...placeValues(id, position, name, resolved, user.id), note };
   });
-  // Insert in chunks to keep each statement a reasonable size.
-  for (let i = 0; i < rows.length; i += 50) await db.insert(places).values(rows.slice(i, i + 50));
-  // If the guide city was unknown, borrow it from the first place (in list order) that has one.
-  const derivedCity = rows.find((r) => r.city);
-  if (!known && !input.country?.trim() && derivedCity) {
-    await db.update(guides).set({ city: derivedCity.city, country: derivedCity.country }).where(eq(guides.id, id));
-  }
-  // Made for an ask: the ask now points at this guide ("working on it"), and its wish gets the guide on publish.
-  if (input.askId) {
-    const ask = await db.query.guideRequests.findFirst({ where: eq(guideRequests.id, input.askId) });
-    if (ask && ask.recipientId === user.id) {
-      await db.update(guideRequests).set({ guideId: id, status: "making" }).where(eq(guideRequests.id, ask.id));
-      if (ask.wishId && !(input.wishIds ?? []).includes(ask.wishId)) input.wishIds = [...(input.wishIds ?? []), ask.wishId];
-    }
-  }
-  // Made from someone's wish list: remember who it's for; it's sent to them when published.
-  if (input.wishIds?.length) {
-    const wanted = await wishesForMaking(input.wishIds, user.id);
-    if (wanted.length) await db.insert(wishGrants).values(wanted.map((w) => ({ wishId: w.wish.id, guideId: id, grantedById: user.id, createdAt: now }))).onConflictDoNothing();
-  }
-  revalidatePath("/me");
-  return slug;
+  return rows;
 }
 
 function placeValues(guideId: string, position: number, fallbackName: string, r: PlaceResult | null, authorId: string): typeof places.$inferInsert {
@@ -191,7 +283,12 @@ export async function updateGuideMeta(
   const { guide } = await requireOwner(guideId);
   const db = await getDb();
   const set: Partial<typeof guides.$inferInsert> = { updatedAt: new Date() };
-  if (patch.title !== undefined) set.title = patch.title.trim() || guide.title;
+  if (patch.title !== undefined) {
+    const t = patch.title.trim();
+    // My places keeps its name; no other guide can take it.
+    if (!isStash(guide) && t && isReservedTitle(t)) throw new UserError("“My places” is the name of your own list — give the guide another title.", "invalid");
+    set.title = isStash(guide) ? guide.title : t || guide.title;
+  }
   if (patch.city !== undefined) {
     // Typed by hand (no country from Google): a clear misspelling ("Brussles") is saved as the real city.
     const fixed = patch.city.trim() && !patch.country?.trim() && !findCity(patch.city) ? await correctTypedCity(patch.city) : null;

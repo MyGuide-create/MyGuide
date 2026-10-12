@@ -1,15 +1,18 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { errorText } from "@/lib/errorText";
 import { useEffect, useState, useTransition } from "react";
-import { saveRecordedPlace } from "@/lib/actions/record";
+import { putPlaceInGuide, saveRecordedPlace, type RecordedPlace } from "@/lib/actions/record";
+import { isReservedTitle, myPlacesHref } from "@/lib/stash";
+import { GuideNudge } from "./GuideNudge";
 import { PhotoPicker } from "./PhotoPicker";
 import { PlaceSearch } from "./PlaceSearch";
 import { PinDropSheet } from "./PinDropSheet";
 import { GoogleInfoCard, type GoogleInfo } from "./GoogleInfoCard";
 import { CameraIcon, CheckIcon, ChevronLeft, PinIcon, PlusIcon, XIcon } from "./Icons";
-import { Button, Spinner, Textarea, cx } from "./ui";
+import { Button, Input, Spinner, Textarea, cx } from "./ui";
 
 interface NearbyResult {
   providerId: string;
@@ -27,15 +30,22 @@ interface GuideOption {
   city: string;
 }
 
-type Step = "confirm" | "capture" | "save";
+type Step = "confirm" | "capture" | "save" | "done";
 type LocateState = "locating" | "found" | "empty" | "denied";
 
 function formatDistance(m: number): string {
   return m < 1000 ? `${Math.round(m)}m away` : `${(m / 1000).toFixed(1)}km away`;
 }
 
-/** The full "record a place you're at" flow: geolocate → confirm → capture → file into a guide. */
-export function RecordFlow({ guides }: { guides: GuideOption[] }) {
+/** The guide nudge shows from this many places in one city that aren't in a guide yet. */
+const NUDGE_MIN = 4;
+
+/**
+ * + → Add a place: find it (search, a dropped pin, or near you) → describe it → save it to My places
+ * (recommended or just for you) → done: add another, or put it in a guide. Opened from one of your
+ * guides (`intoGuide`), it saves straight into that guide instead.
+ */
+export function RecordFlow({ guides, intoGuide }: { guides: GuideOption[]; intoGuide?: { id: string; slug: string; title: string } | null }) {
   const router = useRouter();
   const [step, setStep] = useState<Step>("confirm");
   const [locate, setLocate] = useState<LocateState>("locating");
@@ -68,13 +78,19 @@ export function RecordFlow({ guides }: { guides: GuideOption[] }) {
 
   /** Where the place is, once Google has told us (dropped pins don't say). */
   const placeCity = shownInfo?.city?.trim() ?? "";
-  const sameCity = (g: GuideOption) => !!placeCity && g.city.trim().toLowerCase() === placeCity.toLowerCase();
-  /** Same-city guides first; nothing pre-picked unless one matches (a Dubai café shouldn't default into the Bali trip). */
-  const sortedGuides = [...guides.filter(sameCity), ...guides.filter((g) => !sameCity(g))];
-  // The "Saved places" stash has its own button.
-  const listedGuides = sortedGuides.filter((g) => g.title !== "Saved places");
   const [saving, startSaving] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  /** The place just saved (the done screen). */
+  const [done, setDone] = useState<RecordedPlace | null>(null);
+  /** "Put it in a guide" sheet, and what's happened there. */
+  const [guideSheet, setGuideSheet] = useState(false);
+  const [newTitle, setNewTitle] = useState("");
+  const [putIn, setPutIn] = useState<{ slug: string; title: string; already: boolean } | null>(null);
+  /** Same-city guides first (My places itself isn't a guide). */
+  const doneCity = done?.city ?? "";
+  const isDoneCity = (g: GuideOption) => !!doneCity && g.city.trim().toLowerCase() === doneCity.toLowerCase();
+  const ownGuides = guides.filter((g) => !isReservedTitle(g.title));
+  const sheetGuides = [...ownGuides.filter(isDoneCity), ...ownGuides.filter((g) => !isDoneCity(g))];
 
   useEffect(() => {
     if (!("geolocation" in navigator)) {
@@ -122,23 +138,66 @@ export function RecordFlow({ guides }: { guides: GuideOption[] }) {
     setStep("capture");
   };
 
-  const save = (patch: { guideId?: string; newGuideTitle?: string; share?: boolean }) => {
+  const save = (share: boolean) => {
     if (!selected) return;
     setError(null);
     startSaving(async () => {
       try {
-        const { guideSlug, editing } = await saveRecordedPlace({
+        const res = await saveRecordedPlace({
           providerId: selected.providerId,
           pin: selected.pin,
           name: selected.name,
+          cityHint: placeCity || undefined,
           special,
           tips,
           photoMediaIds: photoIds,
-          ...patch,
+          ...(intoGuide ? { guideId: intoGuide.id } : { share }),
         });
-        router.push(editing ? `/g/${guideSlug}/edit?justCreated=1` : `/g/${guideSlug}`);
+        if (res.intoGuide) {
+          router.push(`/g/${res.guideSlug}`);
+          return;
+        }
+        setDone(res);
+        setPutIn(null);
+        setStep("done");
+        window.scrollTo({ top: 0 });
       } catch (e) {
         setError(errorText(e, "Couldn't save that place."));
+      }
+    });
+  };
+
+  /** Done → Add another: back to search with a clean slate (where you are is kept; no reload). */
+  const addAnother = () => {
+    setSelected(null);
+    setGoogleInfo(null);
+    setSpecial("");
+    setSpecialDraft("");
+    setTips([]);
+    setTipDraft("");
+    setPhotoIds([]);
+    setPickedIdx(0);
+    setDone(null);
+    setPutIn(null);
+    setGuideSheet(false);
+    setNewTitle("");
+    setError(null);
+    setStep("confirm");
+    window.scrollTo({ top: 0 });
+  };
+
+  const putInGuide = (target: { guideId: string; title: string } | { newTitle: string }) => {
+    if (!done) return;
+    setError(null);
+    startSaving(async () => {
+      try {
+        const res = await putPlaceInGuide(done.placeId, "guideId" in target ? { guideId: target.guideId } : { newTitle: target.newTitle });
+        setPutIn({ slug: res.slug, title: "guideId" in target ? target.title : target.newTitle, already: res.already });
+        setGuideSheet(false);
+        setNewTitle("");
+        router.refresh();
+      } catch (e) {
+        setError(errorText(e, "Couldn't add it to that guide."));
       }
     });
   };
@@ -148,7 +207,7 @@ export function RecordFlow({ guides }: { guides: GuideOption[] }) {
       {step === "confirm" && (
         <div className="flex flex-col flex-1">
           <div className="flex items-center justify-between px-4 pt-4">
-            <span className="text-[15px] font-semibold">New memory</span>
+            <span className="text-[15px] font-semibold">{intoGuide ? `Add a place to ${intoGuide.title}` : "Add a place"}</span>
             <button type="button" aria-label="Close" onClick={() => router.back()} className="w-9 h-9 rounded-full border border-line bg-paper flex items-center justify-center">
               <XIcon size={15} />
             </button>
@@ -172,11 +231,18 @@ export function RecordFlow({ guides }: { guides: GuideOption[] }) {
             {locate === "denied" && <p className="mb-2 text-[12px] text-ink-muted">We couldn&apos;t get your location, so search for the place instead.</p>}
             {locate === "empty" && <p className="mb-2 text-[12px] text-ink-muted">Nothing nearby matched — search for the place instead.</p>}
             <PlaceSearch onPick={pickManual} placeholder="Search for the place you're at…" autoFocus={locate === "denied" || locate === "empty"} />
-            {locate !== "locating" && (
-              <button type="button" onClick={() => setPinning(true)} className="mt-2.5 inline-flex items-center gap-1.5 text-[12.5px] font-medium text-terracotta-deep">
-                <PinIcon size={15} /> Not listed? Pin this exact spot
-              </button>
-            )}
+            <div className="mt-2.5 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+              {locate !== "locating" && (
+                <button type="button" onClick={() => setPinning(true)} className="inline-flex items-center gap-1.5 text-[12.5px] font-medium text-terracotta-deep">
+                  <PinIcon size={15} /> Not listed? Pin this exact spot
+                </button>
+              )}
+              {!intoGuide && (
+                <Link href="/create?import=1" className="text-[12.5px] font-medium text-ink-muted hover:text-terracotta">
+                  Got a list already? Import it →
+                </Link>
+              )}
+            </div>
           </div>
 
           {locate === "locating" && (
@@ -239,7 +305,7 @@ export function RecordFlow({ guides }: { guides: GuideOption[] }) {
             <button type="button" aria-label="Back" onClick={() => setStep("confirm")} className="w-9 h-9 rounded-full border border-line bg-paper flex items-center justify-center">
               <ChevronLeft size={17} />
             </button>
-            <span className="text-[15px] font-semibold">New memory</span>
+            <span className="text-[15px] font-semibold">Add a place</span>
           </div>
 
           <div className="mx-4 mt-3.5 inline-flex items-center gap-2 rounded-full bg-terracotta-tint px-3 py-2 w-fit">
@@ -377,7 +443,7 @@ export function RecordFlow({ guides }: { guides: GuideOption[] }) {
             <button type="button" aria-label="Back" onClick={() => setStep("capture")} className="w-9 h-9 rounded-full border border-line bg-paper flex items-center justify-center">
               <ChevronLeft size={17} />
             </button>
-            <span className="text-[15px] font-semibold">Where should it go?</span>
+            <span className="text-[15px] font-semibold">{intoGuide ? `Add to ${intoGuide.title}` : "Save it"}</span>
           </div>
 
           <div className="mx-4 mt-4 rounded-2xl bg-cream-deep/50 px-3.5 py-3">
@@ -386,60 +452,118 @@ export function RecordFlow({ guides }: { guides: GuideOption[] }) {
             {tips.length > 0 && <div className="text-[11px] text-ink-faint">{tips.length} expert tip{tips.length === 1 ? "" : "s"}</div>}
           </div>
 
-          {/* One tap into Saved places, asking whether to recommend it (shows on the city page, no guide needed). */}
-          <div className="px-5 pt-5">
-            <p className="text-[13.5px] font-semibold">Save it to your Saved places</p>
-            <p className="mt-0.5 text-[12px] leading-snug text-ink-muted">
-              Recommend it and it shows on the {placeCity || "city"} page for friends, no guide needed. You can change this later.
-            </p>
-            <div className="mt-3 flex flex-col gap-2">
-              <Button className="w-full" size="lg" disabled={saving} onClick={() => save({ share: true })}>
-                {saving ? <Spinner /> : "Save & recommend"}
-              </Button>
-              <Button className="w-full" variant="outline" disabled={saving} onClick={() => save({ share: false })}>
-                Just save it for me
+          {intoGuide ? (
+            <div className="px-5 pt-5">
+              <Button className="w-full" size="lg" disabled={saving} onClick={() => save(false)}>
+                {saving ? <Spinner /> : `Add to ${intoGuide.title}`}
               </Button>
             </div>
-          </div>
-
-          <div className="flex items-center gap-2.5 px-5 pt-6 pb-1 text-ink-faint text-[11px] font-semibold uppercase tracking-[0.03em]">
-            <div className="flex-1 h-px bg-line" /> or add it to a guide <div className="flex-1 h-px bg-line" />
-          </div>
-
-          <div className="flex flex-col gap-2 px-5 pt-2 pb-8">
-            {listedGuides.map((g) => (
-              <button
-                type="button"
-                key={g.id}
-                disabled={saving}
-                onClick={() => save({ guideId: g.id })}
-                className="flex items-center gap-2.5 rounded-2xl border border-line bg-paper p-2.5 text-left hover:border-terracotta-soft"
-              >
-                <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-terracotta-soft to-terracotta shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <div className="text-[13.5px] font-bold truncate">{g.title}</div>
-                  <div className="text-[11px] text-ink-muted">{g.placeCount} place{g.placeCount === 1 ? "" : "s"}{sameCity(g) ? ` · ${g.city}` : ""}</div>
-                </div>
-                <PlusIcon size={16} className="text-terracotta shrink-0" />
-              </button>
-            ))}
-            <button
-              type="button"
-              disabled={saving}
-              onClick={() => save({ newGuideTitle: placeCity ? `My ${placeCity} guide` : selected.name })}
-              className="flex items-center gap-2.5 rounded-2xl border-[1.5px] border-dashed border-terracotta-soft p-2.5 text-left"
-            >
-              <div className="w-11 h-11 rounded-xl bg-terracotta-tint text-terracotta flex items-center justify-center shrink-0">
-                <PlusIcon size={18} />
+          ) : (
+            /* Into My places, asking whether to recommend it (shows on the city page, no guide needed). Guides come after. */
+            <div className="px-5 pt-5">
+              <p className="text-[13.5px] font-semibold">Save it to My places</p>
+              <p className="mt-0.5 text-[12px] leading-snug text-ink-muted">
+                Recommend it and it shows on the {placeCity || "city"} page for friends. You can change this later, and put it in a guide whenever you like.
+              </p>
+              <div className="mt-3 flex flex-col gap-2">
+                <Button className="w-full" size="lg" disabled={saving} onClick={() => save(true)}>
+                  {saving ? <Spinner /> : "Save & recommend"}
+                </Button>
+                <Button className="w-full" variant="outline" disabled={saving} onClick={() => save(false)}>
+                  Just save it for me
+                </Button>
               </div>
-              <div>
-                <div className="text-[13.5px] font-bold">Start a new guide</div>
-                <div className="text-[11px] text-ink-muted">With just this place for now</div>
-              </div>
+            </div>
+          )}
+
+          {error && <p className="px-5 pt-4 pb-6 text-[12.5px] text-danger">{error}</p>}
+        </div>
+      )}
+
+      {step === "done" && done && (
+        <div className="flex flex-col flex-1">
+          <div className="flex items-center justify-end px-4 pt-4">
+            <button type="button" aria-label="Close" onClick={() => router.push(myPlacesHref(done.city))} className="w-9 h-9 rounded-full border border-line bg-paper flex items-center justify-center">
+              <XIcon size={15} />
             </button>
           </div>
+          <div className="flex flex-col items-center px-7 pt-2 text-center">
+            <div className="w-16 h-16 rounded-full bg-sage-tint text-sage flex items-center justify-center mb-3.5">
+              <CheckIcon size={30} />
+            </div>
+            <h1 className="font-display text-[28px] leading-tight">{done.city ? `Added to My ${done.city}` : "Added to My places"} ✓</h1>
+            <p className="mt-1.5 text-[15px] font-semibold">{done.name}</p>
+            <p className="mt-0.5 text-[12.5px] text-ink-muted">
+              {done.shared ? `Recommended · friends see it on the ${done.city || "city"} page` : "Only you can see it"}
+            </p>
+            {putIn && (
+              <p className="mt-2 text-[12.5px] text-sage font-medium">
+                {putIn.already ? "Already in " : "Also in "}
+                <Link href={`/g/${putIn.slug}/edit`} className="underline underline-offset-2">{putIn.title}</Link>
+                {putIn.already ? "" : " ✓"}
+              </p>
+            )}
+          </div>
 
-          {error && <p className="px-5 pb-6 text-[12.5px] text-danger">{error}</p>}
+          <div className="mt-auto px-5 pt-6 pb-8 flex flex-col gap-2.5">
+            {done.city && done.unguided >= NUDGE_MIN && !putIn && <GuideNudge city={done.city} count={done.unguided} className="mb-2" />}
+            <Button className="w-full" size="lg" onClick={addAnother}>
+              <PlusIcon size={18} /> Add another
+            </Button>
+            <Button className="w-full" variant="outline" disabled={saving} onClick={() => setGuideSheet(true)}>
+              Put it in a guide
+            </Button>
+            <Link href={myPlacesHref(done.city)} className="self-center mt-1.5 text-[13px] font-medium text-terracotta-deep">
+              See {done.city ? `My ${done.city}` : "My places"} →
+            </Link>
+            {error && <p className="text-[12.5px] text-danger text-center">{error}</p>}
+          </div>
+        </div>
+      )}
+
+      {guideSheet && done && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center" role="dialog" aria-modal="true" aria-label="Put it in a guide">
+          <button type="button" aria-label="Close" className="absolute inset-0 bg-ink/30" onClick={() => setGuideSheet(false)} />
+          <div className="relative w-full max-w-[480px] max-h-[85dvh] overflow-y-auto rounded-t-3xl bg-cream px-5 pt-3 pb-8 safe-bottom shadow-2xl">
+            <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-line" />
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="font-display text-[24px]">Put it in a guide</h2>
+              <button type="button" aria-label="Close" onClick={() => setGuideSheet(false)} className="p-1 text-ink-muted"><XIcon size={18} /></button>
+            </div>
+            <p className="mb-3 text-[12.5px] text-ink-muted">It stays in My places too.</p>
+            <div className="flex flex-col gap-2">
+              {sheetGuides.map((g) => (
+                <button
+                  type="button"
+                  key={g.id}
+                  disabled={saving}
+                  onClick={() => putInGuide({ guideId: g.id, title: g.title })}
+                  className="flex items-center gap-2.5 rounded-2xl border border-line bg-paper p-2.5 text-left hover:border-terracotta-soft disabled:opacity-60"
+                >
+                  <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-terracotta-soft to-terracotta shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[13.5px] font-bold truncate">{g.title}</div>
+                    <div className="text-[11px] text-ink-muted">{[isDoneCity(g) ? g.city : "", `${g.placeCount} place${g.placeCount === 1 ? "" : "s"}`].filter(Boolean).join(" · ")}</div>
+                  </div>
+                  <PlusIcon size={16} className="text-terracotta shrink-0" />
+                </button>
+              ))}
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (newTitle.trim()) putInGuide({ newTitle: newTitle.trim() });
+                }}
+                className="rounded-2xl border-[1.5px] border-dashed border-terracotta-soft p-3 flex flex-col gap-2"
+              >
+                <label htmlFor="new-guide-title" className="text-[13.5px] font-bold">Start a new guide</label>
+                <Input id="new-guide-title" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} placeholder={done.city ? `e.g. My favourite spots in ${done.city}` : "e.g. Weekend away with the boys"} />
+                <Button type="submit" size="sm" disabled={saving || !newTitle.trim()} className="self-start">
+                  {saving ? <Spinner /> : "Create guide"}
+                </Button>
+              </form>
+              {error && <p className="text-[12.5px] text-danger">{error}</p>}
+            </div>
+          </div>
         </div>
       )}
     </div>

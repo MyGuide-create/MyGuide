@@ -58,7 +58,7 @@ async function copyInto(user: User, target: Guide, placeIds: string[]): Promise<
   const sources = sourceIds.length ? await db.select().from(guides).where(inArray(guides.id, sourceIds)) : [];
   const hidden = await hiddenUserIds(user.id);
   const usable = new Map<string, Guide>();
-  // Saved places lists aren't public, but a place recommended from one can be picked on its own.
+  // My places lists aren't public, but a place recommended from one can be picked on its own.
   const sharedOnly = new Set<string>();
   for (const g of sources) {
     if (g.id === target.id || hidden.has(g.ownerId)) continue;

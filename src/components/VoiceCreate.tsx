@@ -4,7 +4,8 @@ import { useRouter } from "next/navigation";
 import { UserError } from "@/lib/userError";
 import { errorText } from "@/lib/errorText";
 import { useState } from "react";
-import { createGuide } from "@/lib/actions/guides";
+import { createGuide, importToMyPlaces } from "@/lib/actions/guides";
+import { myPlacesHref } from "@/lib/stash";
 import type { ParsedPlacesResponse } from "@/app/api/ai/parse-places/route";
 import type { PlaceResult } from "@/lib/places";
 import type { MapsListResult } from "@/lib/places/googleMapsList";
@@ -78,6 +79,16 @@ export function VoiceCreate({
   const [fromList, setFromList] = useState(false);
   const [listLink, setListLink] = useState("");
   const [linkError, setLinkError] = useState<string | null>(null);
+  /**
+   * Imports land in My places (12 Oct 2026). A guide made for someone (a wish or an ask) is still a
+   * guide — the point is sending it — and its places go into the maker's My places too, private by default.
+   */
+  const forSomeone = !!forWish || !!askId;
+  const [share, setShare] = useState(!forSomeone);
+  /** "Also make a guide from these" — on when they started from "Create a guide" and typed a title. */
+  const [alsoGuide, setAlsoGuide] = useState(false);
+  /** A list's own name (Google Maps list title), offered as an example, never filled in for them. */
+  const [suggestedTitle, setSuggestedTitle] = useState("");
 
   const structure = async (text: string, from: Stage = "paste") => {
     if (!text.trim()) { setError("Name at least one place first."); return; }
@@ -96,9 +107,8 @@ export function VoiceCreate({
       setFromList(false);
       setResult(data);
       setDraft(data.places.map((p, i) => ({ ...p, key: `${i}-${p.name}` })));
-      // Keep a title the creator already typed; only fill in the suggestion when it's empty.
-      // Not for a guide made for someone (an ask or a wish): the creator names that one themselves.
-      if (!forWish) setTitle((t) => t.trim() || data.title);
+      // No automatic titles: the AI's suggestion is only an example in the title box.
+      setSuggestedTitle(data.title ?? "");
       setCity((c) => c.trim() || data.city);
       setStage("review");
     } catch (e) {
@@ -185,7 +195,7 @@ export function VoiceCreate({
       ]);
       const guideTitle = listTitle || opts.fallbackTitle || "";
       setResult({ title: guideTitle, city: firstCity?.city ?? "", country: firstCity?.country ?? "", places: [], ai: true });
-      if (!forWish) setTitle((t) => t.trim() || guideTitle);
+      setSuggestedTitle(guideTitle);
       setCity((c) => c.trim() || (firstCity?.city ?? ""));
       setFromList(true);
       setStage("review");
@@ -197,26 +207,40 @@ export function VoiceCreate({
   const finish = async () => {
     const kept = draft.filter((p) => !p.removed);
     if (!kept.length) { setError("Keep at least one place."); return; }
-    if (!title.trim()) { setError("Give your guide a title — something friends will recognise, like “" + example + "”."); return; }
+    const needsTitle = forSomeone || alsoGuide;
+    if (needsTitle && !title.trim()) { setError("Give your guide a title — something friends will recognise, like “" + example + "”."); return; }
+    const placesIn = kept.map((p) => ({
+      name: p.resolved?.name ?? p.name,
+      providerId: p.resolved?.providerId ?? null,
+      cityHint: p.cityHint,
+      pin: p.resolved ? null : p.pin,
+      note: p.note,
+    }));
     setCreating(true);
     try {
-      const slug = await createGuide({
-        title: title.trim(),
-        city: city || result?.city,
-        country: result?.country,
-        wishIds: forWish?.ids,
-        askId,
-        places: kept.map((p) => ({
-          name: p.resolved?.name ?? p.name,
-          providerId: p.resolved?.providerId ?? null,
-          cityHint: p.cityHint,
-          pin: p.resolved ? null : p.pin,
-          note: p.note,
-        })),
-      });
-      router.push(`/g/${slug}/edit?created=1`);
+      if (forSomeone) {
+        const slug = await createGuide({
+          title: title.trim(),
+          city: city || result?.city,
+          country: result?.country,
+          wishIds: forWish?.ids,
+          askId,
+          places: placesIn,
+          alsoMyPlaces: { share },
+        });
+        router.push(`/g/${slug}/edit?created=1`);
+        return;
+      }
+      const res = await importToMyPlaces({ places: placesIn, share, cityHint: city || result?.city || undefined, guideTitle: alsoGuide ? title.trim() : undefined });
+      const qs = new URLSearchParams({ imported: String(res.added) });
+      if (res.skipped) qs.set("already", String(res.skipped));
+      if (res.guideSlug) qs.set("guide", res.guideSlug);
+      if (res.city) qs.set("city", res.city);
+      const href = myPlacesHref(res.city);
+      const [path, hash] = href.split("#");
+      router.push(`${path.split("?")[0]}?${qs.toString()}${hash ? `#${hash}` : ""}`);
     } catch (e) {
-      setError(errorText(e, "Couldn't create the guide."));
+      setError(errorText(e, forSomeone ? "Couldn't create the guide." : "Couldn't add those places."));
       setCreating(false);
     }
   };
@@ -269,13 +293,13 @@ export function VoiceCreate({
         <div className="flex flex-col gap-3">
           <button
             type="button"
-            onClick={() => { setStage("paste"); setError(null); }}
+            onClick={() => { setStage("paste"); setError(null); if (title.trim()) setAlsoGuide(true); }}
             className="text-left rounded-3xl border border-line bg-paper p-4 flex gap-4 items-start hover:border-terracotta-soft active:scale-[0.99] transition-transform"
           >
             <span className="w-12 h-12 rounded-2xl bg-sage text-white flex items-center justify-center shrink-0"><ListIcon size={22} /></span>
             <span className="min-w-0">
               <span className="block font-semibold text-[16px]">Import a Google Maps list</span>
-              <span className="block mt-0.5 text-[13px] text-ink-muted leading-snug">Turn a saved list into a guide in seconds — or bring places in from:</span>
+              <span className="block mt-0.5 text-[13px] text-ink-muted leading-snug">Bring a saved list into My places in seconds — and make it a guide if you like. Or bring places in from:</span>
               <span className="mt-2 flex flex-wrap gap-1.5">
                 {["Screenshots", "WhatsApp", "Notes"].map((t) => (
                   <span key={t} className="rounded-full bg-sage-tint px-2.5 py-0.5 text-[11.5px] font-medium text-sage">{t}</span>
@@ -295,7 +319,9 @@ export function VoiceCreate({
         <div>
           <h1 className="font-display text-[34px] leading-[1.05]">Import your places.</h1>
           <p className="mt-2 text-[13.5px] text-ink-muted leading-relaxed">
-            Paste a Google Maps saved list&apos;s link and we&apos;ll bring in every place. Screenshots, links, a WhatsApp message or your Notes work too.
+            {forSomeone
+              ? "Paste a Google Maps saved list’s link and we’ll bring in every place. Screenshots, links, a WhatsApp message or your Notes work too."
+              : "Paste a Google Maps saved list’s link and every place comes into My places. Screenshots, links, a WhatsApp message or your Notes work too."}
           </p>
         </div>
         {(() => {
@@ -378,8 +404,12 @@ export function VoiceCreate({
           placeholder={"Tsuta ramen\nhttps://maps.app.goo.gl/…\n• Yanaka Coffee Ten 🙌\n[12/03, 10:15] Omar: try Ichiran in Shinjuku\n…"}
         />
         {error && <p className="text-[12.5px] text-danger">{error}</p>}
-        <Button size="lg" onClick={() => structure(pastedList, "paste")} disabled={!pastedList.trim()}>Build my guide</Button>
-        <button type="button" onClick={() => { setStage("typed"); setError(null); }} className="text-[13px] text-ink-muted text-center">Back</button>
+        <Button size="lg" onClick={() => structure(pastedList, "paste")} disabled={!pastedList.trim()}>{forSomeone ? "Build my guide" : "Find my places"}</Button>
+        {forSomeone || !startWithImport ? (
+          <button type="button" onClick={() => { setStage("typed"); setError(null); }} className="text-[13px] text-ink-muted text-center">Back</button>
+        ) : (
+          <button type="button" onClick={() => router.back()} className="text-[13px] text-ink-muted text-center">Back</button>
+        )}
       </div>
     );
   }
@@ -411,15 +441,22 @@ export function VoiceCreate({
     const kept = draft.filter((p) => !p.removed);
     return (
       <div className="px-5 pt-3 pb-28 flex flex-col gap-4">
-        <div>
-          <Label>Title</Label>
-          <input value={title} onChange={(e) => { setTitle(e.target.value); setError(null); }} placeholder={forWish ? `e.g. Hidden gems of ${forWish.city}` : `e.g. ${example}`} autoFocus={!title} aria-required className="w-full bg-transparent font-display text-[32px] leading-[1.05] outline-none border-b border-line focus:border-terracotta-soft placeholder:text-ink-faint" />
-          {!title.trim() && <p className="mt-1.5 text-[12.5px] text-terracotta-deep">Give your guide a title before you create it.</p>}
-          <div className="mt-2 flex items-center gap-2">
-            <Label className="mb-0">City</Label>
-            <input value={city} onChange={(e) => setCity(e.target.value)} placeholder="Where is this guide?" className="flex-1 bg-transparent text-[14px] outline-none border-b border-line focus:border-terracotta-soft py-1" />
+        {forSomeone ? (
+          <div>
+            <Label>Title</Label>
+            <input value={title} onChange={(e) => { setTitle(e.target.value); setError(null); }} placeholder={suggestedTitle ? `e.g. ${suggestedTitle}` : forWish ? `e.g. Hidden gems of ${forWish.city}` : `e.g. ${example}`} autoFocus={!title} aria-required className="w-full bg-transparent font-display text-[32px] leading-[1.05] outline-none border-b border-line focus:border-terracotta-soft placeholder:text-ink-faint" />
+            {!title.trim() && <p className="mt-1.5 text-[12.5px] text-terracotta-deep">Give your guide a title before you create it.</p>}
+            <div className="mt-2 flex items-center gap-2">
+              <Label className="mb-0">City</Label>
+              <input value={city} onChange={(e) => setCity(e.target.value)} placeholder="Where is this guide?" className="flex-1 bg-transparent text-[14px] outline-none border-b border-line focus:border-terracotta-soft py-1" />
+            </div>
           </div>
-        </div>
+        ) : (
+          <div>
+            <h1 className="font-display text-[30px] leading-[1.05]">Add {kept.length} place{kept.length === 1 ? "" : "s"} to My places</h1>
+            <p className="mt-1 text-[13px] text-ink-muted">Check the list, then choose who can see them.</p>
+          </div>
+        )}
         {fromList ? (
           <p className="text-[12.5px] text-ink-muted">
             {(() => {
@@ -485,12 +522,62 @@ export function VoiceCreate({
             onPick={(pick) => setDraft((d) => [...d, { key: `${Date.now()}`, name: pick.name, cityHint: city, resolved: pick.providerId ? { ...emptyResolved(pick.name, city), providerId: pick.providerId } : null }])}
           />
         </div>
+        <div className="rounded-2xl border border-line bg-paper p-3.5 flex flex-col gap-3">
+          <div>
+            <div className="text-[13.5px] font-semibold">{forSomeone ? "In your My places too" : "Who can see them"}</div>
+            <p className="mt-0.5 text-[12px] text-ink-muted leading-snug">
+              {forSomeone
+                ? "These are your places, so they also go into My places. Recommend them and they show on the city page for friends."
+                : "Recommended places show on their city’s page for friends. You can change this per place later."}
+            </p>
+          </div>
+          <div role="radiogroup" aria-label="Who can see them" className="grid grid-cols-2 gap-2">
+            {[
+              { v: true, t: "Recommend all", d: "Friends see them" },
+              { v: false, t: "Keep them private", d: "Only you" },
+            ].map((o) => (
+              <button
+                key={String(o.v)}
+                type="button"
+                role="radio"
+                aria-checked={share === o.v}
+                onClick={() => setShare(o.v)}
+                className={cx("rounded-xl border px-3 py-2 text-left", share === o.v ? "border-terracotta bg-terracotta-tint/40" : "border-line")}
+              >
+                <span className="block text-[13.5px] font-semibold">{o.t}</span>
+                <span className="block text-[11.5px] text-ink-muted">{o.d}</span>
+              </button>
+            ))}
+          </div>
+          {!forSomeone && (
+            <>
+              <button type="button" role="switch" aria-checked={alsoGuide} onClick={() => { setAlsoGuide((v) => !v); setError(null); }} className="flex items-center justify-between gap-3 text-left pt-1">
+                <span>
+                  <span className="block text-[13.5px] font-semibold">Also make a guide from these</span>
+                  <span className="block text-[12px] text-ink-muted">{alsoGuide ? "A private draft — publish it when you're ready." : "Optional. You can do it later from My places."}</span>
+                </span>
+                <span className={cx("relative w-11 h-6 rounded-full shrink-0 transition-colors", alsoGuide ? "bg-terracotta" : "bg-line")}>
+                  <span className={cx("absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all", alsoGuide ? "left-[22px]" : "left-0.5")} />
+                </span>
+              </button>
+              {alsoGuide && (
+                <div>
+                  <Label htmlFor="import-guide-title">Guide title</Label>
+                  <Input id="import-guide-title" value={title} onChange={(e) => { setTitle(e.target.value); setError(null); }} placeholder={suggestedTitle ? `e.g. ${suggestedTitle}` : `e.g. ${example}`} autoFocus={!title} />
+                  {!title.trim() && <p className="mt-1.5 text-[12px] text-terracotta-deep">Give your guide a title.</p>}
+                </div>
+              )}
+            </>
+          )}
+        </div>
         {error && <p className="text-[12.5px] text-danger">{error}</p>}
         <div className="fixed bottom-0 inset-x-0 z-30 flex justify-center pointer-events-none">
           <div className="pointer-events-auto w-full max-w-[480px] safe-bottom bg-paper/95 backdrop-blur border-t border-line px-4 py-3 flex items-center gap-2">
             <button type="button" onClick={() => { setStage("paste"); setFromList(false); setError(null); }} className="text-[13px] font-medium text-ink-muted px-3 py-2">Start over</button>
             <div className="flex-1" />
-            <Button onClick={finish} disabled={creating || kept.length === 0 || !title.trim()}>{creating ? <Spinner /> : `Create guide · ${kept.length} place${kept.length === 1 ? "" : "s"}`}</Button>
+            <Button onClick={finish} disabled={creating || kept.length === 0 || ((forSomeone || alsoGuide) && !title.trim())}>
+              {creating ? <Spinner /> : forSomeone ? `Create guide · ${kept.length} place${kept.length === 1 ? "" : "s"}` : `Add ${kept.length} place${kept.length === 1 ? "" : "s"} to My places`}
+            </Button>
           </div>
         </div>
       </div>

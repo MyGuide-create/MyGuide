@@ -4,15 +4,12 @@ import { notFound } from "next/navigation";
 import { AppShell, TopBar } from "@/components/AppShell";
 import { FollowButton } from "@/components/FollowButton";
 import { GuideCard } from "@/components/GuideCard";
-import { HeartIcon, LockIcon } from "@/components/Icons";
+import { HeartIcon, LockIcon, PlusIcon } from "@/components/Icons";
 import { Avatar, EmptyState, LinkButton } from "@/components/ui";
 import { getCurrentUser, toPublicUser } from "@/lib/auth";
 import { AskForGuideButton } from "@/components/AskForGuide";
 import { getFollowStats, getUserByUsername, listGuidesByOwner } from "@/lib/guides";
-import { and, asc, eq } from "drizzle-orm";
-import { getDb } from "@/lib/db";
-import { guides, places } from "@/lib/db/schema";
-import { STASH_TITLE } from "@/lib/stash";
+import { loadMyPlaces } from "@/lib/myPlaces";
 import { PlaceTile } from "@/components/PlaceTile";
 import { hiddenUserIds, viewerBlocked } from "@/lib/blocks";
 import { BlockButton } from "@/components/BlockButton";
@@ -40,10 +37,8 @@ export default async function ProfilePage({ params, searchParams }: PageProps<"/
   const iBlocked = !!viewer && !own && (await viewerBlocked(viewer.id, profile.id));
   const hiddenFromMe = !!viewer && !own && (await hiddenUserIds(viewer.id)).has(profile.id);
   const [cards, stats, wishes] = await Promise.all([listGuidesByOwner(profile.id, viewer?.id), getFollowStats(profile.id, viewer?.id), listWishesFor(profile, viewer?.id)]);
-  // Your own Saved places (places recorded on the go) get their own card, not a draft.
-  const db = own ? await getDb() : null;
-  const stash = db ? await db.query.guides.findFirst({ where: and(eq(guides.ownerId, profile.id), eq(guides.title, STASH_TITLE)) }) : undefined;
-  const stashPlaces = db && stash ? await db.select().from(places).where(eq(places.guideId, stash.id)).orderBy(asc(places.position)).limit(50) : [];
+  // Your own places (My places) get their own card, not a draft.
+  const myPlaces = own ? (await loadMyPlaces(profile.id)).items : [];
   const published = cards.filter((c) => c.guide.publishedAt);
   const drafts = cards.filter((c) => !c.guide.publishedAt);
   // listGuidesByOwner already hides guides from a locked private profile, but the page still
@@ -82,7 +77,6 @@ export default async function ProfilePage({ params, searchParams }: PageProps<"/
         <div className="mt-4">
           {own ? (
             <div className="flex gap-2">
-              <LinkButton href="/create" size="sm">Create a guide</LinkButton>
               <LinkButton href="/saved" size="sm" variant="outline"><HeartIcon size={14} /> Favourites</LinkButton>
             </div>
           ) : (
@@ -113,31 +107,43 @@ export default async function ProfilePage({ params, searchParams }: PageProps<"/
           />
         ) : (
           <>
-            {own && stashPlaces.length > 0 && (
-              <Link href="/saved/places" className="flex items-center gap-3 rounded-[22px] border border-line bg-paper px-4 py-3.5 hover:border-terracotta-soft">
-                <span className="flex -space-x-3 shrink-0">
-                  {stashPlaces.slice(0, 3).map((p) => (
-                    <PlaceTile key={p.id} place={p} size={44} className="ring-2 ring-paper" />
-                  ))}
-                </span>
+            {own && (
+              <Link href="/my-places" className="flex items-center gap-3 rounded-[22px] border border-line bg-paper px-4 py-3.5 hover:border-terracotta-soft">
+                {myPlaces.length > 0 ? (
+                  <span className="flex -space-x-3 shrink-0">
+                    {myPlaces.slice(0, 3).map((p) => (
+                      <PlaceTile key={p.place.id} place={p.place} size={44} className="ring-2 ring-paper" />
+                    ))}
+                  </span>
+                ) : (
+                  <span className="w-11 h-11 rounded-full bg-terracotta-tint text-terracotta flex items-center justify-center shrink-0"><PlusIcon size={20} /></span>
+                )}
                 <span className="flex-1 min-w-0">
-                  <span className="block font-display text-[20px] leading-tight">Saved places</span>
-                  <span className="block text-[12.5px] text-ink-muted">{stashPlaces.length} place{stashPlaces.length === 1 ? "" : "s"} to sort into guides</span>
+                  <span className="block font-display text-[20px] leading-tight">My places</span>
+                  <span className="block text-[12.5px] text-ink-muted">
+                    {myPlaces.length ? `${myPlaces.length} place${myPlaces.length === 1 ? "" : "s"}` : "Every place you add lands here"}
+                  </span>
                 </span>
                 <span aria-hidden className="text-[20px] text-terracotta">›</span>
               </Link>
             )}
             {wishes && <WishList wishes={wishes} own={own} ownerName={profile.displayName} ownerUsername={profile.username} signedIn={!!viewer} />}
+            {own && (
+              <div className="flex items-center justify-between px-1 mt-1">
+                <h2 className="font-display text-[22px]">Your guides</h2>
+                <LinkButton href="/create" size="sm" variant="outline"><PlusIcon size={14} /> New guide</LinkButton>
+              </div>
+            )}
             {own && drafts.length > 0 && (
               <>
-                <h2 id="drafts" className="font-display text-[22px] px-1 scroll-mt-20">Drafts</h2>
+                <h2 id="drafts" className="font-display text-[19px] px-1 scroll-mt-20 text-ink-muted">Drafts</h2>
                 {draftSaved && <p className="-mt-1 px-1 text-[12.5px] text-sage font-medium">Draft saved. Only you can see it — open it any time to keep going, then publish.</p>}
                 {drafts.map((c) => <GuideCard key={c.guide.id} data={c} showOwner={false} />)}
-                <h2 className="font-display text-[22px] px-1 mt-2">Published</h2>
+                <h2 className="font-display text-[19px] px-1 mt-2 text-ink-muted">Published</h2>
               </>
             )}
             {published.length === 0 && (
-              <EmptyState title={own ? "No guides yet" : `${profile.displayName.split(" ")[0]} hasn't published a guide yet`} body={own ? "Add the places you love, or paste a list you already have." : undefined} action={own ? <LinkButton href="/create" size="sm">Create a guide</LinkButton> : undefined} />
+              <EmptyState title={own ? "No guides yet" : `${profile.displayName.split(" ")[0]} hasn't published a guide yet`} body={own ? "Group your places into a guide whenever you like — from My places, a city page, or New guide above." : undefined} />
             )}
             {published.map((c) => <GuideCard key={c.guide.id} data={c} showOwner={false} />)}
           </>

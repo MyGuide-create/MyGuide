@@ -232,7 +232,7 @@ export async function listGuidesByOwner(ownerId: string, viewerId?: string | nul
     .from(guides)
     .where(own ? eq(guides.ownerId, ownerId) : and(eq(guides.ownerId, ownerId), publicPublished()))
     .orderBy(desc(guides.updatedAt));
-  // Saved places has its own page (/saved/places); it isn't a guide or a draft.
+  // My places has its own page (/my-places); it isn't a guide or a draft.
   const cards = await hydrateCards(rows.filter((g) => !isStash(g)));
   return own ? cards : filterVisibleCards(cards, viewerId);
 }

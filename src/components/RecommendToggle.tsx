@@ -8,10 +8,10 @@ import { Spinner, cx } from "./ui";
 import { errorText } from "@/lib/errorText";
 
 /**
- * Recommend places from Saved places on their own (no guide needed), so they show on the city page —
+ * Recommend places from My places on their own (no guide needed), so they show on the city page —
  * or take them back to private.
  * - "card": the place page (one place), with a line saying what it means.
- * - "pill": a small switch on a Saved places row.
+ * - "pill": a small switch on a My places row.
  * - "all": "Recommend all" for a city group.
  */
 export function RecommendToggle({
@@ -76,7 +76,7 @@ export function RecommendToggle({
     <div className={cx("rounded-2xl p-3 flex items-center gap-3", shared ? "bg-sage-tint" : "bg-cream-deep/60")}>
       <span className="shrink-0 text-ink-muted">{shared ? <GlobeIcon size={18} /> : <LockIcon size={18} />}</span>
       <span className="flex-1 min-w-0 text-[12.5px] leading-snug">
-        {shared ? <>Recommended · shows on {where}</> : <>In your Saved places · only you can see it</>}
+        {shared ? <>Recommended · shows on {where}</> : <>In My places · only you can see it</>}
         {error && <span className="block text-danger">{error}</span>}
       </span>
       <button

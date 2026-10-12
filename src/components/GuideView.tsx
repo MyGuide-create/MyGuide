@@ -3,7 +3,7 @@
 import { mapsUrl } from "@/lib/places/pins";
 
 import Link from "next/link";
-import { STASH_TITLE } from "@/lib/stash";
+import { isStash } from "@/lib/stash";
 import { useEffect, useState } from "react";
 import type { GuideDetail } from "@/lib/guides";
 import type { PublicUser } from "@/lib/auth";
@@ -128,7 +128,7 @@ export function GuideView({ detail, viewerId, viewer, shareUrl, shareKey }: { de
 
         {guide.description && <p className="mt-3.5 text-[13.5px] leading-[1.5] italic">{guide.description}</p>}
 
-        {detail.viewerIsOwner && guide.title === STASH_TITLE && places.length > 0 && (
+        {detail.viewerIsOwner && isStash(guide) && places.length > 0 && (
           <Link href="/saved/sort" className="mt-4 flex items-center justify-between gap-3 rounded-2xl bg-ink text-cream px-4 py-3.5">
             <span className="min-w-0">
               <span className="block font-semibold text-[15px]">Make a guide from these</span>

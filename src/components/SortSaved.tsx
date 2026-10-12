@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { fileSavedPlaces } from "@/lib/actions/fileSaved";
 import { errorText } from "@/lib/errorText";
@@ -11,24 +11,28 @@ import { Button, Input, Spinner, cx } from "./ui";
 type SavedPlace = { id: string; name: string; category: string; photoUrl: string | null; photoMediaId: string | null; city: string; area: string };
 type GuideOption = { id: string; title: string; city: string; placeCount: number };
 
-const KEEP_KEY = "mg.keepCopyInSaved";
+/** Remembers "Keep a copy in My places". A new key: the old one (mg.keepCopyInSaved, off by default) is ignored once, as the default is now on. */
+const KEEP_KEY = "mg.keepCopyInMyPlaces";
 
-export function SortSaved({ places, guides }: { places: SavedPlace[]; guides: GuideOption[] }) {
+export function SortSaved({ places, guides, preTicked }: { places: SavedPlace[]; guides: GuideOption[]; /** From the "Make them a guide?" nudge: these are ticked and we start at step 2. */ preTicked?: string[] }) {
   const router = useRouter();
-  const [picked, setPicked] = useState<Set<string>>(new Set());
-  const [step, setStep] = useState<"pick" | "where">("pick");
+  const [picked, setPicked] = useState<Set<string>>(() => new Set(preTicked ?? []));
+  const [step, setStep] = useState<"pick" | "where">(preTicked?.length ? "where" : "pick");
   const [mode, setMode] = useState<"new" | "existing">("new");
   const [title, setTitle] = useState("");
   const [guideId, setGuideId] = useState<string | null>(null);
-  // Remember the person's last choice for "Keep a copy" (off by default). The switch only shows on
-  // step 2, after hydration, so reading localStorage here doesn't cause a mismatch.
-  const [keepCopy, setKeepCopy] = useState(() => {
-    try {
-      return typeof window !== "undefined" && localStorage.getItem(KEEP_KEY) === "1";
-    } catch {
-      return false;
-    }
-  });
+  // Remember the person's last choice for "Keep a copy" (on by default: places in a guide stay in My places).
+  // Read after hydration (the page can open straight on step 2, where the switch is).
+  const [keepCopy, setKeepCopy] = useState(true);
+  useEffect(() => {
+    queueMicrotask(() => {
+      try {
+        if (localStorage.getItem(KEEP_KEY) === "0") setKeepCopy(false);
+      } catch {
+        /* ignore */
+      }
+    });
+  }, []);
   const [error, setError] = useState<string | null>(null);
   const [saving, startSaving] = useTransition();
 
@@ -213,8 +217,8 @@ export function SortSaved({ places, guides }: { places: SavedPlace[]; guides: Gu
 
       <button type="button" role="switch" aria-checked={keepCopy} onClick={toggleKeep} className="flex items-center justify-between gap-3 rounded-2xl border border-line bg-paper px-4 py-3 text-left">
         <span>
-          <span className="block text-[14px] font-semibold">Keep a copy in Saved places</span>
-          <span className="block text-[12px] text-ink-muted">{keepCopy ? "They'll stay in Saved places too." : "Off: they move out of Saved places."}</span>
+          <span className="block text-[14px] font-semibold">Keep them in My places</span>
+          <span className="block text-[12px] text-ink-muted">{keepCopy ? "They stay in My places too." : "Off: they move out of My places into the guide."}</span>
         </span>
         <span className={cx("relative w-11 h-6 rounded-full shrink-0 transition-colors", keepCopy ? "bg-terracotta" : "bg-line")}>
           <span className={cx("absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all", keepCopy ? "left-[22px]" : "left-0.5")} />

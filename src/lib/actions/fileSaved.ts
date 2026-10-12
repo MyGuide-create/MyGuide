@@ -1,12 +1,14 @@
 "use server";
 
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getCurrentUser } from "../auth";
 import { getDb } from "../db";
-import { guides, placeLocations, placePhotos, placeTips, places, type Place } from "../db/schema";
+import { guides, places, type Place } from "../db/schema";
 import { canonicalCity, findCityExact } from "../places/cities";
-import { STASH_TITLE } from "../stash";
+import { isReservedTitle } from "../stash";
+import { copyPlaceExtras, findStash } from "../myPlaces";
+import { spotKey } from "../citySpots";
 import { UserError } from "../userError";
 import { newId, newToken, slugify } from "../utils";
 
@@ -36,26 +38,26 @@ function mainCity(rows: Place[]): { city: string; country: string } {
 }
 
 /**
- * Saved places → a guide. Moves the ticked places out of the user's "Saved places" list into a new
- * or existing guide (or copies them, keeping the originals, when `keepCopy`). Notes, tips, photos and
- * branches go with them.
+ * My places → a guide. Copies the ticked places into a new or existing guide, keeping them in My
+ * places (`keepCopy`, the default since 12 Oct 2026), or moves them. Notes, tips, photos and branches
+ * go with them. Places the guide already has are skipped.
  */
 export async function fileSavedPlaces(input: {
   placeIds: string[];
   guideId?: string;
   newTitle?: string;
   keepCopy?: boolean;
-}): Promise<{ slug: string; created: boolean; count: number }> {
+}): Promise<{ slug: string; created: boolean; count: number; already: number }> {
   const user = await getCurrentUser();
   if (!user) throw new UserError("Please log in.", "auth");
   const db = await getDb();
-  const stash = await db.query.guides.findFirst({ where: and(eq(guides.ownerId, user.id), eq(guides.title, STASH_TITLE)) });
-  if (!stash) throw new UserError("You don't have any saved places yet.", "invalid");
+  const stash = await findStash(user.id);
+  if (!stash) throw new UserError("You haven't added any places yet.", "invalid");
   const ids = [...new Set(input.placeIds)].slice(0, 200);
   if (!ids.length) throw new UserError("Tick at least one place.", "invalid");
-  const picked = await db.select().from(places).where(and(eq(places.guideId, stash.id), inArray(places.id, ids)));
-  if (!picked.length) throw new UserError("Those places aren't in your Saved places any more.", "invalid");
-  // Keep the order they had in Saved places.
+  let picked = await db.select().from(places).where(and(eq(places.guideId, stash.id), inArray(places.id, ids)));
+  if (!picked.length) throw new UserError("Those places aren't in My places any more.", "invalid");
+  // Keep the order they had in My places.
   picked.sort((a, b) => a.position - b.position);
 
   const now = new Date();
@@ -64,10 +66,11 @@ export async function fileSavedPlaces(input: {
   if (input.guideId) {
     target = await db.query.guides.findFirst({ where: eq(guides.id, input.guideId) });
     if (!target || target.ownerId !== user.id) throw new UserError("You can only add to your own guides.", "forbidden");
-    if (target.id === stash.id) throw new UserError("They're already in Saved places.", "invalid");
+    if (target.id === stash.id) throw new UserError("They're already in My places.", "invalid");
   } else {
     const title = (input.newTitle ?? "").trim().slice(0, 120);
     if (!title) throw new UserError("Give your guide a title.", "invalid");
+    if (isReservedTitle(title)) throw new UserError("“My places” is the name of your own list — give the guide another title.", "invalid");
     const where = mainCity(picked);
     const known = findCityExact(where.city);
     const id = newId();
@@ -88,26 +91,23 @@ export async function fileSavedPlaces(input: {
     created = true;
   }
 
-  // New places go to the top of the guide, in their Saved places order.
-  const [{ min }] = await db.select({ min: sql<number>`coalesce(min(${places.position}), 0)` }).from(places).where(eq(places.guideId, target.id));
-  const start = Number(min) - picked.length;
+  // New places go to the top of the guide, in their My places order. Ones the guide already has are skipped.
+  const inTarget = await db.select().from(places).where(eq(places.guideId, target.id));
+  const have = new Set(inTarget.map(spotKey));
+  const total = picked.length;
+  picked = picked.filter((p) => !have.has(spotKey(p)));
+  const min = inTarget.reduce((m, p) => Math.min(m, p.position), 0);
+  const start = min - picked.length;
 
   if (!input.keepCopy) {
     for (let i = 0; i < picked.length; i++) {
       await db.update(places).set({ guideId: target.id, position: start + i }).where(eq(places.id, picked[i].id));
     }
-  } else {
+  } else if (picked.length) {
     const pairs: Array<[string, string]> = picked.map((p) => [p.id, newId()]);
     const newIdOf = new Map(pairs);
     await db.insert(places).values(picked.map((p, i) => ({ ...p, id: newIdOf.get(p.id)!, guideId: target.id, position: start + i, createdAt: now, sharedAt: null })));
-    const [tips, photos, branches] = await Promise.all([
-      db.select().from(placeTips).where(inArray(placeTips.placeId, picked.map((p) => p.id))),
-      db.select().from(placePhotos).where(inArray(placePhotos.placeId, picked.map((p) => p.id))),
-      db.select().from(placeLocations).where(inArray(placeLocations.placeId, picked.map((p) => p.id))),
-    ]);
-    if (tips.length) await db.insert(placeTips).values(tips.map((t) => ({ ...t, id: newId(), placeId: newIdOf.get(t.placeId)!, createdAt: now })));
-    if (photos.length) await db.insert(placePhotos).values(photos.map((t) => ({ ...t, id: newId(), placeId: newIdOf.get(t.placeId)!, createdAt: now })));
-    if (branches.length) await db.insert(placeLocations).values(branches.map((t) => ({ ...t, id: newId(), placeId: newIdOf.get(t.placeId)!, createdAt: now })));
+    await copyPlaceExtras(pairs);
   }
 
   await db.update(guides).set({ updatedAt: now }).where(inArray(guides.id, [target.id, stash.id]));
@@ -116,5 +116,6 @@ export async function fileSavedPlaces(input: {
     revalidatePath(`/g/${slug}/edit`);
   }
   revalidatePath("/saved");
-  return { slug: target.slug, created, count: picked.length };
+  revalidatePath("/my-places");
+  return { slug: target.slug, created, count: picked.length, already: total - picked.length };
 }

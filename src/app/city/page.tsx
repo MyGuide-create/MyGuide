@@ -288,7 +288,7 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
 
             <div className="px-4 flex flex-col gap-2.5">
               <div className="flex items-baseline justify-between px-1">
-                <h2 className="font-display text-[22px]">{isMe ? `Your ${city}` : picked ? `${first(picked)}\u2019s ${city}` : fromFriends ? "Most recommended" : "Most recommended on MyGuide"}</h2>
+                <h2 className="font-display text-[22px]">{isMe ? `My ${city}` : picked ? `${first(picked)}\u2019s ${city}` : fromFriends ? "Most recommended" : "Most recommended on MyGuide"}</h2>
                 <span className="text-[13px] text-ink-muted">{shownSpots.length} spot{shownSpots.length === 1 ? "" : "s"}</span>
               </div>
               {shownSpots.length > 0 && (
