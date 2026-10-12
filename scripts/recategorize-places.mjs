@@ -4,12 +4,15 @@
 //     shops and salons fall through to "Scenic Spots"
 //
 // A place is only changed when its current category is still what the app chose automatically
-// (the old rules give the same answer). If a creator picked a category by hand, it's left alone.
+// (the old rules give the same answer). If a creator picked a category by hand, it's left alone —
+// EXCEPT when the new answer is Beauty: Beauty didn't exist before, so a creator with salons had no
+// right choice and may have picked the nearest one (e.g. Sports & Wellness). Those move to Beauty.
 // Dropped pins (no Google listing) are left alone too.
 //
 // Usage, from the MyGuide folder, AFTER deploying (so new places already use the new rules):
 //   node scripts/recategorize-places.mjs           ← dry run: shows what would change, writes nothing
 //   node scripts/recategorize-places.mjs --apply   ← writes the changes
+//   node scripts/recategorize-places.mjs --guide "Hair"   ← explains every place in one guide, writes nothing
 // Cost: one Google Place Details lookup (type fields only) per place. Safe to re-run.
 import fs from "node:fs";
 import { createClient } from "@libsql/client/web";
@@ -68,8 +71,39 @@ async function googleTypes(id) {
   const res = await fetch(`https://places.googleapis.com/v1/places/${encodeURIComponent(id)}?languageCode=en`, {
     headers: { "X-Goog-Api-Key": key, "X-Goog-FieldMask": "id,displayName,primaryType,types" },
   });
-  if (!res.ok) return null;
+  if (!res.ok) {
+    // Say why once (a key restriction or quota shows up here), so a silent "nothing to change" can't hide it.
+    if (!googleTypes.warned) { googleTypes.warned = true; console.log(`Google said ${res.status}: ${(await res.text()).slice(0, 300)}`); }
+    return null;
+  }
   return res.json();
+}
+
+// --guide "Hair": explain every place in the matching guide(s) — what Google says, what the old and new rules give,
+// and what the script would do — then stop. For when a guide doesn't change and we need to see why.
+const gi = process.argv.indexOf("--guide");
+if (gi > -1) {
+  const q = process.argv[gi + 1] ?? "";
+  const list = (
+    await db.execute({
+      sql: "select p.name, p.category, p.google_place_id, g.title as guide, u.username from places p join guides g on g.id = p.guide_id join users u on u.id = g.owner_id where lower(g.title) like lower(?) order by g.title, p.position",
+      args: [`%${q}%`],
+    })
+  ).rows;
+  if (!list.length) console.log(`No guide with "${q}" in its title.`);
+  let last = "";
+  for (const p of list) {
+    if (p.guide !== last) { console.log(`\n"${p.guide}" by @${p.username}`); last = p.guide; }
+    if (!p.google_place_id) { console.log(`  • ${p.name}: ${p.category} — no Google listing saved, so the script skips it`); continue; }
+    const g = await googleTypes(p.google_place_id);
+    if (!g) { console.log(`  • ${p.name}: ${p.category} — Google lookup failed for ${p.google_place_id}`); continue; }
+    const name = g.displayName?.text || p.name;
+    const before = oldCategory(g.primaryType, g.types, name);
+    const after = categoryFromGoogle(g.primaryType, g.types, name);
+    const action = after === p.category ? "no change needed" : p.category !== before && after !== "Beauty" ? "left alone (picked by hand)" : `→ ${after}`;
+    console.log(`  • ${p.name}: now ${p.category} | Google: ${g.primaryType || "-"} [${(g.types ?? []).join(", ")}] | old rules ${before}, new rules ${after} | ${action}`);
+  }
+  process.exit(0);
 }
 
 const rows = (
@@ -80,6 +114,7 @@ const rows = (
 console.log(`Checking ${rows.length} places with a Google listing…`);
 
 const changes = [];
+const keptByHand = [];
 let handPicked = 0;
 let notFound = 0;
 let i = 0;
@@ -92,8 +127,8 @@ async function worker() {
     const name = g.displayName?.text || p.name;
     const before = oldCategory(g.primaryType, g.types, name);
     const after = categoryFromGoogle(g.primaryType, g.types, name);
-    if (p.category !== before) {
-      if (p.category !== after) handPicked++;
+    if (p.category !== before && after !== "Beauty") {
+      if (p.category !== after) { handPicked++; keptByHand.push({ ...p, after }); }
       continue;
     }
     if (after !== p.category) changes.push({ ...p, after, googleType: g.primaryType || (g.types ?? [])[0] || "?" });
@@ -109,6 +144,10 @@ for (const c of changes) {
 for (const [guide, list] of byGuide) {
   console.log(`\n${guide}`);
   for (const c of list) console.log(`  • ${c.name}: ${c.category} → ${c.after}   (Google: ${c.googleType})`);
+}
+if (keptByHand.length) {
+  console.log("\nLeft alone (category picked by hand):");
+  for (const c of keptByHand) console.log(`  • ${c.name} in "${c.guide}": stays ${c.category} (new rules would say ${c.after})`);
 }
 console.log(`\n${changes.length} place(s) to re-categorise. Left alone: ${handPicked} picked by hand, ${notFound} not found on Google.`);
 
