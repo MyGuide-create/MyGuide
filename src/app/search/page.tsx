@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { cityNameVariants, findCityExact } from "@/lib/places/cities";
 import { AppShell, TopBar } from "@/components/AppShell";
 import { GuideCard } from "@/components/GuideCard";
 import { SearchBar } from "@/components/SearchBar";
@@ -54,7 +56,18 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
   // "See all" on the People section: just the people, no guide search.
   const allPeople = sp.people === "all";
   const here = `/search?q=${encodeURIComponent(q)}${allPeople ? "&people=all" : ""}`;
+  // Just a city ("London", "lisboa", "New York, USA"): straight to the city page, which is where
+  // places and guides for a city live now. Anything more ("bars in London") stays a search.
+  const cityOnly = (name: string, country?: string) => redirect(`/city?${new URLSearchParams({ name, ...(country ? { country } : {}) }).toString()}`);
+  if (q && !allPeople) {
+    const known = findCityExact(q) ?? findCityExact(q.split(",")[0]);
+    if (known) cityOnly(known.city, known.country);
+  }
   const intent = q && !allPeople ? await interpretSearch(q) : null;
+  if (intent?.city && !intent.keywords.length && !intent.category && !intent.byUsername && intent.scope !== "following") {
+    const asked = q.split(",")[0].trim().toLowerCase().replace(/\s+/g, " ");
+    if (cityNameVariants(intent.city).includes(asked) || asked === intent.city.toLowerCase()) cityOnly(intent.city, intent.country);
+  }
   // A city search ("Paris") is about places: people only show on a whole-word name match, and below the guides.
   const placeSearch = !!(intent && (intent.city || intent.country) && !intent.byUsername);
   const people = q ? await searchPeople(q, user?.id, allPeople ? 50 : 3, { wholeWord: placeSearch }) : { hits: [], total: 0 };
