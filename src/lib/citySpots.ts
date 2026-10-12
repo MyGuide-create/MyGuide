@@ -1,5 +1,6 @@
 /**
- * "Friends' spots" for the city page: every place from published guides in a city, merged so the
+ * "Friends' spots" for the city page: every place from published guides in a city (plus places people
+ * recommended on their own from Saved places), merged so the
  * same spot added by several people shows once, with who recommends it and their tip.
  * Reads only; nothing here changes stored data.
  */
@@ -61,8 +62,8 @@ export async function citySpots(opts: { city: string; viewerId?: string | null; 
   const db = await getDb();
   const variants = cityNameVariants(city);
   const conds: SQL[] = [
-    eq(guides.visibility, "public"),
-    isNotNull(guides.publishedAt),
+    // In a public guide, or recommended on its own (a shared place in Saved places).
+    or(and(eq(guides.visibility, "public"), isNotNull(guides.publishedAt)), isNotNull(places.sharedAt))!,
     or(inArray(sql`lower(trim(${places.city}))`, variants), inArray(sql`lower(trim(${guides.city}))`, variants))!,
   ];
   if (ownerIds) conds.push(inArray(guides.ownerId, ownerIds));
@@ -118,4 +119,15 @@ export async function citySpots(opts: { city: string; viewerId?: string | null; 
   const latest = (s: CitySpot) => Math.max(...s.recommenders.map((x) => x.addedAt.getTime()));
   for (const g of groups.values()) g.recommenders.sort((a, b) => Number(!!b.tip) - Number(!!a.tip) || b.addedAt.getTime() - a.addedAt.getTime());
   return [...groups.values()].sort((a, b) => b.recommenders.length - a.recommenders.length || latest(b) - latest(a));
+}
+
+/** Can the viewer see a place its owner recommended on its own (outside a public guide)? Same rules as a public guide. */
+export async function canViewSharedPlace(ownerId: string, viewerId: string | null | undefined): Promise<boolean> {
+  if (viewerId === ownerId) return true;
+  if ((await hiddenUserIds(viewerId)).has(ownerId)) return false;
+  const db = await getDb();
+  const owner = await db.query.users.findFirst({ where: eq(users.id, ownerId) });
+  if (!owner) return false;
+  if (owner.profileVisibility !== "private") return true;
+  return !!viewerId && (await acceptedFollowingIds(viewerId)).includes(ownerId);
 }

@@ -3,6 +3,7 @@ import { and, asc, eq } from "drizzle-orm";
 import { AppShell, TopBar } from "@/components/AppShell";
 import { PinIcon, PlusIcon } from "@/components/Icons";
 import { PlaceTile } from "@/components/PlaceTile";
+import { RecommendToggle } from "@/components/RecommendToggle";
 import { EmptyState, LinkButton } from "@/components/ui";
 import { requireUser, toPublicUser } from "@/lib/auth";
 import { getDb } from "@/lib/db";
@@ -15,7 +16,10 @@ import { timeAgo } from "@/lib/utils";
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Saved places" };
 
-/** Places you recorded on the go, waiting to go into a guide. Private; grouped by city. */
+/**
+ * Places you recorded on the go, grouped by city. Private unless you recommend them: a recommended
+ * place shows on its city page's spots without needing a guide. Sort them into guides any time.
+ */
 export default async function SavedPlacesPage() {
   const user = await requireUser("/saved/places");
   const db = await getDb();
@@ -27,6 +31,7 @@ export default async function SavedPlacesPage() {
     const city = p.city?.trim() ? canonicalCity(p.city) : "";
     groups.set(city, [...(groups.get(city) ?? []), p]);
   }
+  const sharedCount = rows.filter((p) => p.sharedAt).length;
   const sorted = [...groups.entries()].sort((a, b) => (!a[0] ? 1 : !b[0] ? -1 : b[1].length - a[1].length));
 
   return (
@@ -38,10 +43,17 @@ export default async function SavedPlacesPage() {
           <div className="min-w-0">
             <h1 className="font-display text-[32px] leading-none">Saved places</h1>
             <p className="mt-1 text-[13px] text-ink-muted">
-              {rows.length ? `${rows.length} place${rows.length === 1 ? "" : "s"} you recorded on the go · only you can see these` : "Only you can see these"}
+              {rows.length
+                ? `${rows.length} place${rows.length === 1 ? "" : "s"} you recorded on the go · ${sharedCount ? `${sharedCount} recommended` : "only you can see these"}`
+                : "Only you can see these"}
             </p>
           </div>
         </div>
+        {rows.length > 0 && (
+          <p className="mt-3 text-[12.5px] leading-snug text-ink-muted">
+            Tap <span className="font-semibold text-ink">Private</span> to recommend a place. Recommended places show on their city&apos;s page for friends, no guide needed.
+          </p>
+        )}
         {rows.length > 0 && (
           <div className="mt-4 flex gap-2.5">
             <LinkButton href="/saved/sort" className="flex-1">Make a guide from these</LinkButton>
@@ -63,11 +75,16 @@ export default async function SavedPlacesPage() {
               <h2 className="px-1 flex items-baseline gap-2 border-b border-line pb-1.5 mb-2.5">
                 <span className="font-display text-[21px]">{city || "Other places"}</span>
                 <span className="text-[12px] text-ink-faint">{items.length}</span>
+                {city && items.filter((p) => !p.sharedAt).length > 1 && (
+                  <span className="ml-auto">
+                    <RecommendToggle variant="all" placeIds={items.filter((p) => !p.sharedAt).map((p) => p.id)} shared={false} city={city} />
+                  </span>
+                )}
               </h2>
               <ul className="flex flex-col gap-2">
                 {items.map((p) => (
-                  <li key={p.id}>
-                    <Link href={`/g/${stash!.slug}/p/${p.id}`} className="flex gap-3 items-center rounded-2xl border border-line/70 bg-paper p-2.5 hover:border-terracotta-soft">
+                  <li key={p.id} className="flex items-center gap-2 rounded-2xl border border-line/70 bg-paper pr-2.5 hover:border-terracotta-soft">
+                    <Link href={`/g/${stash!.slug}/p/${p.id}`} className="flex-1 min-w-0 flex gap-3 items-center p-2.5">
                       <PlaceTile place={p} size={56} />
                       <span className="flex-1 min-w-0">
                         <span className="block font-semibold text-[14.5px] truncate">{p.name}</span>
@@ -79,6 +96,7 @@ export default async function SavedPlacesPage() {
                         )}
                       </span>
                     </Link>
+                    <RecommendToggle variant="pill" placeIds={[p.id]} shared={!!p.sharedAt} city={city} />
                   </li>
                 ))}
               </ul>

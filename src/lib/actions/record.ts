@@ -1,7 +1,7 @@
 "use server";
 
 import { UserError } from "../userError";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "../auth";
@@ -64,6 +64,8 @@ export interface RecordPlaceInput {
   /** Or start a brand-new guide with this title. */
   newGuideTitle?: string;
   /** Neither set: the place goes into the user's private "Saved places" stash. */
+  /** Saved places only: recommend it, so it shows on the city page (Save & recommend). */
+  share?: boolean;
 }
 
 /** Finishes the "record a place" flow: resolves the place, files it into a guide, and saves what was captured. */
@@ -104,6 +106,7 @@ export async function saveRecordedPlace(input: RecordPlaceInput): Promise<{ guid
 
   let guide: Guide;
   let editing = false;
+  let toStash = false;
   if (input.guideId) {
     const g = await getGuideById(input.guideId);
     if (!g || g.ownerId !== user.id) throw new UserError("You can only add to your own guides.", "forbidden");
@@ -128,6 +131,7 @@ export async function saveRecordedPlace(input: RecordPlaceInput): Promise<{ guid
     editing = true;
   } else {
     guide = await findOrCreateStash(user.id);
+    toStash = true;
   }
 
   // Newest place goes to the top of the guide.
@@ -159,6 +163,7 @@ export async function saveRecordedPlace(input: RecordPlaceInput): Promise<{ guid
     note: liked,
     special: null,
     noteAuthorId: user.id,
+    sharedAt: toStash && input.share ? now : null,
     createdAt: now,
   });
   if (input.photoMediaIds.length) {
@@ -178,4 +183,22 @@ export async function saveRecordedPlace(input: RecordPlaceInput): Promise<{ guid
   revalidatePath(`/g/${guide.slug}/edit`);
   revalidatePath("/me");
   return { guideSlug: guide.slug, editing };
+}
+
+/** Recommend (or stop recommending) places in your Saved places, so they show on their city's page. */
+export async function setPlacesShared(placeIds: string[], shared: boolean): Promise<number> {
+  const user = await getCurrentUser();
+  if (!user) throw new UserError("Sign in first.", "auth");
+  const ids = [...new Set(placeIds)].slice(0, 500);
+  if (!ids.length) return 0;
+  const db = await getDb();
+  const stash = await db.query.guides.findFirst({ where: and(eq(guides.ownerId, user.id), eq(guides.title, STASH_TITLE)) });
+  if (!stash) return 0;
+  const res = await db
+    .update(places)
+    .set({ sharedAt: shared ? new Date() : null })
+    .where(and(eq(places.guideId, stash.id), inArray(places.id, ids)));
+  revalidatePath("/saved/places");
+  revalidatePath("/city");
+  return res.rowsAffected ?? ids.length;
 }

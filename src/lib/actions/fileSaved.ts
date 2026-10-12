@@ -99,7 +99,7 @@ export async function fileSavedPlaces(input: {
   } else {
     const pairs: Array<[string, string]> = picked.map((p) => [p.id, newId()]);
     const newIdOf = new Map(pairs);
-    await db.insert(places).values(picked.map((p, i) => ({ ...p, id: newIdOf.get(p.id)!, guideId: target.id, position: start + i, createdAt: now })));
+    await db.insert(places).values(picked.map((p, i) => ({ ...p, id: newIdOf.get(p.id)!, guideId: target.id, position: start + i, createdAt: now, sharedAt: null })));
     const [tips, photos, branches] = await Promise.all([
       db.select().from(placeTips).where(inArray(placeTips.placeId, picked.map((p) => p.id))),
       db.select().from(placePhotos).where(inArray(placePhotos.placeId, picked.map((p) => p.id))),

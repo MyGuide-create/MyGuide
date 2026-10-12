@@ -151,6 +151,11 @@ export const places = sqliteTable(
      * Null when the place was added directly, or the source guide doesn't share its notes.
      */
     sourcePlaceId: text("source_place_id"),
+    /**
+     * Set when the owner recommends this place on its own, outside a published guide (a place in
+     * Saved places): it then shows on the city page's spots. Copies never inherit it.
+     */
+    sharedAt: integer("shared_at", { mode: "timestamp_ms" }),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   },
   (t) => [index("places_guide_idx").on(t.guideId, t.position)],

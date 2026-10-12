@@ -40,6 +40,7 @@ export function copyPlace(p: Place, source: Pick<Guide, "ownerId" | "allowFork">
     special: null,
     photoMediaId: withNotes ? p.photoMediaId : null,
     sourcePlaceId: withNotes ? p.id : null,
+    sharedAt: null,
   };
 }
 

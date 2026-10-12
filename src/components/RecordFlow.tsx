@@ -122,7 +122,7 @@ export function RecordFlow({ guides }: { guides: GuideOption[] }) {
     setStep("capture");
   };
 
-  const save = (patch: { guideId?: string; newGuideTitle?: string }) => {
+  const save = (patch: { guideId?: string; newGuideTitle?: string; share?: boolean }) => {
     if (!selected) return;
     setError(null);
     startSaving(async () => {
@@ -386,12 +386,20 @@ export function RecordFlow({ guides }: { guides: GuideOption[] }) {
             {tips.length > 0 && <div className="text-[11px] text-ink-faint">{tips.length} expert tip{tips.length === 1 ? "" : "s"}</div>}
           </div>
 
-          {/* One tap: the private "Saved places" list. Sorting into a guide can wait. */}
+          {/* One tap into Saved places, asking whether to recommend it (shows on the city page, no guide needed). */}
           <div className="px-5 pt-5">
-            <Button className="w-full" size="lg" disabled={saving} onClick={() => save({})}>
-              {saving ? <Spinner /> : "Save to my Saved places"}
-            </Button>
-            <p className="mt-2 text-center text-[12px] text-ink-muted">Your private list. Add it to a guide whenever you like.</p>
+            <p className="text-[13.5px] font-semibold">Save it to your Saved places</p>
+            <p className="mt-0.5 text-[12px] leading-snug text-ink-muted">
+              Recommend it and it shows on the {placeCity || "city"} page for friends, no guide needed. You can change this later.
+            </p>
+            <div className="mt-3 flex flex-col gap-2">
+              <Button className="w-full" size="lg" disabled={saving} onClick={() => save({ share: true })}>
+                {saving ? <Spinner /> : "Save & recommend"}
+              </Button>
+              <Button className="w-full" variant="outline" disabled={saving} onClick={() => save({ share: false })}>
+                Just save it for me
+              </Button>
+            </div>
           </div>
 
           <div className="flex items-center gap-2.5 px-5 pt-6 pb-1 text-ink-faint text-[11px] font-semibold uppercase tracking-[0.03em]">
