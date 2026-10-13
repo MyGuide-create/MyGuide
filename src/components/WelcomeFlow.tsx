@@ -7,6 +7,7 @@ import { markOnboarded } from "@/lib/actions/account";
 import { followMany, toggleFollow, type FollowStatus } from "@/lib/actions/social";
 import { installPlatform, type InstallPlatform } from "@/lib/pushClient";
 import { HomeScreenStep, needsHomeScreenStep } from "./HomeScreenStep";
+import { snoozeInstallNudge } from "./HomeScreenNudge";
 import { GuideCover } from "./GuideCover";
 import { CameraIcon, HeartIcon, MapIcon, PlusIcon } from "./Icons";
 import { Logo } from "./Logo";
@@ -131,7 +132,11 @@ export function WelcomeFlow({
         platform={platform}
         publicKey={pushPublicKey}
         stepLabel={`Step ${total} of ${total}`}
-        onDone={tour ? () => router.push(exitHref) : finish}
+        onDone={() => {
+          // Just saw the steps: Home's reminder card waits a few days.
+          snoozeInstallNudge();
+          return tour ? router.push(exitHref) : finish();
+        }}
       />
     );
 

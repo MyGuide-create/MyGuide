@@ -17,6 +17,9 @@ import { savedPlaces } from "@/lib/db/schema";
 import { listFeed, type GuideCard } from "@/lib/guides";
 import { cityKey, cityTiles, everyoneFeed, feedOwner, homeFeed, nameList, nextTrip, wantedGuides, type FeedEntry } from "@/lib/homeV2";
 import { capRuns } from "@/lib/fill";
+import { HomeScreenNudge } from "@/components/HomeScreenNudge";
+import { pushPublicKey } from "@/lib/push";
+import { userVisits } from "@/lib/db/schema";
 import { nearestFirst, viewerLocation } from "@/lib/nearby";
 import { FollowPill } from "@/components/FollowPill";
 import { placeArea } from "@/lib/places/neighbourhood";
@@ -60,6 +63,8 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   // then most spots. Where only you have places, the city page lists everyone's spots with yours,
   // so the tile counts the same (everyone's ∪ yours).
   const here = await viewerLocation();
+  // Opened MyGuide from its home-screen icon at least once: they have it, so no reminder card.
+  const hasIcon = user ? (await (await getDb()).select({ d: userVisits.day }).from(userVisits).where(and(eq(userVisits.userId, user.id), eq(userVisits.standalone, true))).limit(1)).length > 0 : true;
   const known = (user ? await friendCities(user.id, recs, { withOwn: true }) : []).map((c) =>
     c.friends.length ? c : { ...c, spots: Math.max(c.spots, byCity.get(cityKey(c.city))?.spots ?? 0) },
   );
@@ -137,6 +142,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
           <GoingSomewhere />
         </div>
       </header>
+      {user && <HomeScreenNudge hasIcon={hasIcon} publicKey={pushPublicKey()} />}
 
       <main className="pb-6 flex flex-col">
         {sp.deleted === "1" && <p className="mx-4 mt-3 rounded-2xl bg-sage-tint px-4 py-3 text-[13px]">Your account has been deleted. Thanks for trying MyGuide.</p>}
