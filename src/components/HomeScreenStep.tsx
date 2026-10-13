@@ -95,14 +95,14 @@ function IOSSteps({ platform }: { platform: InstallPlatform }) {
       />
       <Step
         n={2}
-        title={<>Tap <b className="text-terracotta">Add to Home Screen</b></>}
-        body="Scroll down the list if it’s not near the top."
+        title={<>Scroll down to <b className="text-terracotta">Add to Home Screen</b></>}
+        body="Not “Add Bookmark” or “Add to Favourites” — those only save a link in Safari. Add to Home Screen is further down the list, with a square + icon."
         art={<ShareSheetArt />}
       />
       <Step
         n={3}
         title={<>Tap <b className="text-terracotta">Add</b> at the top right</>}
-        body="Not Cancel. If you see “Open as Web App”, leave it switched on. MyGuide now sits on your home screen like any other app."
+        body="Not Cancel. If you see “Open as Web App”, leave it switched on. MyGuide now sits on your home screen like any other app — if it went into your bookmarks instead, go back to step 1."
         art={<AddSheetArt />}
       />
       <Step
@@ -198,16 +198,24 @@ function ChromeBarArt() {
 }
 
 function ShareSheetArt() {
+  // The real list: bookmark and favourites come first and look right, but only save a link in Safari.
+  const wrong = (label: string, icon: ReactNode) => (
+    <div className="px-3.5 py-2.5 flex items-center justify-between text-ink-muted/60 border-b border-line">
+      <span className="line-through decoration-danger/70 decoration-2">{label}</span>
+      <span className="flex items-center gap-2">
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-danger no-underline">Not this</span>
+        {icon}
+      </span>
+    </div>
+  );
   return (
     <div className="w-full max-w-[280px] rounded-[14px] bg-paper overflow-hidden text-[15px]">
-      <div className="px-3.5 py-2.5 flex items-center justify-between text-ink-muted/70 border-b border-line">
-        <span>Copy</span>
-        <span className="w-5 h-5 rounded-[5px] border-[1.5px] border-current" />
-      </div>
-      <div className="px-3.5 py-2.5 flex items-center justify-between text-ink-muted/70 border-b border-line">
-        <span>Add to Favourites</span>
-        <span className="text-[16px] leading-none">☆</span>
-      </div>
+      {wrong(
+        "Add Bookmark",
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"><path d="M12 6c-2-1.5-5-2-8-1.5v14c3-.5 6 0 8 1.5 2-1.5 5-2 8-1.5v-14c-3-.5-6 0-8 1.5zM12 6v14" /></svg>,
+      )}
+      {wrong("Add to Favourites", <span className="text-[16px] leading-none">☆</span>)}
+      <div className="px-3.5 py-1.5 text-center text-[12px] text-ink-muted border-b border-line">↓ scroll down ↓</div>
       <div className="px-3.5 py-2.5 flex items-center justify-between bg-terracotta-tint ring-2 ring-inset ring-terracotta rounded-[10px] font-semibold text-ink">
         <span>Add to Home Screen</span>
         <span className="w-6 h-6 rounded-[6px] border-[1.8px] border-ink flex items-center justify-center">
