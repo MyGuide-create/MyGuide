@@ -27,6 +27,7 @@ import { isStash, myPlacesHref } from "@/lib/stash";
 import { canonicalCity } from "@/lib/places/cities";
 import { RecommendToggle } from "@/components/RecommendToggle";
 import { FixPlaceLocation } from "@/components/FixPlaceLocation";
+import { PlaceOwnerActions } from "@/components/PlaceOwnerActions";
 import { ownCopyOf } from "@/lib/myPlaces";
 import { getPlacesProvider } from "@/lib/places";
 import { getGoogleRatings } from "@/lib/places/ratings";
@@ -123,6 +124,8 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
   const targets = canReuse && user ? await reuseTargets(user.id, tidyCity(guide.city || place.city)) : null;
   // Opened someone else's copy of a spot you have too: fix yours from here.
   const mine = user && !detail.viewerCanEdit ? await ownCopyOf(user.id, place) : null;
+  // Where "← Back" (and Remove) goes: My places for a My places spot, else the guide.
+  const backHref = stashPlace ? myPlacesHref(place.city ? canonicalCity(place.city) : "") : `/g/${slug}${keyQuery}`;
   const noteAuthor = place.noteAuthorId && place.noteAuthorId !== detail.owner.id ? detail.noteAuthors[place.noteAuthorId] : null;
 
   return (
@@ -178,6 +181,16 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
             place.address && <p className="mt-1 text-[13px] text-ink-muted">{place.address}</p>
           )}
           {googleRating && <GoogleRatingLine rating={googleRating} href={mapsHref} />}
+          {detail.viewerCanEdit && (
+            <PlaceOwnerActions
+              guideId={guide.id}
+              placeId={place.id}
+              name={place.name}
+              editHref={`/g/${slug}/edit#place-edit-${place.id}`}
+              backHref={backHref}
+              from={stashPlace ? "My places" : detail.guide.title}
+            />
+          )}
           {detail.viewerCanEdit && (
             <FixPlaceLocation
               guideId={guide.id}
@@ -374,7 +387,7 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
         {stashPlace && !detail.viewerCanEdit ? (
           <Link href={`/u/${detail.owner.username}`} className="text-[12.5px] text-ink-muted hover:text-terracotta">← {detail.owner.displayName}</Link>
         ) : (
-          <Link href={stashPlace ? myPlacesHref(place.city ? canonicalCity(place.city) : "") : `/g/${slug}${keyQuery}`} className="text-[12.5px] text-ink-muted hover:text-terracotta">← Back to {stashPlace ? "My places" : detail.guide.title}</Link>
+          <Link href={backHref} className="text-[12.5px] text-ink-muted hover:text-terracotta">← Back to {stashPlace ? "My places" : detail.guide.title}</Link>
         )}
       </div>
     </AppShell>

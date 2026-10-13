@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { AppShell, TopBar } from "@/components/AppShell";
 import { GuideNudge } from "@/components/GuideNudge";
-import { PinIcon, PlusIcon } from "@/components/Icons";
+import { EditIcon, PinIcon, PlusIcon } from "@/components/Icons";
 import { PlaceTile } from "@/components/PlaceTile";
 import { RecommendToggle } from "@/components/RecommendToggle";
 import { EmptyState, LinkButton } from "@/components/ui";
@@ -78,6 +78,9 @@ export default async function MyPlacesPage({ searchParams }: { searchParams: Pro
         {n > 0 && (
           <div className="mt-4 flex gap-2.5">
             {stash && items.some((i) => i.inStash) ? <LinkButton href="/saved/sort" className="flex-1">Make a guide from these</LinkButton> : <span className="flex-1" />}
+            {stash && items.some((i) => i.inStash) && (
+              <LinkButton href={`/g/${stash.slug}/edit`} variant="outline" aria-label="Edit or remove places"><EditIcon size={15} /> Edit</LinkButton>
+            )}
             <LinkButton href="/record" variant="outline"><PlusIcon size={15} /> Add</LinkButton>
           </div>
         )}
@@ -141,9 +144,6 @@ export default async function MyPlacesPage({ searchParams }: { searchParams: Pro
               </section>
             );
           })
-        )}
-        {stash && items.some((i) => i.inStash) && (
-          <Link href={`/g/${stash.slug}/edit`} className="self-center text-[12.5px] font-medium text-ink-muted underline underline-offset-2">Edit or remove places</Link>
         )}
       </main>
     </AppShell>
