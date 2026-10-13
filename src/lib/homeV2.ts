@@ -43,11 +43,14 @@ export interface CityTile {
   spots: number;
   /** Distinct people the viewer follows with a guide here. */
   friends: number;
-  /** Best-ranked guide with a photo (else the best-ranked guide): its cover stands for the city. */
-  cover: GuideCard;
+  /** Best-ranked guide with a photo (else the best-ranked guide): its cover stands for the city. None when the city only has spots. */
+  cover?: GuideCard;
 }
 
-/** Every city with a public guide the viewer can see, split into ones friends know and the rest. */
+/**
+ * Every city with a public guide or a recommended spot the viewer can see (places first, 13 Oct 2026: spots added
+ * without a guide count too), split into ones friends know and the rest.
+ */
 export async function cityTiles(viewerId: string | null | undefined): Promise<{ friendCities: CityTile[]; moreCities: CityTile[]; byCity: Map<string, CityTile> }> {
   const [cards, followed, recs, own] = await Promise.all([
     listFeed({ viewerId, limit: 300 }),
@@ -83,7 +86,20 @@ export async function cityTiles(viewerId: string | null | undefined): Promise<{ 
     if (!g.tile.country && c.guide.country) g.tile.country = c.guide.country;
     if (followed.has(c.owner.id)) g.owners.add(c.owner.id);
     const hasPhoto = (x: GuideCard) => !!(x.guide.coverMediaId || x.guide.coverUrl);
-    if (!hasPhoto(g.tile.cover) && hasPhoto(c)) g.tile.cover = c;
+    if (g.tile.cover && !hasPhoto(g.tile.cover) && hasPhoto(c)) g.tile.cover = c;
+  }
+  // Cities with spots but no guide (places shared on their own from My places).
+  for (const r of recs) {
+    if (!r.city || r.isPrivate) continue;
+    const city = canonicalCity(r.city);
+    const k = key(city);
+    let g = groups.get(k);
+    if (!g) {
+      g = { tile: { city, country: findCityExact(city)?.country ?? r.guide.country ?? "", guides: 0, spots: spotsBy.get(k)?.size ?? 0, friends: 0 }, owners: new Set() };
+      groups.set(k, g);
+    }
+    if (g.tile.guides === 0 && followed.has(r.owner.id)) g.owners.add(r.owner.id);
+    if (!g.tile.country && r.guide.country) g.tile.country = r.guide.country;
   }
   const tiles = [...groups.values()].map((g) => ({ ...g.tile, friends: g.owners.size }));
   const byCity = new Map(tiles.map((t) => [key(t.city), t]));

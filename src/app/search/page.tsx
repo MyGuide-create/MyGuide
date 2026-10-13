@@ -176,11 +176,15 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
           )}
           {cityTile && (
             <Link href={cityHref(cityTile.city, cityTile.country)} className="flex items-center gap-3 rounded-[20px] bg-ink text-cream p-3 hover:bg-ink/90">
-              <GuideCover guide={cityTile.cover.guide} ownerUsername={cityTile.cover.owner.username} bare thumb className="w-16 h-16 rounded-xl shrink-0" />
+              {cityTile.cover ? (
+                <GuideCover guide={cityTile.cover.guide} ownerUsername={cityTile.cover.owner.username} bare thumb className="w-16 h-16 rounded-xl shrink-0" />
+              ) : (
+                <span className="w-16 h-16 rounded-xl shrink-0 bg-gradient-to-br from-terracotta-soft to-terracotta" />
+              )}
               <span className="flex-1 min-w-0">
                 <span className="block font-display text-[24px] leading-tight truncate">{cityTile.city}</span>
                 <span className="block text-[13px] text-cream-deep">
-                  {cityTile.guides} guide{cityTile.guides === 1 ? "" : "s"}
+                  {cityTile.spots || !cityTile.guides ? `${cityTile.spots} spot${cityTile.spots === 1 ? "" : "s"}` : `${cityTile.guides} guide${cityTile.guides === 1 ? "" : "s"}`}
                   {cityTile.friends > 0 ? ` · ${cityTile.friends} from friends` : ""}
                 </span>
               </span>
