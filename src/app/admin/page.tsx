@@ -9,6 +9,9 @@ import { timeAgo } from "@/lib/utils";
 import { adminUsers, retention, type AdminUserFilter, type RetentionSummary } from "@/lib/adminUsers";
 import { Avatar, cx } from "@/components/ui";
 import { ResetPasswordButton } from "@/components/ResetPasswordButton";
+import { CityDecisionButtons } from "@/components/CityDecisionButtons";
+import { cityDecisions, loneCities } from "@/lib/cityAdmin";
+import { getDb } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Admin" };
@@ -17,7 +20,7 @@ export default async function AdminPage({ searchParams }: PageProps<"/admin">) {
   const user = await requireUser("/admin");
   if (!isAdmin(user)) notFound();
   const sp = await searchParams;
-  const tab = sp.tab === "users" ? "users" : "stats";
+  const tab = sp.tab === "users" ? "users" : sp.tab === "cities" ? "cities" : "stats";
   const filter: AdminUserFilter = sp.filter === "new" || sp.filter === "never" ? sp.filter : "all";
   return (
     <AppShell>
@@ -25,9 +28,61 @@ export default async function AdminPage({ searchParams }: PageProps<"/admin">) {
       <nav className="px-4 pt-3 flex gap-2" aria-label="Admin sections">
         <TabLink href="/admin" active={tab === "stats"}>Pilot stats</TabLink>
         <TabLink href="/admin?tab=users" active={tab === "users"}>Users</TabLink>
+        <TabLink href="/admin?tab=cities" active={tab === "cities"}>Cities</TabLink>
       </nav>
-      {tab === "users" ? <UsersTab filter={filter} /> : <StatsTab />}
+      {tab === "users" ? <UsersTab filter={filter} /> : tab === "cities" ? <CitiesTab /> : <StatsTab />}
     </AppShell>
+  );
+}
+
+/**
+ * Cities with only a few spots that might belong to a bigger one (a day-trip town Google gave as its own
+ * city). The settle rules handle most; this is the safety net. A decision applies to every place, now and later.
+ */
+async function CitiesTab() {
+  const db = await getDb();
+  const [lone, decided] = await Promise.all([loneCities(db), cityDecisions(db)]);
+  return (
+    <div className="px-4 pt-4 pb-10 flex flex-col gap-6">
+      <section>
+        <h2 className="px-1 text-[12px] font-medium uppercase tracking-[0.08em] text-ink-muted mb-1">Lone cities ({lone.length})</h2>
+        <p className="px-1 mb-2.5 text-[12.5px] text-ink-muted leading-snug">
+          Cities with 1–3 spots. Merge one into the bigger city nearby and its spots show there, with the town as their area. Keep separate and it stops showing here.
+        </p>
+        {lone.length === 0 ? <p className="px-1 text-[12.5px] text-ink-faint">Nothing to check.</p> : (
+          <ul className="flex flex-col gap-2">
+            {lone.map((c) => (
+              <li key={c.town} className="rounded-2xl border border-line bg-paper px-3.5 py-3 flex flex-col gap-2">
+                <div>
+                  <p className="text-[14.5px] font-semibold">
+                    {c.town} <span className="font-normal text-ink-muted text-[12.5px]">· {c.country || "?"} · {c.spots} spot{c.spots === 1 ? "" : "s"}</span>
+                  </p>
+                  <p className="text-[12.5px] text-ink-muted">{c.suggest ? `${c.suggest.km} km from ${c.suggest.name}` : "No bigger city within 150 km"}</p>
+                  {c.samples.length > 0 && <p className="mt-0.5 text-[12px] text-ink-faint truncate">{c.samples.map((x) => `${x.name} (${x.guide})`).join(" · ")}</p>}
+                </div>
+                <CityDecisionButtons town={c.town} into={c.suggest?.name ?? null} />
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+      {decided.length > 0 && (
+        <section>
+          <h2 className="px-1 text-[12px] font-medium uppercase tracking-[0.08em] text-ink-muted mb-2">Decided ({decided.length})</h2>
+          <ul className="flex flex-col gap-2">
+            {decided.map((d) => (
+              <li key={d.town} className="rounded-2xl border border-line bg-paper px-3.5 py-2.5 flex items-center justify-between gap-3">
+                <span className="min-w-0 text-[13px]">
+                  <span className="font-semibold capitalize">{d.town}</span> {d.into ? <>→ {d.into}</> : <span className="text-ink-muted">kept separate</span>}
+                  <span className="block text-[11px] text-ink-faint">{timeAgo(d.createdAt)}</span>
+                </span>
+                <CityDecisionButtons town={d.town} undo />
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </div>
   );
 }
 

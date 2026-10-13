@@ -5,7 +5,9 @@ import { randomInt } from "node:crypto";
 import { isAdmin } from "../admin";
 import { getCurrentUser, hashPassword } from "../auth";
 import { getDb } from "../db";
-import { users } from "../db/schema";
+import { cityMerges, users } from "../db/schema";
+import { resettleAll } from "../settleCities";
+import { revalidatePath } from "next/cache";
 import { signUpInfo } from "../oauthUsers";
 
 // Short, easy to read out or type on a phone: "olive-harbour-tram-47".
@@ -45,4 +47,26 @@ export async function resetUserPassword(userId: string, custom?: string): Promis
   if (password.length < 8) return { ok: false, error: "Use at least 8 characters." };
   await db.update(users).set({ passwordHash: await hashPassword(password) }).where(eq(users.id, target.id));
   return { ok: true, password, username: target.username, email: target.email };
+}
+
+/**
+ * Admin › Cities: merge a town into a bigger city ("Flúðir" → Reykjavik), keep it as its own city
+ * (`into` = ""), or undo a decision (`into` = null). Every place is settled again straight away.
+ */
+export async function decideCity(town: string, into: string | null): Promise<{ ok: true; changed: number } | { ok: false; error: string }> {
+  const me = await getCurrentUser();
+  if (!me || !isAdmin(me)) return { ok: false, error: "Admins only." };
+  const name = town.trim();
+  if (!name || name.length > 120 || (into != null && into.length > 120)) return { ok: false, error: "Bad city name." };
+  const db = await getDb();
+  const k = name.toLowerCase();
+  if (into === null) await db.delete(cityMerges).where(eq(cityMerges.town, k));
+  else
+    await db
+      .insert(cityMerges)
+      .values({ town: k, into: into.trim(), createdAt: new Date() })
+      .onConflictDoUpdate({ target: cityMerges.town, set: { into: into.trim(), createdAt: new Date() } });
+  const changed = await resettleAll(db);
+  revalidatePath("/admin");
+  return { ok: true, changed };
 }

@@ -225,6 +225,13 @@
       "when": 1791870000000,
       "tag": "0031_city_photos_retry_names",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "6",
+      "when": 1791880000000,
+      "tag": "0032_city_merges",
+      "breakpoints": true
     }
   ]
 }

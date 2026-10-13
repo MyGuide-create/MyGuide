@@ -627,3 +627,13 @@ export const appJobs = sqliteTable("app_jobs", {
   name: text("name").primaryKey(),
   doneAt: integer("done_at", { mode: "timestamp_ms" }).notNull(),
 });
+
+/**
+ * Admin › Cities decisions (13 Oct 2026): a town merged into a bigger city ("Flúðir" → Reykjavik), or kept as
+ * its own city (`into` = ""). Keyed by the town's lower-case name. Applied by src/lib/settleCities.ts before its rules.
+ */
+export const cityMerges = sqliteTable("city_merges", {
+  town: text("town").primaryKey(),
+  into: text("into").notNull().default(""),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+});
