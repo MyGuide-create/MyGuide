@@ -18,7 +18,7 @@
 import { eq, inArray } from "drizzle-orm";
 import type { Db } from "./db";
 import { appJobs, guides, places } from "./db/schema";
-import { CITIES, areaForCountry, canonicalCity, findCityExact } from "./places/cities";
+import { CITIES, areaForCountry, canonicalCity, districtArea, findCityExact } from "./places/cities";
 import { haversineMeters } from "./places/geo";
 import { isStash } from "./stash";
 
@@ -30,9 +30,10 @@ const REGION_KM = 80;
  * v2: countries that are one area (Maldives…). v3: a place in its guide's own city stays there (live data had
  * Comporta spots pulled into Grândola because more spots were tagged Grândola). v4: English names for cities Google
  * gives in the local language (Genève → Geneva, Zürich, München). v5: a guide with no centre (The Cotswolds)
- * is centred on its places, so its villages count as its area. Each bump re-runs over everything.
+ * is centred on its places, so its villages count as its area. v6: Greater Copenhagen's areas and suburbs
+ * (Ishøj, Frederiksberg, Hellerup, up the coast to Humlebæk) settle into Copenhagen. Each bump re-runs over everything.
  */
-export const SETTLE_JOB = "settle-cities-v5";
+export const SETTLE_JOB = "settle-cities-v6";
 
 type Row = {
   id: string;
@@ -176,6 +177,8 @@ async function settlePlaces(db: Db, where: { guideIds?: string[] } = {}): Promis
     // "Genève" is just Geneva's local name, not an area within it.
     let area = r.area.trim() || (src && src.toLowerCase() !== city.toLowerCase() && !isLocalName(src, city) ? src : "");
     if (area.toLowerCase() === city.toLowerCase() || isLocalName(area, city)) area = "";
+    // "København K" → no area, "Frederiksberg C" → Frederiksberg (v6).
+    if (area) area = districtArea(area, city);
     if (city === r.city && src === r.sourceCity && area === r.area) continue;
     updates.push(db.update(places).set({ city, sourceCity: src, area }).where(eq(places.id, r.id)));
   }

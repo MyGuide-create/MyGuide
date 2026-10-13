@@ -1,5 +1,5 @@
 import { isNoiseAddressPart, tidyArea } from "./tidy";
-import { metroOfDistrict } from "./cities";
+import { districtArea, metroOfDistrict } from "./cities";
 
 const ADMIN = /^(kec\.?|kecamatan|kabupaten|kab\.?|kota|regency|district|province|prefecture|governorate|emirate|county|state of)\b/i;
 const STREET = /^(jl\.?|jln\.?|jalan|gg\.?|gang)\s|\bno\.?\s?\d|^\d+[a-z]?\s|^\d+$|\b(street|st\.?|road|rd\.?|avenue|ave\.?|blvd|boulevard|lane|ln\.?|way|highway|hwy)$/i;
@@ -32,6 +32,6 @@ export function neighbourhood(address: string, city?: string | null, country?: s
 /** The area line under a place: Google's neighbourhood when we have it, otherwise a guess from the address. */
 export function placeArea(p: { area?: string | null; address: string; city?: string | null; country?: string | null }): string {
   // A place stored with a district as its city (Üsküdar, before districts were grouped under Istanbul): that's its area.
-  if (!p.area?.trim() && metroOfDistrict(p.city)) return p.city!.trim();
-  return p.area?.trim() || neighbourhood(p.address, p.city, p.country);
+  if (!p.area?.trim() && metroOfDistrict(p.city)) return districtArea(p.city!, p.city);
+  return (p.area?.trim() && districtArea(p.area, p.city)) || neighbourhood(p.address, p.city, p.country);
 }

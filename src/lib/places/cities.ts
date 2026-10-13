@@ -160,6 +160,23 @@ const DISTRICTS: Record<string, string[]> = {
   ],
   Seoul: ["Gangnam-gu", "Jongno-gu", "Mapo-gu", "Yongsan-gu", "Seongdong-gu", "Seocho-gu", "Songpa-gu", "Seodaemun-gu", "Gwangjin-gu", "Yeongdeungpo-gu"],
   Dubai: ["Bur Dubai", "Al Barsha", "Jumeirah Village Circle", "Palm Jumeirah", "Al Wasl", "Umm Suqeim", "Al Safa"],
+  // Hisham (13 Oct 2026): a friend's Ishøj spot (Arken, ~16 km out) showed as its own city. Greater Copenhagen:
+  // the city's own areas, the postal-district names Google uses, and the suburbs around it (Københavns Omegn).
+  // Also the coast road north to Humlebæk (Louisiana), which Hisham wants as Copenhagen too. Not Helsingør, Roskilde or
+  // Hillerød: separate towns, like Sintra for Lisbon.
+  // Danish letters aren't plain-letter matches (ø ≠ o), so both spellings are listed.
+  Copenhagen: [
+    "København K", "København V", "København Ø", "København N", "København S", "København NV", "København SV",
+    "Copenhagen K", "Copenhagen V", "Copenhagen Ø", "Copenhagen N", "Copenhagen S", "Copenhagen NV", "Copenhagen SV",
+    "Indre By", "Christianshavn", "Østerbro", "Osterbro", "Nordhavn", "Islands Brygge", "Amager", "Sydhavn",
+    "Ørestad", "Orestad", "Valby", "Vanløse", "Vanlose", "Brønshøj", "Bronshoj", "Bispebjerg", "Nordvest",
+    "Frederiksberg", "Frederiksberg C", "Kastrup", "Tårnby", "Tarnby", "Taarnby", "Dragør", "Dragor",
+    "Hellerup", "Gentofte", "Charlottenlund", "Klampenborg", "Kongens Lyngby", "Lyngby", "Lyngby-Taarbæk", "Lyngby-Taarbaek",
+    "Gladsaxe", "Søborg", "Soborg", "Bagsværd", "Bagsvaerd", "Herlev", "Ballerup", "Rødovre", "Rodovre", "Glostrup",
+    "Albertslund", "Hvidovre", "Brøndby", "Brondby", "Brøndby Strand", "Brondby Strand", "Vallensbæk", "Vallensbaek",
+    "Ishøj", "Ishoj", "Høje-Taastrup", "Hoje-Taastrup", "Taastrup",
+    "Skodsborg", "Vedbæk", "Vedbaek", "Hørsholm", "Horsholm", "Rungsted", "Rungsted Kyst", "Humlebæk", "Humlebaek", "Humlebak",
+  ],
 };
 
 /**
@@ -241,6 +258,22 @@ export function areaForCountry(country: string | null | undefined): string | und
 /** "Üsküdar" → "Istanbul", "Shibuya City" → "Tokyo": the main city a district belongs to (undefined if it isn't one). */
 export function metroOfDistrict(name: string | null | undefined): string | undefined {
   return name ? DISTRICT_OF.get(norm(name)) : undefined;
+}
+
+/**
+ * The area line for a district name: Danish postal districts lose their letter ("Frederiksberg C" →
+ * Frederiksberg) and the city's own name gives no area ("København K" → ""). Other names are unchanged.
+ */
+export function districtArea(name: string, placeCity?: string | null): string {
+  const t = name.trim();
+  const m = t.match(/^(.+?)\s+(K|V|Ø|O|N|S|NV|SV|C)$/u);
+  const base = m && findCityExact(m[1]) ? m[1] : t;
+  // Only the place's own city: "Sintra" stays the area of a Sintra spot in a Lisbon guide.
+  const own = findCityExact(base);
+  const mine = placeCity ? findCityExact(placeCity) ?? findCityExact(metroOfDistrict(placeCity)) : undefined;
+  // The city itself: its own name, or a postal district of it ("København K"). Neighbourhood aliases (Shoreditch) stay.
+  const itself = own && !DISTRICT_OF.has(norm(base)) && (norm(base) === norm(own.city) || !!m);
+  return itself && (!placeCity || own === mine) ? "" : base;
 }
 
 /**
