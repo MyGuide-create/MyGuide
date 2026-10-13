@@ -18,6 +18,7 @@ import { listFeed, listGuidesByOwner, type GuideCard } from "@/lib/guides";
 import { cityKey, guideSaveCounts, wantedGuides } from "@/lib/homeV2";
 import { acceptedFollowingIds, citySpots, type CitySpot } from "@/lib/citySpots";
 import { CATEGORIES } from "@/lib/places";
+import { orderedCategories } from "@/lib/places/order";
 import { timeAgo } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -31,9 +32,6 @@ export async function generateMetadata({ searchParams }: { searchParams: Promise
   return { title: name ? `${name} guides` : "City" };
 }
 
-const SPOTS_SHOWN = 20;
-/** "More from MyGuide" rows before "Show all". */
-const MORE_SHOWN = 10;
 const first = (u: PublicUser) => u.displayName.split(" ")[0] || u.username;
 /** "You" for the viewer, else their first name. */
 const nm = (u: PublicUser, viewerId?: string | null) => (viewerId && u.id === viewerId ? "You" : first(u));
@@ -61,7 +59,7 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
   const sort = one(sp.sort) === "new" ? "new" : "saved";
   const friendParam = one(sp.friend).toLowerCase();
   const catParam = one(sp.cat);
-  const showAll = one(sp.all) === "1";
+  // Every spot is listed now; old ?all=1 / ?more=1 links still open the page and are ignored.
   const mapView = one(sp.view) === "map";
 
   const [mine, everyone, wanted] = city
@@ -106,20 +104,21 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
   const cats = CATEGORIES.filter((c) => bySomeone.some((s) => s.place.category === c));
   const cat = cats.find((c) => c === catParam) ?? null;
   const shownSpots = cat ? bySomeone.filter((s) => s.place.category === cat) : bySomeone;
-  const listed = showAll ? shownSpots : shownSpots.slice(0, SPOTS_SHOWN);
   // After friends' spots: everyone else's on MyGuide ("More from MyGuide"), most recommended first,
   // never more than 2 in a row led by the same person. Not when a friend (or you) is picked.
-  const showMore = one(sp.more) === "1";
   const following = new Set(followingIds);
   const friendKeys = new Set(spots.map((s) => s.key));
   const moreAll =
     city && fromFriends && !picked
-      ? capRuns(
-          (await citySpots({ city, viewerId })).filter((s) => !friendKeys.has(s.key) && s.recommenders.some((r) => r.user.id !== viewerId) && (!cat || s.place.category === cat)),
-          (s) => leadFor(s, null, viewerId).user.id,
-        )
+      ? (await citySpots({ city, viewerId })).filter((s) => !friendKeys.has(s.key) && s.recommenders.some((r) => r.user.id !== viewerId) && (!cat || s.place.category === cat))
       : [];
-  const moreListed = showMore ? moreAll : moreAll.slice(0, MORE_SHOWN);
+  const capLead = (list: CitySpot[]) => capRuns(list, (s) => leadFor(s, null, viewerId).user.id);
+  // No category chip → both lists are grouped by category (same fixed order as guide pages), every
+  // spot shown, most recommended then most recent within each group. A chip → one flat list.
+  const spotGroups = groupSpots(shownSpots, !cat);
+  const moreGroups = groupSpots(moreAll, !cat).map((g) => ({ ...g, spots: capLead(g.spots) }));
+  // Headings only when the page has more than one category (like a guide with one category).
+  const headings = !cat && new Set([...shownSpots, ...moreAll].map((s) => s.place.category)).size > 1;
   const canFollow = (s: CitySpot) => {
     const lead = leadFor(s, picked, viewerId).user.id;
     return lead !== viewerId && !following.has(lead);
@@ -130,7 +129,7 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
   const wish = [wanted.help, ...wanted.list].find((w) => w && cityKey(w.group.city) === cityKey(city)) ?? null;
 
   const base = { name: city, ...(country ? { country } : {}), ...(lat && lng ? { lat, lng } : {}) };
-  const state = { friend: picked?.username ?? "", cat: cat ?? "", sort: sort === "new" ? "new" : "", all: "", view: mapView ? "map" : "" };
+  const state = { friend: picked?.username ?? "", cat: cat ?? "", sort: sort === "new" ? "new" : "", view: mapView ? "map" : "" };
   const cityHref = (over: Partial<typeof state>) => {
     const q = { ...base } as Record<string, string>;
     for (const [k, v] of Object.entries({ ...state, ...over })) if (v) q[k] = v;
@@ -207,18 +206,18 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
           <section className="pt-1 flex flex-col gap-2.5">
             <h2 className="px-5 text-[13px] font-semibold text-ink-muted">Whose spots</h2>
             <div role="group" aria-label="Filter by friend" className="flex gap-3 overflow-x-auto no-scrollbar px-5 pb-1">
-              <FriendChip href={cityHref({ friend: "", cat: "", all: "" })} active={!picked} label="Everyone" count={spots.length}>
+              <FriendChip href={cityHref({ friend: "", cat: "" })} active={!picked} label="Everyone" count={spots.length}>
                 <span className="w-12 h-12 rounded-full bg-cream-deep text-ink text-[13px] font-semibold flex items-center justify-center">All</span>
               </FriendChip>
               {showYou && me && (
-                <FriendChip href={cityHref({ friend: isMe ? "" : me.username, cat: "", all: "" })} active={isMe} label="You" count={ownSpots}>
+                <FriendChip href={cityHref({ friend: isMe ? "" : me.username, cat: "" })} active={isMe} label="You" count={ownSpots}>
                   <Avatar user={me} size={48} />
                 </FriendChip>
               )}
               {friends.map((f) => {
                 const on = picked?.id === f.user.id;
                 return (
-                  <FriendChip key={f.user.id} href={cityHref({ friend: on ? "" : f.user.username, cat: "", all: "" })} active={on} label={first(f.user)} count={f.spots}>
+                  <FriendChip key={f.user.id} href={cityHref({ friend: on ? "" : f.user.username, cat: "" })} active={on} label={first(f.user)} count={f.spots}>
                     <Avatar user={f.user} size={48} />
                   </FriendChip>
                 );
@@ -265,7 +264,7 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
                 {[null, ...cats].map((c) => (
                   <Link
                     key={c ?? "all"}
-                    href={cityHref({ cat: c ?? "", all: "" })}
+                    href={cityHref({ cat: c ?? "" })}
                     replace
                     scroll={false}
                     aria-current={cat === c ? "true" : undefined}
@@ -335,17 +334,18 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
               {!fromFriends && (
                 <p className="px-1 -mt-1 text-[13px] text-ink-muted">Nobody you follow has added {city} spots yet, so here&apos;s what MyGuide travellers recommend{ownSpots ? ", with yours" : ""}.</p>
               )}
-              {listed.length === 0 && (
+              {shownSpots.length === 0 && (
                 <p className="rounded-2xl border border-dashed border-cream-line p-5 text-center text-[14px] text-ink-muted">
                   {isMe ? `You haven\u2019t added any ${cat ?? ""} spots here yet.` : picked ? `${first(picked)} hasn\u2019t added any ${cat ?? ""} spots here yet.` : `No ${cat ?? ""} spots yet.`}
                 </p>
               )}
-              {listed.map((s) => (
-                <SpotRow key={s.key} spot={s} picked={picked} fromFriends={fromFriends} viewerId={viewerId} follow={!fromFriends && canFollow(s)} signedIn={!!user} next={cityHref({})} />
+              {spotGroups.map((g) => (
+                <SpotGroup key={g.category ?? "all"} category={headings ? g.category : null} count={g.spots.length}>
+                  {g.spots.map((s) => (
+                    <SpotRow key={s.key} spot={s} picked={picked} fromFriends={fromFriends} viewerId={viewerId} follow={!fromFriends && canFollow(s)} signedIn={!!user} next={cityHref({})} grouped={headings} />
+                  ))}
+                </SpotGroup>
               ))}
-              {!showAll && shownSpots.length > SPOTS_SHOWN && (
-                <LinkButton href={cityHref({ all: "1" })} variant="outline">Show all {shownSpots.length} spots</LinkButton>
-              )}
             </div>
             {moreAll.length > 0 && (
               <div className="px-4 pt-7 flex flex-col gap-2.5">
@@ -356,12 +356,13 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
                   </div>
                   <p className="text-[13px] text-ink-muted">{cat ? `${cat} spots` : "Spots"} recommended by people you don&apos;t follow yet.</p>
                 </div>
-                {moreListed.map((s) => (
-                  <SpotRow key={s.key} spot={s} picked={null} fromFriends={false} viewerId={viewerId} follow={canFollow(s)} signedIn={!!user} next={cityHref({})} />
+                {moreGroups.map((g) => (
+                  <SpotGroup key={g.category ?? "all"} category={headings ? g.category : null} count={g.spots.length}>
+                    {g.spots.map((s) => (
+                      <SpotRow key={s.key} spot={s} picked={null} fromFriends={false} viewerId={viewerId} follow={canFollow(s)} signedIn={!!user} next={cityHref({})} grouped={headings} />
+                    ))}
+                  </SpotGroup>
                 ))}
-                {!showMore && moreAll.length > MORE_SHOWN && (
-                  <LinkButton href={`${cityHref({})}&more=1`} variant="outline">Show all {moreAll.length}</LinkButton>
-                )}
               </div>
             )}
           </section>
@@ -425,6 +426,26 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
         )}
       </main>
     </AppShell>
+  );
+}
+
+/** Spots grouped by category in the guide order (empty categories skipped), or one flat group. */
+function groupSpots(list: CitySpot[], grouped: boolean): { category: string | null; spots: CitySpot[] }[] {
+  if (!grouped) return list.length ? [{ category: null, spots: list }] : [];
+  return orderedCategories(list.map((s) => s.place)).map((c) => ({ category: c, spots: list.filter((s) => s.place.category === c) }));
+}
+
+/** A category's spots under a "Food & Drinks · 12" heading (no heading for a flat list). */
+function SpotGroup({ category, count, children }: { category: string | null; count: number; children: ReactNode }) {
+  if (!category) return <>{children}</>;
+  return (
+    <section aria-label={category} className="flex flex-col gap-2.5">
+      <h3 className="flex items-baseline gap-1.5 border-b border-line px-1 pb-1.5 pt-3">
+        <span className="font-display text-[19px] leading-none">{category}</span>
+        <span className="text-[12.5px] text-ink-faint tabular-nums">· {count}</span>
+      </h3>
+      {children}
+    </section>
   );
 }
 
@@ -494,6 +515,7 @@ function SpotRow({
   follow = false,
   signedIn = false,
   next = "/",
+  grouped = false,
 }: {
   spot: CitySpot;
   picked: PublicUser | null;
@@ -503,19 +525,22 @@ function SpotRow({
   follow?: boolean;
   signedIn?: boolean;
   next?: string;
+  /** Under a category heading: the row shows just the area (the heading already names the category). */
+  grouped?: boolean;
 }) {
   const lead = leadFor(spot, picked, viewerId);
   const onlyMinePrivate = spot.recommenders.every((r) => r.user.id === viewerId && r.isPrivate);
   const faces = [lead, ...spot.recommenders.filter((r) => r !== lead)].slice(0, 3);
   const p = spot.place;
   const many = spot.recommenders.length >= 3;
+  const subline = [grouped ? "" : p.category, placeArea(p)].filter(Boolean).join(" · ");
   return (
     <div className="relative">
     <Link href={`/g/${lead.guideSlug}/p/${lead.placeId}`} className="flex gap-3 rounded-2xl border border-line/80 bg-paper p-3 hover:border-terracotta-soft">
       <PlaceTile place={p} size={68} />
       <span className="flex-1 min-w-0 flex flex-col gap-1">
         <span className="font-semibold text-[15px] leading-snug">{p.name}</span>
-        <span className="text-[12.5px] text-ink-muted truncate">{[p.category, placeArea(p)].filter(Boolean).join(" · ")}</span>
+        {subline && <span className="text-[12.5px] text-ink-muted truncate">{subline}</span>}
         {lead.tip && (
           <span className="text-[13px] leading-snug text-ink/85 line-clamp-2">
             &ldquo;{lead.tip}&rdquo; <span className="text-ink-muted">{nm(lead.user, viewerId)}</span>
