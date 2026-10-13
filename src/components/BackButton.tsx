@@ -46,6 +46,25 @@ export function NavTrail() {
   return null;
 }
 
+/**
+ * Leaving a one-off flow (Add a place, Import, intro…): the last real screen before it, skipping
+ * the flows themselves — so closing Import after Add a place goes home, not back into Add a place
+ * (which used to bounce between the two). `fallback` when there's no such screen.
+ */
+export function exitTarget(fallback: string): string {
+  const trail = read();
+  for (let i = trail.length - 2; i >= 0; i--) {
+    if (!SKIP.some((r) => r.test(pathOnly(trail[i])))) return trail[i];
+  }
+  return fallback;
+}
+
+/** Close a flow: replace it (so the phone's back gesture doesn't land in it again) with the screen before it. */
+export function useExitFlow() {
+  const router = useRouter();
+  return (fallback = "/") => router.replace(exitTarget(fallback));
+}
+
 export function BackButton({ href, className, children }: { href: string; className?: string; children: ReactNode }) {
   const router = useRouter();
   return (
@@ -56,9 +75,11 @@ export function BackButton({ href, className, children }: { href: string; classN
       onClick={(e) => {
         const trail = read();
         const prev = trail[trail.length - 2];
-        if (!prev || SKIP.some((r) => r.test(pathOnly(prev)))) return; // follow href
+        if (!prev) return; // opened from a link: follow href
         e.preventDefault();
-        router.back();
+        // The screen before is a flow (Add a place → Import): go to the one before the flows instead.
+        if (SKIP.some((r) => r.test(pathOnly(prev)))) router.push(exitTarget(href));
+        else router.back();
       }}
     >
       {children}

@@ -13,6 +13,7 @@ import { findMapsListLink, hasMapsLink, listTitleFromCaption, MAPS_LIST_FALLBACK
 import { formatCoords } from "@/lib/places/pins";
 import { mapLimit } from "@/lib/utils";
 import { CheckIcon, ListIcon, PinIcon, XIcon } from "./Icons";
+import { useExitFlow } from "./BackButton";
 import { CityPicker, type PickedCity } from "./CityPicker";
 import { PlaceSearch } from "./PlaceSearch";
 import { ScreenshotImport } from "./ScreenshotImport";
@@ -64,6 +65,7 @@ export function VoiceCreate({
   initialTitle?: string;
 }) {
   const router = useRouter();
+  const exitFlow = useExitFlow();
   const [stage, setStage] = useState<Stage>(startWithImport ? "paste" : "typed");
   const [picked, setPicked] = useState<PickedCity | null>(initialCity ?? null);
   const example = TITLE_EXAMPLE;
@@ -228,7 +230,7 @@ export function VoiceCreate({
           places: placesIn,
           alsoMyPlaces: { share },
         });
-        router.push(`/g/${slug}/edit?created=1`);
+        router.replace(`/g/${slug}/edit?created=1`);
         return;
       }
       const res = await importToMyPlaces({ places: placesIn, share, cityHint: city || result?.city || undefined, guideTitle: alsoGuide ? title.trim() : undefined });
@@ -238,7 +240,7 @@ export function VoiceCreate({
       if (res.city) qs.set("city", res.city);
       const href = myPlacesHref(res.city);
       const [path, hash] = href.split("#");
-      router.push(`${path.split("?")[0]}?${qs.toString()}${hash ? `#${hash}` : ""}`);
+      router.replace(`${path.split("?")[0]}?${qs.toString()}${hash ? `#${hash}` : ""}`);
     } catch (e) {
       setError(errorText(e, forSomeone ? "Couldn't create the guide." : "Couldn't add those places."));
       setCreating(false);
@@ -259,7 +261,7 @@ export function VoiceCreate({
         wishIds: forWish?.ids,
         askId,
       });
-      router.push(`/g/${slug}/edit?start=1`);
+      router.replace(`/g/${slug}/edit?start=1`);
     } catch (e) {
       setError(errorText(e, "Couldn't create the guide."));
       setCreating(false);
@@ -408,7 +410,7 @@ export function VoiceCreate({
         {forSomeone || !startWithImport ? (
           <button type="button" onClick={() => { setStage("typed"); setError(null); }} className="text-[13px] text-ink-muted text-center">Back</button>
         ) : (
-          <button type="button" onClick={() => router.back()} className="text-[13px] text-ink-muted text-center">Back</button>
+          <button type="button" onClick={() => exitFlow("/my-places")} className="text-[13px] text-ink-muted text-center">Back</button>
         )}
       </div>
     );

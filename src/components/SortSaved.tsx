@@ -93,7 +93,7 @@ export function SortSaved({ places, guides, preTicked }: { places: SavedPlace[];
           ...(mode === "new" ? { newTitle: title.trim() } : { guideId: guideId ?? undefined }),
           keepCopy,
         });
-        router.push(`/g/${res.slug}/edit${res.created ? "?created=1" : ""}`);
+        router.replace(`/g/${res.slug}/edit${res.created ? "?created=1" : ""}`);
       } catch (e) {
         setError(errorText(e, "Couldn't move those places."));
       }

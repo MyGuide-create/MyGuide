@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { errorText } from "@/lib/errorText";
 import { useEffect, useState, useTransition } from "react";
+import { useExitFlow } from "./BackButton";
 import { putPlaceInGuide, saveRecordedPlace, type RecordedPlace } from "@/lib/actions/record";
 import { isReservedTitle, myPlacesHref } from "@/lib/stash";
 import { GuideNudge } from "./GuideNudge";
@@ -57,6 +58,7 @@ export function RecordFlow({
   forWish?: { id: string; city: string; name: string } | null;
 }) {
   const router = useRouter();
+  const exitFlow = useExitFlow();
   const [step, setStep] = useState<Step>("confirm");
   const [locate, setLocate] = useState<LocateState>("locating");
   const [nearby, setNearby] = useState<NearbyResult[]>([]);
@@ -164,7 +166,7 @@ export function RecordFlow({
           ...(intoGuide ? { guideId: intoGuide.id } : { share }),
         });
         if (res.intoGuide) {
-          router.push(`/g/${res.guideSlug}`);
+          router.replace(`/g/${res.guideSlug}`);
           return;
         }
         setDone(res);
@@ -218,7 +220,7 @@ export function RecordFlow({
         <div className="flex flex-col flex-1">
           <div className="flex items-center justify-between px-4 pt-4">
             <span className="text-[15px] font-semibold">{intoGuide ? `Add a place to ${intoGuide.title}` : "Add a place"}</span>
-            <button type="button" aria-label="Close" onClick={() => router.back()} className="w-9 h-9 rounded-full border border-line bg-paper flex items-center justify-center">
+            <button type="button" aria-label="Close" onClick={() => (intoGuide ? router.replace(`/g/${intoGuide.slug}/edit`) : exitFlow("/"))} className="w-9 h-9 rounded-full border border-line bg-paper flex items-center justify-center">
               <XIcon size={15} />
             </button>
           </div>
@@ -498,7 +500,7 @@ export function RecordFlow({
       {step === "done" && done && (
         <div className="flex flex-col flex-1">
           <div className="flex items-center justify-end px-4 pt-4">
-            <button type="button" aria-label="Close" onClick={() => router.push(myPlacesHref(done.city))} className="w-9 h-9 rounded-full border border-line bg-paper flex items-center justify-center">
+            <button type="button" aria-label="Close" onClick={() => router.replace(myPlacesHref(done.city))} className="w-9 h-9 rounded-full border border-line bg-paper flex items-center justify-center">
               <XIcon size={15} />
             </button>
           </div>
