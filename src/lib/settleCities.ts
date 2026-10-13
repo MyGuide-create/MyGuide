@@ -24,12 +24,15 @@ import { isStash } from "./stash";
 
 const GUIDE_KM = 40;
 const NEAR_KM = 12;
+/** A guide centred on its own places is usually a region (The Cotswolds, Amalfi Coast): a wider reach. */
+const REGION_KM = 80;
 /**
  * v2: countries that are one area (Maldives…). v3: a place in its guide's own city stays there (live data had
  * Comporta spots pulled into Grândola because more spots were tagged Grândola). v4: English names for cities Google
- * gives in the local language (Genève → Geneva, Zürich, München). Each bump re-runs over everything.
+ * gives in the local language (Genève → Geneva, Zürich, München). v5: a guide with no centre (The Cotswolds)
+ * is centred on its places, so its villages count as its area. Each bump re-runs over everything.
  */
-export const SETTLE_JOB = "settle-cities-v4";
+export const SETTLE_JOB = "settle-cities-v5";
 
 type Row = {
   id: string;
@@ -39,7 +42,7 @@ type Row = {
   area: string;
   lat: number | null;
   lng: number | null;
-  guide: { id: string; title: string; city: string; lat: number | null; lng: number | null; publishedAt: Date | null };
+  guide: { id: string; title: string; city: string; lat: number | null; lng: number | null; publishedAt: Date | null; region?: boolean };
 };
 
 const key = (c: string) => canonicalCity(c).toLowerCase();
@@ -108,7 +111,7 @@ function settle(r: Row, stats: Awaited<ReturnType<typeof townStats>>): string {
     {
       const known = findCityExact(gc);
       const centre = g.lat != null && g.lng != null ? { lat: g.lat, lng: g.lng } : known ? { lat: known.lat, lng: known.lng } : stats.get(key(gc)) ?? null;
-      if (centre && km(here, centre) <= GUIDE_KM) return gc;
+      if (centre && km(here, centre) <= (g.region ? REGION_KM : GUIDE_KM)) return gc;
     }
   }
 
@@ -151,6 +154,20 @@ async function settlePlaces(db: Db, where: { guideIds?: string[] } = {}): Promis
     .from(places)
     .innerJoin(guides, eq(guides.id, places.guideId));
   const rows: Row[] = await (where.guideIds ? q.where(inArray(places.guideId, where.guideIds)) : q);
+  // A guide with no centre of its own ("The Cotswolds": not a known city, no pin) is centred on the
+  // middle of its places, so its villages count as the guide's area (v5).
+  const byGuide = new Map<string, { lats: number[]; lngs: number[] }>();
+  for (const r of rows) {
+    if (r.lat == null || r.lng == null) continue;
+    const e = byGuide.get(r.guide.id) ?? { lats: [], lngs: [] };
+    e.lats.push(r.lat);
+    e.lngs.push(r.lng);
+    byGuide.set(r.guide.id, e);
+  }
+  for (const r of rows) {
+    const e = byGuide.get(r.guide.id);
+    if (r.guide.lat == null && e && !findCityExact(r.guide.city)) r.guide = { ...r.guide, lat: median(e.lats), lng: median(e.lngs), region: true };
+  }
   const updates = [];
   for (const r of rows) {
     const src = (r.sourceCity || r.city).trim();

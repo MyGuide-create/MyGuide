@@ -19,6 +19,8 @@ import { pushPublicKey } from "@/lib/push";
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Activity" };
 
+const ASK_PIN_DAYS = 21;
+
 export default async function NotificationsPage() {
   const user = await requireUser("/notifications");
   const db = await getDb();
@@ -45,7 +47,8 @@ export default async function NotificationsPage() {
   const requestIds = [...new Set(rows.map((r) => r.requestId).filter((x): x is string => !!x))];
   const [reqRows, asks] = await Promise.all([
     requestIds.length ? db.select().from(guideRequests).where(inArray(guideRequests.id, requestIds)) : Promise.resolve([]),
-    pendingAsksFor(user.id),
+    // Pinned while fresh; after ASK_PIN_DAYS it stays in the list below but stops sitting on top.
+    pendingAsksFor(user.id, { days: ASK_PIN_DAYS }),
   ]);
   const reqMap = new Map(reqRows.map((q) => [q.id, q]));
   // Names for "Pass it on" asks: who wished, and who was asked.
@@ -68,15 +71,15 @@ export default async function NotificationsPage() {
         <PushToggle publicKey={pushPublicKey()} compact />
         {asks.length > 0 && (
           <section className="rounded-2xl border border-terracotta-soft bg-terracotta-tint/40 p-3">
-            <h2 className="px-1 font-display text-[20px] inline-flex items-center gap-2"><SparkleIcon size={16} className="text-terracotta" /> Guide requests</h2>
+            <h2 className="px-1 font-display text-[20px] inline-flex items-center gap-2"><SparkleIcon size={16} className="text-terracotta" /> Asking for your spots</h2>
             <ul className="mt-2 flex flex-col gap-2">
               {asks.map(({ req: q, requester }) => (
                 <li key={q.id}>
                   <Link href={`/ask/${q.token}`} className="flex items-center gap-3 rounded-xl bg-paper px-3 py-2.5 hover:bg-cream-deep/40">
                     <Avatar user={requester} size={34} />
                     <span className="flex-1 min-w-0">
-                      <span className="block text-[13.5px] leading-snug"><b className="font-semibold">{requester.displayName}</b> wants a <b className="font-semibold">{q.city}</b> guide</span>
-                      {q.note ? <span className="block text-[12px] text-ink-muted italic truncate">“{q.note}”</span> : <span className="block text-[12px] text-ink-muted">{q.status === "making" ? "You’re working on it" : "Tap to make it or send one"}</span>}
+                      <span className="block text-[13.5px] leading-snug"><b className="font-semibold">{requester.displayName}</b> asked for your spots in <b className="font-semibold">{q.city}</b></span>
+                      {q.note ? <span className="block text-[12px] text-ink-muted italic truncate">“{q.note}”</span> : <span className="block text-[12px] text-ink-muted">{q.status === "making" ? "You’re working on it" : "Send your spots, or say you can’t help"}</span>}
                     </span>
                     <span className="text-[12.5px] font-semibold text-terracotta shrink-0">{q.status === "making" ? "Continue →" : "Reply →"}</span>
                   </Link>

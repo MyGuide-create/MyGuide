@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import { toPublicUser, type PublicUser } from "./auth";
 import { getDb } from "./db";
 import { follows, guideRequests, guideWishes, guides, users, type GuideRequest, type User } from "./db/schema";
@@ -119,13 +119,14 @@ export interface IncomingAsk {
 }
 
 /** Asks waiting for this person (Activity's "Guide requests"). */
-export async function pendingAsksFor(userId: string): Promise<IncomingAsk[]> {
+export async function pendingAsksFor(userId: string, opts: { days?: number } = {}): Promise<IncomingAsk[]> {
   const db = await getDb();
+  const since = opts.days ? new Date(Date.now() - opts.days * 86_400_000) : null;
   const rows = await db
     .select({ r: guideRequests, u: users })
     .from(guideRequests)
     .innerJoin(users, eq(users.id, guideRequests.requesterId))
-    .where(and(eq(guideRequests.recipientId, userId), inArray(guideRequests.status, ["sent", "opened", "making"])))
+    .where(and(eq(guideRequests.recipientId, userId), inArray(guideRequests.status, ["sent", "opened", "making"]), ...(since ? [gte(guideRequests.createdAt, since)] : [])))
     .orderBy(desc(guideRequests.createdAt))
     .limit(20);
   return rows.map(({ r, u }) => ({ req: r, requester: toPublicUser(u) }));
