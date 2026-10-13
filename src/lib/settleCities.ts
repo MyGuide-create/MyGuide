@@ -26,9 +26,10 @@ const GUIDE_KM = 40;
 const NEAR_KM = 12;
 /**
  * v2: countries that are one area (Maldives…). v3: a place in its guide's own city stays there (live data had
- * Comporta spots pulled into Grândola because more spots were tagged Grândola). Each bump re-runs over everything.
+ * Comporta spots pulled into Grândola because more spots were tagged Grândola). v4: English names for cities Google
+ * gives in the local language (Genève → Geneva, Zürich, München). Each bump re-runs over everything.
  */
-export const SETTLE_JOB = "settle-cities-v3";
+export const SETTLE_JOB = "settle-cities-v4";
 
 type Row = {
   id: string;
@@ -47,6 +48,21 @@ const median = (xs: number[]) => {
   const s = [...xs].sort((a, b) => a - b);
   return s[Math.floor(s.length / 2)];
 };
+
+/**
+ * "Genève" for Geneva: the same name in another language or spelling, not a district or
+ * neighbourhood alias (a guide titled for "Shoreditch" keeps its own city name).
+ */
+function isLocalName(name: string, city: string): boolean {
+  const plain = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+  if (name.trim() === city) return false;
+  // Same name with accents or case ("Zürich", "geneva"), or a name in another language ("Genève", "Genf").
+  return plain(name) === plain(city) || LOCAL_NAMES.has(plain(name));
+}
+/** Local-language and alternative spellings of whole cities (not districts). */
+const LOCAL_NAMES = new Set(
+  ["geneve", "genf", "ginevra", "zurich", "zuerich", "luzern", "bale", "berne", "munchen", "muenchen", "koln", "koeln", "venezia", "torino", "sevilla", "brugge", "antwerpen", "anvers", "gent", "gand", "den haag", "'s-gravenhage", "goteborg", "krakow", "warszawa", "lisboa", "roma", "firenze", "milano", "wien", "praha", "kobenhavn", "napoli"],
+);
 
 /** Where each town on MyGuide is (median of its places) and how many places it has, from the towns Google gave. */
 async function townStats(db: Db): Promise<Map<string, { name: string; lat: number; lng: number; n: number }>> {
@@ -140,8 +156,9 @@ async function settlePlaces(db: Db, where: { guideIds?: string[] } = {}): Promis
     const src = (r.sourceCity || r.city).trim();
     const city = settle(r, stats);
     // The area line shows the town when it differs from the area; never the area's own name again.
-    let area = r.area.trim() || (src && src.toLowerCase() !== city.toLowerCase() ? src : "");
-    if (area.toLowerCase() === city.toLowerCase()) area = "";
+    // "Genève" is just Geneva's local name, not an area within it.
+    let area = r.area.trim() || (src && src.toLowerCase() !== city.toLowerCase() && !isLocalName(src, city) ? src : "");
+    if (area.toLowerCase() === city.toLowerCase() || isLocalName(area, city)) area = "";
     if (city === r.city && src === r.sourceCity && area === r.area) continue;
     updates.push(db.update(places).set({ city, sourceCity: src, area }).where(eq(places.id, r.id)));
   }
@@ -149,7 +166,10 @@ async function settlePlaces(db: Db, where: { guideIds?: string[] } = {}): Promis
   const gq = db.select({ id: guides.id, city: guides.city, country: guides.country }).from(guides);
   for (const g of await (where.guideIds ? gq.where(inArray(guides.id, where.guideIds)) : gq)) {
     const whole = areaForCountry(g.country);
-    if (whole && g.city !== whole) updates.push(db.update(guides).set({ city: whole }).where(eq(guides.id, g.id)));
+    // A known city under its local name ("Genève") takes the English one, like its places.
+    const named = g.city.trim() ? findCityExact(g.city)?.city : undefined;
+    const city = whole ?? (named && isLocalName(g.city, named) ? named : null);
+    if (city && g.city !== city) updates.push(db.update(guides).set({ city }).where(eq(guides.id, g.id)));
   }
   // In batches: one round trip each (the first run touches every place).
   for (let i = 0; i < updates.length; i += 100) {
