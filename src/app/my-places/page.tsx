@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { AppShell, TopBar } from "@/components/AppShell";
 import { GuideNudge } from "@/components/GuideNudge";
-import { EditIcon, PinIcon, PlusIcon } from "@/components/Icons";
+import { ChevronDown, EditIcon, PinIcon, PlusIcon } from "@/components/Icons";
 import { PlaceTile } from "@/components/PlaceTile";
 import { RecommendToggle } from "@/components/RecommendToggle";
-import { EmptyState, LinkButton } from "@/components/ui";
+import { EmptyState, LinkButton, cx } from "@/components/ui";
 import { requireUser, toPublicUser } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 import { loadMyPlaces, NUDGE_MIN, unguidedByCity, type MyPlace } from "@/lib/myPlaces";
@@ -103,16 +103,21 @@ export default async function MyPlacesPage({ searchParams }: { searchParams: Pro
             const privateIds = rows.filter((p) => p.inStash && !p.place.sharedAt).map((p) => p.place.id);
             const loose = unguided.get(city)?.length ?? 0;
             return (
-              <section key={city || "_none"} id={`city-${cityAnchor(city)}`} className="scroll-mt-16">
-                <h2 className="px-1 flex items-baseline gap-2 border-b border-line pb-1.5 mb-2.5">
-                  <span className="font-display text-[21px]">{city ? `My ${city}` : "Other places"}</span>
-                  <span className="text-[12px] text-ink-faint">{rows.length}</span>
-                  {city && privateIds.length > 1 && (
-                    <span className="ml-auto">
-                      <RecommendToggle variant="all" placeIds={privateIds} shared={false} city={city} />
-                    </span>
-                  )}
-                </h2>
+              // Tap a city heading to collapse or expand it (native <details>, all open to start). The
+              // "Recommend all" button sits outside <summary> so tapping it doesn't fold the city.
+              <details key={city || "_none"} id={`city-${cityAnchor(city)}`} open className="group/city relative scroll-mt-16">
+                <summary className={cx("list-none [&::-webkit-details-marker]:hidden cursor-pointer select-none px-1 flex items-center gap-2 border-b border-line pb-1.5 group-open/city:mb-2.5 min-h-[36px]", city && privateIds.length > 1 && "pr-[136px]")}>
+                  <h2 className="flex items-baseline gap-2 min-w-0">
+                    <span className="font-display text-[21px] truncate">{city ? `My ${city}` : "Other places"}</span>
+                    <span className="text-[12px] text-ink-faint">{rows.length}</span>
+                  </h2>
+                  <ChevronDown size={18} aria-hidden className="shrink-0 text-ink-muted transition-transform -rotate-90 group-open/city:rotate-0" />
+                </summary>
+                {city && privateIds.length > 1 && (
+                  <span className="absolute right-1 top-0 h-[36px] flex items-center">
+                    <RecommendToggle variant="all" placeIds={privateIds} shared={false} city={city} />
+                  </span>
+                )}
                 {Number.isFinite(imported) && focusShown && city.toLowerCase() === focus && importBanner}
                 {city && loose >= NUDGE_MIN && <GuideNudge city={city} count={loose} className="mb-2.5" />}
                 <ul className="flex flex-col gap-2">
@@ -141,7 +146,7 @@ export default async function MyPlacesPage({ searchParams }: { searchParams: Pro
                     );
                   })}
                 </ul>
-              </section>
+              </details>
             );
           })
         )}

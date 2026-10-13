@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { AppShell, TopBar } from "@/components/AppShell";
 import { GuideCover } from "@/components/GuideCover";
-import { HeartIcon, LockIcon, MapIcon, PlusIcon, SparkleIcon } from "@/components/Icons";
+import { ChevronDown, HeartIcon, LockIcon, MapIcon, PlusIcon, SparkleIcon } from "@/components/Icons";
 import { findCity, metroOfDistrict } from "@/lib/places/cities";
 import { placeArea } from "@/lib/places/neighbourhood";
 import { redirect } from "next/navigation";
@@ -435,17 +435,23 @@ function groupSpots(list: CitySpot[], grouped: boolean): { category: string | nu
   return orderedCategories(list.map((s) => s.place)).map((c) => ({ category: c, spots: list.filter((s) => s.place.category === c) }));
 }
 
-/** A category's spots under a "Food & Drinks · 12" heading (no heading for a flat list). */
+/**
+ * A category's spots under a "Food & Drinks · 12" heading (no heading for a flat list). Tap the
+ * heading to collapse or expand it; every group starts open. Native <details>, so no client JS.
+ */
 function SpotGroup({ category, count, children }: { category: string | null; count: number; children: ReactNode }) {
   if (!category) return <>{children}</>;
   return (
-    <section aria-label={category} className="flex flex-col gap-2.5">
-      <h3 className="flex items-baseline gap-1.5 border-b border-line px-1 pb-1.5 pt-3">
-        <span className="font-display text-[19px] leading-none">{category}</span>
-        <span className="text-[12.5px] text-ink-faint tabular-nums">· {count}</span>
-      </h3>
-      {children}
-    </section>
+    <details open aria-label={category} className="group/cat flex flex-col">
+      <summary className="list-none [&::-webkit-details-marker]:hidden cursor-pointer select-none flex items-center gap-1.5 border-b border-line px-1 pb-1.5 pt-3">
+        <h3 className="flex items-baseline gap-1.5 min-w-0">
+          <span className="font-display text-[19px] leading-none">{category}</span>
+          <span className="text-[12.5px] text-ink-faint tabular-nums">· {count}</span>
+        </h3>
+        <ChevronDown size={18} aria-hidden className="ml-auto text-ink-muted transition-transform -rotate-90 group-open/cat:rotate-0" />
+      </summary>
+      <div className="pt-2.5 flex flex-col gap-2.5">{children}</div>
+    </details>
   );
 }
 
