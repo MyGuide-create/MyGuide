@@ -284,7 +284,7 @@ export const notifications = sqliteTable(
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    /** "guide_shared" | "new_follower" | "follow_request" | "follow_accepted" | "place_comment" | "guide_published" | "places_added" | "guide_used" | "collab_invite" | "user_joined" | "wish_granted" | "guide_request" | "request_joined" | "request_declined" | "request_passed" | "request_passed_done" | "spots_sent" | "clap" */
+    /** "guide_shared" | "new_follower" | "follow_request" | "follow_accepted" | "place_comment" | "guide_published" | "places_added" | "guide_used" | "collab_invite" | "user_joined" | "wish_granted" | "guide_request" | "request_joined" | "request_declined" | "request_passed" | "request_passed_done" | "spots_sent" | "clap" | "vouched" */
     type: text("type").notNull(),
     actorId: text("actor_id").references(() => users.id, { onDelete: "cascade" }),
     guideId: text("guide_id").references(() => guides.id, { onDelete: "cascade" }),

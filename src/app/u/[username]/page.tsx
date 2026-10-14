@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { AppShell, TopBar } from "@/components/AppShell";
 import { FollowButton } from "@/components/FollowButton";
 import { GuideCard } from "@/components/GuideCard";
-import { HeartIcon, LockIcon, PlusIcon } from "@/components/Icons";
+import { BookmarkIcon, LockIcon, PlusIcon } from "@/components/Icons";
 import { Avatar, EmptyState, LinkButton } from "@/components/ui";
 import { getCurrentUser, toPublicUser } from "@/lib/auth";
 import { AskForGuideButton } from "@/components/AskForGuide";
@@ -89,7 +89,7 @@ export default async function ProfilePage({ params, searchParams }: PageProps<"/
         <div className="mt-4">
           {own ? (
             <div className="flex gap-2">
-              <LinkButton href="/saved" size="sm" variant="outline"><HeartIcon size={14} /> Favourites</LinkButton>
+              <LinkButton href="/saved" size="sm" variant="outline"><BookmarkIcon size={14} /> Want to go</LinkButton>
             </div>
           ) : (
             !hiddenFromMe && (

@@ -24,7 +24,7 @@ export default async function StatsPage() {
             <div className="grid grid-cols-3 gap-2">
               <Tile label="Views" value={total("views")} />
               <Tile label="Readers" value={total("viewers")} />
-              <Tile label="Favourites" value={total("favourites")} />
+              <Tile label="Want to go" value={total("favourites")} />
               <Tile label="Taps out" value={total("taps")} hint="Directions, call, website, booking" />
               <Tile label="Copies" value={total("copies")} hint="People who used your guide" />
               <Tile label="Guide saves" value={total("guideSaves")} hint="People who saved a whole guide" />
@@ -36,7 +36,7 @@ export default async function StatsPage() {
                   <div className="mt-2 grid grid-cols-4 gap-2 text-center">
                     <Mini label="views" value={s.views} sub={s.views7d ? `${s.views7d} this week` : undefined} />
                     <Mini label="readers" value={s.viewers} />
-                    <Mini label="favourites" value={s.favourites} />
+                    <Mini label="want to go" value={s.favourites} />
                     <Mini label="taps out" value={s.taps} />
                   </div>
                   <div className="mt-2 text-[11.5px] text-ink-muted">

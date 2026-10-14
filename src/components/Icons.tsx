@@ -142,6 +142,9 @@ export const EyeIcon = ({ size, ...p }: P) => (
 export const EyeOffIcon = ({ size, ...p }: P) => (
   <svg {...base(size, p)}><path d="M3 3l18 18" /><path d="M10.6 5.1A10.6 10.6 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 4.1M6.6 6.6C3.7 8.4 2 12 2 12s3.5 7 10 7a9.9 9.9 0 0 0 5.4-1.6" /><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" /></svg>
 );
+export const BookmarkIcon = ({ size, filled, ...p }: P & { filled?: boolean }) => (
+  <svg {...base(size, p)} fill={filled ? "currentColor" : "none"}><path d="M6.5 3.5h11a1 1 0 0 1 1 1v16l-6.5-4.2-6.5 4.2v-16a1 1 0 0 1 1-1Z" /></svg>
+);
 export const HeartIcon = ({ size, filled, ...p }: P & { filled?: boolean }) => (
   <svg {...base(size, p)} fill={filled ? "currentColor" : "none"}><path d="M12 20.5s-7.5-4.6-9.3-9.4C1.5 7.8 3.6 4.5 7 4.5c2 0 3.4 1.1 5 3 1.6-1.9 3-3 5-3 3.4 0 5.5 3.3 4.3 6.6-1.8 4.8-9.3 9.4-9.3 9.4Z" /></svg>
 );

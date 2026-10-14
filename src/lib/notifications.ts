@@ -133,6 +133,11 @@ export async function addNotifications(rows: NewNotification[]): Promise<void> {
             body = "Ask someone else who knows it?";
             url = "/wishes";
             break;
+          case "vouched":
+            title = `${who} went to ${p?.name ?? "your spot"} and recommends it`;
+            body = r.note ? `“${r.note}”` : "Your recommendation worked.";
+            if (g) url = p ? `/g/${g.slug}/p/${p.id}` : `/g/${g.slug}`;
+            break;
           case "clap":
             title = g ? `${who} 👏 your guide ${g.title}` : `${who} 👏 your ${r.city ? `${r.city} ` : ""}spot${n === 1 ? "" : "s"}`;
             body = r.note ?? "";

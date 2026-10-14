@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { AppShell, TopBar } from "@/components/AppShell";
 import { GuideCover } from "@/components/GuideCover";
-import { ChevronDown, HeartIcon, LockIcon, MapIcon, PlusIcon, SparkleIcon } from "@/components/Icons";
+import { BookmarkIcon, ChevronDown, LockIcon, MapIcon, PlusIcon, SparkleIcon } from "@/components/Icons";
 import { findCity, metroOfDistrict } from "@/lib/places/cities";
 import { placeArea } from "@/lib/places/neighbourhood";
 import { redirect } from "next/navigation";
@@ -20,6 +20,9 @@ import { acceptedFollowingIds, citySpots, type CitySpot } from "@/lib/citySpots"
 import { CATEGORIES } from "@/lib/places";
 import { orderedCategories } from "@/lib/places/order";
 import { timeAgo } from "@/lib/utils";
+import { getDb } from "@/lib/db";
+import { savedPlaces } from "@/lib/db/schema";
+import { eq } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
 
@@ -59,6 +62,8 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
   const sort = one(sp.sort) === "new" ? "new" : "saved";
   const friendParam = one(sp.friend).toLowerCase();
   const catParam = one(sp.cat);
+  // "Want to go" chip (14 Oct 2026): only the spots you bookmarked here.
+  const wantParam = one(sp.list) === "want";
   // Every spot is listed now; old ?all=1 / ?more=1 links still open the page and are ignored.
   const mapView = one(sp.view) === "map";
 
@@ -89,6 +94,19 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
   const me = user ? toPublicUser(user) : null;
   const ownSpots = viewerId ? spots.filter((s) => s.recommenders.some((r) => r.user.id === viewerId)).length : 0;
 
+  // Your Want to go list here: any spot (friends' or anyone's) with a place you bookmarked.
+  const wantIds = user && city ? new Set((await (await getDb()).select({ id: savedPlaces.placeId }).from(savedPlaces).where(eq(savedPlaces.userId, user.id))).map((r) => r.id)) : new Set<string>();
+  const wantSpots: CitySpot[] = [];
+  if (wantIds.size) {
+    const seen = new Set<string>();
+    for (const s of [...spots, ...(fromFriends ? await citySpots({ city, viewerId }) : [])]) {
+      if (seen.has(s.key) || !s.recommenders.some((r) => wantIds.has(r.placeId))) continue;
+      seen.add(s.key);
+      wantSpots.push(s);
+    }
+  }
+  const wantActive = wantParam && wantSpots.length > 0;
+
   // The friend row: everyone you follow with spots or guides here, most spots first (you get your own chip).
   const people = new Map<string, { user: PublicUser; spots: number; guides: number }>();
   const person = (u: PublicUser) => people.get(u.id) ?? people.set(u.id, { user: u, spots: 0, guides: 0 }).get(u.id)!;
@@ -97,10 +115,10 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
   const friends = [...people.values()].sort((a, b) => b.spots - a.spots || b.guides - a.guides || first(a.user).localeCompare(first(b.user)));
   const friendCount = friends.length;
   const isMe = !!me && friendParam === me.username.toLowerCase();
-  const picked = isMe ? me : (friends.find((f) => f.user.username.toLowerCase() === friendParam)?.user ?? null);
+  const picked = wantActive ? null : isMe ? me : (friends.find((f) => f.user.username.toLowerCase() === friendParam)?.user ?? null);
   const showYou = !!me && (ownSpots > 0 || ownGuides.length > 0);
 
-  const bySomeone = picked ? spots.filter((s) => s.recommenders.some((r) => r.user.id === picked.id)) : spots;
+  const bySomeone = wantActive ? wantSpots : picked ? spots.filter((s) => s.recommenders.some((r) => r.user.id === picked.id)) : spots;
   const cats = CATEGORIES.filter((c) => bySomeone.some((s) => s.place.category === c));
   const cat = cats.find((c) => c === catParam) ?? null;
   const shownSpots = cat ? bySomeone.filter((s) => s.place.category === cat) : bySomeone;
@@ -109,7 +127,7 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
   const following = new Set(followingIds);
   const friendKeys = new Set(spots.map((s) => s.key));
   const moreAll =
-    city && fromFriends && !picked
+    city && fromFriends && !picked && !wantActive
       ? (await citySpots({ city, viewerId })).filter((s) => !friendKeys.has(s.key) && s.recommenders.some((r) => r.user.id !== viewerId) && (!cat || s.place.category === cat))
       : [];
   const capLead = (list: CitySpot[]) => capRuns(list, (s) => leadFor(s, null, viewerId).user.id);
@@ -129,7 +147,7 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
   const wish = [wanted.help, ...wanted.list].find((w) => w && cityKey(w.group.city) === cityKey(city)) ?? null;
 
   const base = { name: city, ...(country ? { country } : {}), ...(lat && lng ? { lat, lng } : {}) };
-  const state = { friend: picked?.username ?? "", cat: cat ?? "", sort: sort === "new" ? "new" : "", view: mapView ? "map" : "" };
+  const state = { friend: picked?.username ?? "", list: wantActive ? "want" : "", cat: cat ?? "", sort: sort === "new" ? "new" : "", view: mapView ? "map" : "" };
   const cityHref = (over: Partial<typeof state>) => {
     const q = { ...base } as Record<string, string>;
     for (const [k, v] of Object.entries({ ...state, ...over })) if (v) q[k] = v;
@@ -202,22 +220,27 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
           </div>
         )}
 
-        {(friends.length > 0 || showYou) && (
+        {(friends.length > 0 || showYou || wantSpots.length > 0) && (
           <section className="pt-1 flex flex-col gap-2.5">
             <h2 className="px-5 text-[13px] font-semibold text-ink-muted">Whose spots</h2>
             <div role="group" aria-label="Filter by friend" className="flex gap-3 overflow-x-auto no-scrollbar px-5 pb-1">
-              <FriendChip href={cityHref({ friend: "", cat: "" })} active={!picked} label="Everyone" count={spots.length}>
+              <FriendChip href={cityHref({ friend: "", list: "", cat: "" })} active={!picked && !wantActive} label="Everyone" count={spots.length}>
                 <span className="w-12 h-12 rounded-full bg-cream-deep text-ink text-[13px] font-semibold flex items-center justify-center">All</span>
               </FriendChip>
+              {wantSpots.length > 0 && (
+                <FriendChip href={cityHref({ friend: "", list: wantActive ? "" : "want", cat: "" })} active={wantActive} label="Want to go" count={wantSpots.length} wide>
+                  <span className="w-12 h-12 rounded-full bg-terracotta-tint text-terracotta flex items-center justify-center"><BookmarkIcon size={20} filled /></span>
+                </FriendChip>
+              )}
               {showYou && me && (
-                <FriendChip href={cityHref({ friend: isMe ? "" : me.username, cat: "" })} active={isMe} label="You" count={ownSpots}>
+                <FriendChip href={cityHref({ friend: isMe ? "" : me.username, list: "", cat: "" })} active={isMe} label="You" count={ownSpots}>
                   <Avatar user={me} size={48} />
                 </FriendChip>
               )}
               {friends.map((f) => {
                 const on = picked?.id === f.user.id;
                 return (
-                  <FriendChip key={f.user.id} href={cityHref({ friend: on ? "" : f.user.username, cat: "" })} active={on} label={first(f.user)} count={f.spots}>
+                  <FriendChip key={f.user.id} href={cityHref({ friend: on ? "" : f.user.username, list: "", cat: "" })} active={on} label={first(f.user)} count={f.spots}>
                     <Avatar user={f.user} size={48} />
                   </FriendChip>
                 );
@@ -248,7 +271,7 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
                     <span className="mt-2 flex items-center gap-2 text-[12.5px] text-ink-muted">
                       <Avatar user={g.owner} size={22} />
                       {first(g.owner)}
-                      {(saves.get(g.guide.id) ?? 0) > 0 && <> · <HeartIcon size={12} filled aria-hidden className="text-terracotta-deep" /> {saves.get(g.guide.id)}</>}
+                      {(saves.get(g.guide.id) ?? 0) > 0 && <> · <BookmarkIcon size={12} filled aria-hidden className="text-terracotta-deep" /> {saves.get(g.guide.id)}</>}
                     </span>
                   </span>
                 </Link>
@@ -382,7 +405,7 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
                     aria-current={sort === s ? "true" : undefined}
                     className={cx("px-3 py-1.5 rounded-full text-[13px]", sort === s ? "bg-ink text-cream font-semibold" : "text-ink")}
                   >
-                    {s === "saved" ? "Most favourited" : "Newest"}
+                    {s === "saved" ? "Most saved" : "Newest"}
                   </Link>
                 ))}
               </div>
@@ -455,7 +478,7 @@ function SpotGroup({ category, count, children }: { category: string | null; cou
   );
 }
 
-/** A guide in the city list. ♥ N = how many people favourited it (the same heart as on the guide). */
+/** A guide in the city list. 🔖 N = how many people saved it (the same bookmark as on the guide). */
 function GuideRow({ g, hearts }: { g: GuideCard; hearts: number }) {
   return (
     <Link href={`/g/${g.guide.slug}`} className="flex items-center gap-3 rounded-2xl border border-line/80 bg-paper p-2.5 hover:border-terracotta-soft">
@@ -466,8 +489,8 @@ function GuideRow({ g, hearts }: { g: GuideCard; hearts: number }) {
         <span className="mt-0.5 flex items-center gap-1.5 text-[12px] text-ink-muted">
           {hearts > 0 && (
             <>
-              <span className="inline-flex items-center gap-1 font-semibold text-terracotta-deep" aria-label={`Favourited by ${hearts} ${hearts === 1 ? "person" : "people"}`}>
-                <HeartIcon size={13} filled aria-hidden /> {hearts}
+              <span className="inline-flex items-center gap-1 font-semibold text-terracotta-deep" aria-label={`Saved by ${hearts} ${hearts === 1 ? "person" : "people"}`}>
+                <BookmarkIcon size={13} filled aria-hidden /> {hearts}
               </span>
               <span aria-hidden>·</span>
             </>
@@ -479,9 +502,9 @@ function GuideRow({ g, hearts }: { g: GuideCard; hearts: number }) {
   );
 }
 
-function FriendChip({ href, active, label, count, children }: { href: string; active: boolean; label: string; count: number; children: ReactNode }) {
+function FriendChip({ href, active, label, count, children, wide }: { href: string; active: boolean; label: string; count: number; children: ReactNode; wide?: boolean }) {
   return (
-    <Link href={href} replace scroll={false} aria-current={active ? "true" : undefined} className="shrink-0 w-[60px] flex flex-col items-center gap-1">
+    <Link href={href} replace scroll={false} aria-current={active ? "true" : undefined} className={cx("shrink-0 flex flex-col items-center gap-1", wide ? "w-[78px]" : "w-[60px]")}>
       <span className={cx("rounded-full p-[2px] border-2", active ? "border-ink" : "border-transparent")}>{children}</span>
       <span className={cx("text-[12px] max-w-full truncate", active ? "font-semibold" : "font-medium text-ink/85")}>{label}</span>
       {count > 0 && <span className="text-[11px] text-ink-muted -mt-1">{count} spot{count === 1 ? "" : "s"}</span>}

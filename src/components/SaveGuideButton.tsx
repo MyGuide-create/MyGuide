@@ -4,10 +4,10 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import { toggleSavedGuide } from "@/lib/actions/saved";
-import { HeartIcon } from "./Icons";
+import { BookmarkIcon } from "./Icons";
 import { cx } from "./ui";
 
-/** Heart for saving a whole guide to Favourites. "round" sits in the guide's action row; "icon" sits on cards. */
+/** Bookmark for saving a whole guide to Want to go. "round" sits in the guide's action row; "icon" sits on cards. */
 export function SaveGuideButton({ guideId, initial, signedIn, variant = "round", className }: { guideId: string; initial: boolean; signedIn: boolean; variant?: "round" | "icon"; className?: string }) {
   const [saved, setSaved] = useState(initial);
   const [toast, setToast] = useState(false);
@@ -28,7 +28,7 @@ export function SaveGuideButton({ guideId, initial, signedIn, variant = "round",
   if (!signedIn) {
     return (
       <Link href={`/signup?why=save&next=${encodeURIComponent(path)}`} aria-label="Save this guide" className={cx(cls, className)}>
-        <HeartIcon size={size} />
+        <BookmarkIcon size={size} />
       </Link>
     );
   }
@@ -37,7 +37,7 @@ export function SaveGuideButton({ guideId, initial, signedIn, variant = "round",
       <button
         type="button"
         aria-pressed={saved}
-        aria-label={saved ? "Remove guide from favourites" : "Save this guide"}
+        aria-label={saved ? "Remove guide from Want to go" : "Save this guide"}
         className={cx(cls, className)}
         onClick={(e) => {
           e.preventDefault();
@@ -54,14 +54,14 @@ export function SaveGuideButton({ guideId, initial, signedIn, variant = "round",
           });
         }}
       >
-        <HeartIcon size={size} filled={saved} />
+        <BookmarkIcon size={size} filled={saved} />
       </button>
       {toast && (
         <div role="status" className="fixed inset-x-0 bottom-24 z-50 flex justify-center px-4 pointer-events-none">
           <div className="pointer-events-auto max-w-[440px] flex items-center gap-2.5 rounded-2xl bg-ink text-cream px-4 py-3 shadow-lg text-[13px] leading-snug">
-            <HeartIcon size={16} filled className="text-terracotta-soft shrink-0" />
+            <BookmarkIcon size={16} filled className="text-terracotta-soft shrink-0" />
             <span>
-              Guide saved to your Favourites. <Link href="/saved?tab=guides" className="underline underline-offset-2 font-medium">Open</Link>
+              Guide saved to Want to go. <Link href="/saved?tab=guides" className="underline underline-offset-2 font-medium">Open</Link>
             </span>
           </div>
         </div>

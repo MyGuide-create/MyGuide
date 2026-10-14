@@ -99,7 +99,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   const feed = capRuns(homeFeed(recs, followingGuides, FEED_DAYS), feedOwner).slice(0, FEED_TARGET);
   const fillCount = feed.length >= FEED_TARGET ? 0 : Math.max(FEED_TARGET - feed.length, 4);
   const everyone = fillCount ? await everyoneFeed(user?.id, new Set([...(user ? [user.id] : []), ...followingIds]), { days: 30, limit: fillCount }) : [];
-  const feedPlaceIds = [...feed, ...everyone].flatMap((f) => (f.kind === "spots" && f.recs.length === 1 ? [f.recs[0].place.id] : []));
+  const feedPlaceIds = [...feed, ...everyone].flatMap((f) => (f.kind === "spots" ? f.recs.slice(0, 8).map((r) => r.place.id) : []));
   const savedIds = new Set<string>();
   if (user && feedPlaceIds.length) {
     const db = await getDb();
@@ -477,18 +477,25 @@ function FeedCard({ f, savedIds, signedIn, followable = false, viewerId, claps }
             </span>
           </Link>
           <span className="flex items-center gap-2">
-            <SaveButton placeId={r0.place.id} initial={savedIds.has(r0.place.id)} signedIn={signedIn} variant="pill" />
+            {viewerId !== f.user.id && <SaveButton placeId={r0.place.id} initial={savedIds.has(r0.place.id)} signedIn={signedIn} variant="pill" />}
             {f.city && <Link href={cityHref({ city: f.city })} className="inline-flex items-center h-9 px-3.5 rounded-full border border-line text-[13px] font-semibold">All {f.city} spots</Link>}
           </span>
         </>
       ) : (
         <span className="flex gap-2.5 overflow-x-auto no-scrollbar -mx-1 px-1">
           {f.recs.slice(0, 8).map((r) => (
-            <Link key={r.place.id} href={`/g/${r.guide.slug}/p/${r.place.id}`} className="shrink-0 w-[118px] flex flex-col gap-1.5">
-              <PlaceTile place={r.place} size={118} />
-              <span className="text-[13px] font-semibold leading-tight line-clamp-2">{r.place.name}</span>
-              <span className="-mt-1 text-[11.5px] text-ink-muted truncate">{[r.place.category, placeArea(r.place)].filter(Boolean).join(" · ")}</span>
-            </Link>
+            <span key={r.place.id} className="relative shrink-0 w-[118px]">
+              <Link href={`/g/${r.guide.slug}/p/${r.place.id}`} className="flex flex-col gap-1.5">
+                <PlaceTile place={r.place} size={118} />
+                <span className="text-[13px] font-semibold leading-tight line-clamp-2">{r.place.name}</span>
+                <span className="-mt-1 text-[11.5px] text-ink-muted truncate">{[r.place.category, placeArea(r.place)].filter(Boolean).join(" · ")}</span>
+              </Link>
+              {viewerId !== f.user.id && (
+                <span className="absolute top-1.5 right-1.5 rounded-full bg-paper/90 backdrop-blur shadow-sm">
+                  <SaveButton placeId={r.place.id} initial={savedIds.has(r.place.id)} signedIn={signedIn} className="m-0!" />
+                </span>
+              )}
+            </span>
           ))}
         </span>
       )}

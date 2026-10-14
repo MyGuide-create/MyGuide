@@ -35,7 +35,7 @@ import { getGoogleRatings } from "@/lib/places/ratings";
 import { GoogleRatingLine } from "@/components/GoogleRating";
 import { displayPhone, telHref } from "@/lib/phone";
 import { trackAttrs } from "@/lib/track";
-import { ReactionButtons } from "@/components/ReactionButtons";
+import { BeenHere } from "@/components/BeenHere";
 import { AddToGuideButton } from "@/components/AddToGuideButton";
 import { isReusable, reuseTargets } from "@/lib/reuse";
 import { namesSentence } from "@/lib/utils";
@@ -225,11 +225,14 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
           )}
           {!detail.viewerCanEdit && (
             <div className="mt-3">
-              <ReactionButtons
+              <BeenHere
                 placeId={place.id}
-                initial={detail.viewerReactions[place.id] ?? { been: false, loved: false }}
-                counts={detail.placeSocial[place.id] ?? { been: 0, loved: 0 }}
+                placeName={place.name}
+                ownerFirst={detail.owner.displayName.split(" ")[0]}
+                initial={detail.viewerReactions[place.id]?.been ?? false}
+                count={detail.placeSocial[place.id]?.been ?? 0}
                 signedIn={!!user}
+                youHaveIt={!!mine}
               />
               {canReuse && (
                 <AddToGuideButton
@@ -245,7 +248,7 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
           )}
           {detail.viewerCanEdit && ((detail.placeSocial[place.id]?.been ?? 0) + (detail.placeSocial[place.id]?.loved ?? 0) + (detail.placeSocial[place.id]?.favourites ?? 0)) > 0 && (
             <p className="mt-2 text-[12px] text-ink-muted">
-              Readers: {detail.placeSocial[place.id].favourites} favourited · {detail.placeSocial[place.id].been} been · {detail.placeSocial[place.id].loved} loved it
+              Readers: {detail.placeSocial[place.id].favourites} want to go · {detail.placeSocial[place.id].been} been · {detail.placeSocial[place.id].loved} loved it
             </p>
           )}
         </div>

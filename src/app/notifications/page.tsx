@@ -125,6 +125,12 @@ export default async function NotificationsPage() {
                       {who} sent you {n.count} {n.city ? `${n.city} ` : ""}spot{n.count === 1 ? "" : "s"} for your wish list.
                     </>
                   )}
+                  {n.type === "vouched" && (
+                    <>
+                      {who} went to {n.placeId && placeMap.get(n.placeId) ? <span className="font-medium">{placeMap.get(n.placeId)!.name}</span> : "your spot"} and recommends it too
+                      {n.note ? <span className="block text-[13px] italic text-ink/85">“{n.note}”</span> : null}
+                    </>
+                  )}
                   {n.type === "clap" && (
                     <>
                       {who} 👏 {rawGuide ? <>your guide <span className="font-display text-[16px]">“{rawGuide.title}”</span></> : <>your {n.city ? <b className="font-semibold">{n.city}</b> : null} spot{n.count === 1 ? "" : "s"}</>}
@@ -222,6 +228,9 @@ export default async function NotificationsPage() {
                     {timeAgo(n.createdAt)}
                   </span>
                   {n.type === "wish_granted" && rawGuide && <Link href={`/g/${rawGuide.slug}`} className="font-medium text-terracotta">Open your guide →</Link>}
+                  {n.type === "vouched" && rawGuide && n.placeId && (
+                    <Link href={`/g/${rawGuide.slug}/p/${n.placeId}`} className="font-medium text-terracotta">See the place →</Link>
+                  )}
                   {n.type === "clap" && !rawGuide && n.city && (
                     <Link href={`/city?${new URLSearchParams({ name: n.city, friend: user.username }).toString()}`} className="font-medium text-terracotta">See your spots →</Link>
                   )}
@@ -234,7 +243,7 @@ export default async function NotificationsPage() {
                   {n.type === "request_passed" && <Link href={`/u/${user.username}#wishes`} className="font-medium text-terracotta">Your wish list →</Link>}
                   {n.type === "request_passed_done" && rawGuide && <Link href={`/g/${rawGuide.slug}`} className="font-medium text-terracotta">See the guide →</Link>}
                   {n.type === "collab_invite" && rawGuide && <Link href={`/g/${rawGuide.slug}/edit`} className="font-medium text-terracotta">Start editing →</Link>}
-                  {guide && n.type !== "place_comment" && n.type !== "places_added" && n.type !== "collab_invite" && n.type !== "guide_used" && n.type !== "wish_granted" && n.type !== "request_passed_done" && <Link href={`/g/${guide.slug}`} className="font-medium text-terracotta">Open guide →</Link>}
+                  {guide && n.type !== "place_comment" && n.type !== "vouched" && n.type !== "places_added" && n.type !== "collab_invite" && n.type !== "guide_used" && n.type !== "wish_granted" && n.type !== "request_passed_done" && <Link href={`/g/${guide.slug}`} className="font-medium text-terracotta">Open guide →</Link>}
                   {guide && n.type === "places_added" && (
                     <Link href={n.count === 1 && addedPlace ? `/g/${guide.slug}/p/${addedPlace.id}` : `/g/${guide.slug}`} className="font-medium text-terracotta">{n.count === 1 && addedPlace ? "See the place →" : "See what's new →"}</Link>
                   )}
