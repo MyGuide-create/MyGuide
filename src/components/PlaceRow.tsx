@@ -30,6 +30,7 @@ export function PlaceRow({
   expanded,
   tips,
   saved,
+  yours,
   shareKey,
   social,
   friends,
@@ -54,6 +55,8 @@ export function PlaceRow({
   expanded?: boolean;
   tips?: PlaceTip[];
   saved?: boolean;
+  /** You already have this spot yourself: a ✓ instead of the Want to go bookmark. */
+  yours?: boolean;
   shareKey?: string | null;
   social?: { been: number; loved: number; favourites: number };
   friends?: PublicUser[];
@@ -76,7 +79,12 @@ export function PlaceRow({
               <h3 className="font-semibold text-[15px] leading-snug hover:text-terracotta">{place.name}</h3>
             </Link>
           </div>
-          {currentUser?.id !== ownerId && <SaveButton placeId={place.id} initial={!!saved} signedIn={!!currentUser} className="shrink-0" />}
+          {currentUser?.id !== ownerId &&
+            (yours ? (
+              <span className="shrink-0 rounded-full bg-sage-tint px-2 py-0.5 text-[11px] font-semibold text-sage" title="One of your spots">✓ Yours</span>
+            ) : (
+              <SaveButton placeId={place.id} initial={!!saved} signedIn={!!currentUser} className="shrink-0" />
+            ))}
         </div>
         <div className="mt-0.5 text-[11.5px] text-ink-muted flex items-center gap-1 truncate">
           <span className="rounded-full bg-cream-deep px-1.5 py-[1px] text-[10.5px] font-medium text-ink-muted shrink-0">{place.category}</span>

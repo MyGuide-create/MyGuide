@@ -1,3 +1,4 @@
+import { ownSpotKeys, spotKey } from "@/lib/citySpots";
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
@@ -66,13 +67,16 @@ export default async function GuidePage({ params, searchParams }: PageProps<"/g/
     );
   }
   const detail = await getGuideDetail(guide, user);
+  // Places in this guide you already have yourself: "✓ Yours" instead of a Want to go bookmark.
+  const ownKeys = user && guide.ownerId !== user.id ? new Set([...(await ownSpotKeys(user.id)).values()].flatMap((k) => [...k])) : new Set<string>();
+  const yours = detail.places.filter((p) => ownKeys.has(spotKey(p))).map((p) => p.id);
   const base = await origin();
   const shareUrl = `${base}/g/${guide.slug}${guide.visibility === "private" ? `?key=${guide.shareToken}` : ""}`;
   return (
     <AppShell>
       <TopBar back={user ? `/u/${detail.owner.username}` : "/"} transparent title={null} avatarUser={user ? toPublicUser(user) : null} />
       <div className="-mt-14">
-        <GuideView detail={detail} viewerId={user?.id ?? null} viewer={user ? toPublicUser(user) : null} shareUrl={shareUrl} shareKey={key} />
+        <GuideView detail={detail} viewerId={user?.id ?? null} viewer={user ? toPublicUser(user) : null} shareUrl={shareUrl} shareKey={key} yours={yours} />
       </div>
     </AppShell>
   );

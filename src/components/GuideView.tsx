@@ -24,7 +24,7 @@ import { ReportButton } from "./ReportButton";
 import { SaveGuideButton } from "./SaveGuideButton";
 import { Avatar, Button, Chip, LinkButton, Tag, cx } from "./ui";
 
-export function GuideView({ detail, viewerId, viewer, shareUrl, shareKey }: { detail: GuideDetail; viewerId: string | null; viewer: PublicUser | null; shareUrl: string; shareKey?: string | null }) {
+export function GuideView({ detail, viewerId, viewer, shareUrl, shareKey, yours = [] }: { detail: GuideDetail; viewerId: string | null; viewer: PublicUser | null; shareUrl: string; shareKey?: string | null; /** Place ids you already have yourself (✓ Yours, no bookmark). */ yours?: string[] }) {
   const { guide, owner, places, noteAuthors, forkedFrom } = detail;
   const [mode, setMode] = useState<"list" | "map">("list");
   const [category, setCategory] = useState<string | null>(null);
@@ -35,6 +35,7 @@ export function GuideView({ detail, viewerId, viewer, shareUrl, shareKey }: { de
   // Group places by category (fixed category order, guide order within each group).
   const categories = orderedCategories(places);
   const saved = new Set(detail.savedPlaceIds);
+  const yoursSet = new Set(yours);
   const keyQuery = shareKey ? `?key=${shareKey}` : "";
   const groups = categories
     .filter((c) => !category || c === category)
@@ -219,7 +220,7 @@ export function GuideView({ detail, viewerId, viewer, shareUrl, shareKey }: { de
                 </h2>
               )}
               {g.places.map((p) => (
-                <PlaceRow key={p.id} place={p} index={numberOf.get(p.id)} ownerId={guide.ownerId} guideSlug={guide.slug} noteAuthor={p.noteAuthorId ? noteAuthors[p.noteAuthorId] : null} flagged={flags[p.id]} comments={detail.placeComments[p.id] ?? []} currentUser={viewer} tips={detail.placeTips[p.id]} saved={saved.has(p.id)} shareKey={shareKey} social={detail.placeSocial[p.id]} friends={detail.friendsWhoLike[p.id]} branchCount={detail.placeLocations[p.id]?.length ?? 0} rating={ratings[p.id]} credited={detail.credited[p.id]} expanded />
+                <PlaceRow key={p.id} place={p} index={numberOf.get(p.id)} ownerId={guide.ownerId} guideSlug={guide.slug} noteAuthor={p.noteAuthorId ? noteAuthors[p.noteAuthorId] : null} flagged={flags[p.id]} comments={detail.placeComments[p.id] ?? []} currentUser={viewer} tips={detail.placeTips[p.id]} saved={saved.has(p.id)} yours={yoursSet.has(p.id)} shareKey={shareKey} social={detail.placeSocial[p.id]} friends={detail.friendsWhoLike[p.id]} branchCount={detail.placeLocations[p.id]?.length ?? 0} rating={ratings[p.id]} credited={detail.credited[p.id]} expanded />
               ))}
             </section>
           ))}
