@@ -4,6 +4,7 @@ import { GuideEditor } from "@/components/GuideEditor";
 import { requireUser } from "@/lib/auth";
 import { getGuideBySlug, getGuideDetail, isCollaborator } from "@/lib/guides";
 import { pendingWishPeople } from "@/lib/wishes";
+import { isStash } from "@/lib/stash";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Edit guide" };
@@ -18,7 +19,7 @@ export default async function EditGuidePage({ params, searchParams }: PageProps<
   const [detail, wishFor] = await Promise.all([getGuideDetail(guide, user), pendingWishPeople(guide.id)]);
   return (
     <AppShell nav={false} className="pb-24">
-      <TopBar back={`/g/${slug}`} title="Edit guide" />
+      {isStash(guide) ? <TopBar back="/my-places" title="Edit My places" /> : <TopBar back={`/g/${slug}`} title="Edit guide" />}
       <GuideEditor detail={detail} justForked={sp.forked === "1"} justCreated={sp.created === "1"} viewerId={user.id} wishFor={wishFor.map((u) => u.displayName.split(" ")[0])} />
     </AppShell>
   );

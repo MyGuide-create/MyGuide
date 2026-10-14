@@ -16,7 +16,7 @@ import { HoursSummary } from "@/components/HoursSummary";
 import { SaveButton } from "@/components/SaveButton";
 import { orderPlaces } from "@/lib/places/order";
 import { placeTimeZone } from "@/lib/places/hours";
-import { LinkButton, Tag } from "@/components/ui";
+import { Tag } from "@/components/ui";
 import { getCurrentUser, toPublicUser } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 import { places } from "@/lib/db/schema";
@@ -28,6 +28,7 @@ import { canonicalCity } from "@/lib/places/cities";
 import { RecommendToggle } from "@/components/RecommendToggle";
 import { FixPlaceLocation } from "@/components/FixPlaceLocation";
 import { PlaceOwnerActions } from "@/components/PlaceOwnerActions";
+import { DescriptionEditor } from "@/components/DescriptionEditor";
 import { ownCopyOf } from "@/lib/myPlaces";
 import { getPlacesProvider } from "@/lib/places";
 import { getGoogleRatings } from "@/lib/places/ratings";
@@ -186,7 +187,7 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
               guideId={guide.id}
               placeId={place.id}
               name={place.name}
-              editHref={`/g/${slug}/edit#place-edit-${place.id}`}
+              editHref={stashPlace ? null : `/g/${slug}/edit#place-edit-${place.id}`}
               backHref={backHref}
               from={stashPlace ? "My places" : detail.guide.title}
             />
@@ -324,7 +325,9 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
           />
         )}
 
-        {place.note && (
+        {detail.viewerCanEdit ? (
+          <DescriptionEditor guideId={guide.id} placeId={place.id} initial={place.note} author={noteAuthor?.username ?? null} credited={!!detail.credited[place.id]?.length} />
+        ) : place.note && (
           <div>
             <p className="text-[12px] font-medium uppercase tracking-[0.08em] text-ink-muted mb-1.5">Description - What Makes It Special</p>
             <p className="text-[14px] italic leading-relaxed whitespace-pre-line">
@@ -354,9 +357,6 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
           )
         )}
 
-        {detail.viewerCanEdit && !place.note && (
-          <LinkButton href={`/g/${slug}/edit#place-edit-${place.id}`} variant="outline" size="sm" className="self-start">{detail.credited[place.id]?.length ? "Add your own note" : "Add a description – what makes it special"}</LinkButton>
-        )}
 
         <div>
           <p className="text-[12px] font-medium uppercase tracking-[0.08em] text-ink-muted mb-2">Comments</p>

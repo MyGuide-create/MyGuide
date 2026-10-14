@@ -4,18 +4,19 @@ import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { errorText } from "@/lib/errorText";
 import { importToMyPlaces } from "@/lib/actions/guides";
-import { lookupPhotoSpots, type PhotoPlaceSuggestion } from "@/lib/actions/photoPlaces";
+import { lookupPhotoSpots, type PhotoPlaceOption, type PhotoPlaceSuggestion } from "@/lib/actions/photoPlaces";
 import { groupPhotos, type PhotoPoint } from "@/lib/photoSpots";
 import { myPlacesHref } from "@/lib/stash";
 import { mapLimit } from "@/lib/utils";
 import { CameraIcon, CheckIcon } from "./Icons";
+import { PhotoPlaceFinder } from "./PhotoPlaceFinder";
 import { Button, Spinner, cx } from "./ui";
 
 type Stage = "intro" | "reading" | "looking" | "results" | "saving";
 const MIN_CHOICES = [2, 3, 5] as const;
 
 /** Location + date from one photo, read on the phone (the photo itself never leaves it). */
-async function readPoint(file: File): Promise<PhotoPoint | null> {
+async function readPoint(file: File, i: number): Promise<PhotoPoint | null> {
   try {
     const exifr = (await import("exifr")).default;
     const d = (await exifr.parse(file, { tiff: true, gps: true, exif: true, xmp: false, icc: false, iptc: false, jfif: false, ihdr: false })) as
@@ -26,7 +27,7 @@ async function readPoint(file: File): Promise<PhotoPoint | null> {
     if (typeof lat !== "number" || typeof lng !== "number" || !Number.isFinite(lat) || !Number.isFinite(lng) || (lat === 0 && lng === 0)) return null;
     const when = d?.DateTimeOriginal ?? d?.CreateDate;
     const t = when instanceof Date && !isNaN(when.getTime()) ? when.getTime() / 1000 : file.lastModified / 1000;
-    return { lat, lng, t };
+    return { lat, lng, t, i };
   } catch {
     return null;
   }
@@ -44,29 +45,37 @@ export function PhotoPlacesFlow() {
   const [results, setResults] = useState<PhotoPlaceSuggestion[]>([]);
   const [minPhotos, setMinPhotos] = useState<number>(2);
   const [picked, setPicked] = useState<Set<string>>(new Set());
+  // The picked photos and which of them belong to each spot (all stay on the phone).
+  const [files, setFiles] = useState<File[]>([]);
+  const [spotItems, setSpotItems] = useState<Map<string, number[]>>(new Map());
+  const [finding, setFinding] = useState<string | null>(null);
 
-  const choose = () => {
+  const pickPhotos = () => {
     setError("");
     input.current?.click();
   };
 
   const onFiles = async (list: FileList | null) => {
-    const files = [...(list ?? [])];
+    const list_ = [...(list ?? [])];
     if (input.current) input.current.value = "";
-    if (!files.length) return;
+    if (!list_.length) return;
+    setFiles(list_);
     setStage("reading");
-    setProgress({ done: 0, total: files.length });
+    setProgress({ done: 0, total: list_.length });
     let done = 0;
     const points = (
-      await mapLimit(files, 4, async (f) => {
-        const p = await readPoint(f);
+      await mapLimit(list_, 4, async (f, i) => {
+        const p = await readPoint(f, i);
         done++;
-        if (done % 10 === 0 || done === files.length) setProgress({ done, total: files.length });
+        if (done % 10 === 0 || done === list_.length) setProgress({ done, total: list_.length });
         return p;
       })
     ).filter((p): p is PhotoPoint => !!p);
-    const { spots, homeLike } = groupPhotos(points);
-    setCounts({ photos: files.length, located: points.length, spots: spots.length, homeLike, looked: 0, empty: 0 });
+    const grouped = groupPhotos(points);
+    const homeLike = grouped.homeLike;
+    const spots = grouped.spots.map((sp, k) => ({ ...sp, id: `s${k}` }));
+    setSpotItems(new Map(spots.map((sp) => [sp.id, sp.items ?? []])));
+    setCounts({ photos: list_.length, located: points.length, spots: spots.length, homeLike, looked: 0, empty: 0 });
     if (!points.length) {
       setResults([]);
       setStage("results");
@@ -77,7 +86,7 @@ export function PhotoPlacesFlow() {
     const toLook = multi.length ? multi : spots;
     setStage("looking");
     try {
-      const res = await lookupPhotoSpots(toLook.slice(0, 80));
+      const res = await lookupPhotoSpots(toLook.slice(0, 80).map((sp) => ({ id: sp.id, lat: sp.lat, lng: sp.lng, photos: sp.photos, days: sp.days, first: sp.first, last: sp.last })));
       setResults(res.suggestions);
       setCounts((c) => ({ ...c, looked: res.looked, empty: res.empty }));
       setMinPhotos(multi.length ? 2 : 1);
@@ -107,24 +116,46 @@ export function PhotoPlacesFlow() {
       return n;
     });
 
-  /** "Not it? It might be X": swap the guess for one of the other places right there. */
-  const swap = (id: string, altId: string) => {
-    setResults((rs) =>
-      rs.map((r) => {
-        if (r.providerId !== id) return r;
-        const alt = r.alts.find((a) => a.providerId === altId);
-        if (!alt) return r;
-        return { ...r, providerId: alt.providerId, name: alt.name, category: alt.category, photoUrl: null, area: r.area, have: false, alts: [{ providerId: r.providerId, name: r.name, category: r.category }, ...r.alts.filter((a) => a.providerId !== altId)] };
-      }),
-    );
+  /** Swap the guess for another place there (from "Not it?" or the finder); it gets ticked. */
+  const choose = (id: string, o: PhotoPlaceOption) => {
+    setResults((rs) => {
+      const cur = rs.find((r) => r.providerId === id);
+      if (!cur || o.providerId === id) return rs;
+      const old: PhotoPlaceOption = { providerId: cur.providerId, name: cur.name, category: cur.category, area: cur.area, city: cur.city, photoUrl: cur.photoUrl, distance: cur.distance, haveIn: cur.haveIn, lat: cur.lat, lng: cur.lng };
+      const other = rs.find((r) => r.providerId === o.providerId);
+      if (other) {
+        // Already a suggestion of its own: fold this spot into it.
+        return rs
+          .filter((r) => r.providerId !== id)
+          .map((r) =>
+            r.providerId === o.providerId
+              ? { ...r, photos: r.photos + cur.photos, days: r.days + cur.days, first: Math.min(r.first, cur.first), last: Math.max(r.last, cur.last), spotIds: [...r.spotIds, ...cur.spotIds] }
+              : r,
+          );
+      }
+      return rs.map((r) => (r.providerId === id ? { ...r, ...o, city: o.city || r.city, alts: [old, ...r.alts.filter((a) => a.providerId !== o.providerId)] } : r));
+    });
     setPicked((s) => {
-      if (!s.has(id)) return s;
       const n = new Set(s);
       n.delete(id);
-      n.add(altId);
+      if (!o.haveIn) n.add(o.providerId);
       return n;
     });
+    setFinding(null);
   };
+
+  /** "None of these": leave the spot out. */
+  const skip = (id: string) => {
+    setResults((rs) => rs.filter((r) => r.providerId !== id));
+    setPicked((s) => {
+      const n = new Set(s);
+      n.delete(id);
+      return n;
+    });
+    setFinding(null);
+  };
+
+  const findingRow = finding ? results.find((r) => r.providerId === finding) ?? null : null;
 
   const save = async () => {
     const chosen = results.filter((r) => picked.has(r.providerId));
@@ -172,7 +203,7 @@ export function PhotoPlacesFlow() {
           </li>
         </ul>
         {error && <p className="text-[14px] text-terracotta">{error}</p>}
-        <Button size="lg" onClick={choose} className="w-full">
+        <Button size="lg" onClick={pickPhotos} className="w-full">
           <CameraIcon size={18} /> Choose photos
         </Button>
       </div>
@@ -214,7 +245,7 @@ export function PhotoPlacesFlow() {
           phone removed it when handing the photos to the browser. If the picker has <i>Options</i> at the top, switch <i>Location</i> on and try again.
         </p>
         <p className="text-[13px] text-ink-muted">Worth knowing for the test: tell Claude this happened, and on which phone.</p>
-        <Button size="lg" onClick={choose} className="w-full">
+        <Button size="lg" onClick={pickPhotos} className="w-full">
           Try again
         </Button>
       </div>
@@ -242,7 +273,7 @@ export function PhotoPlacesFlow() {
             </button>
           ))}
         </div>
-        <button onClick={choose} className="self-start text-[13px] font-semibold text-terracotta">
+        <button onClick={pickPhotos} className="self-start text-[13px] font-semibold text-terracotta">
           Choose different photos
         </button>
       </div>
@@ -261,36 +292,40 @@ export function PhotoPlacesFlow() {
                 return (
                   <div key={r.providerId} className={cx("rounded-2xl border bg-paper p-3 flex gap-3", on ? "border-terracotta" : "border-line/80")}>
                     <button
-                      onClick={() => !r.have && toggle(r.providerId)}
-                      disabled={r.have}
+                      onClick={() => !r.haveIn && toggle(r.providerId)}
+                      disabled={!!r.haveIn}
                       aria-label={on ? `Untick ${r.name}` : `Tick ${r.name}`}
                       className={cx(
                         "mt-0.5 w-6 h-6 shrink-0 rounded-full border-2 flex items-center justify-center",
-                        r.have ? "border-line bg-cream-deep" : on ? "bg-terracotta border-terracotta text-white" : "border-line",
+                        r.haveIn ? "border-line bg-cream-deep" : on ? "bg-terracotta border-terracotta text-white" : "border-line",
                       )}
                     >
-                      {(on || r.have) && <CheckIcon size={14} />}
+                      {(on || r.haveIn) && <CheckIcon size={14} />}
                     </button>
                     <div className="min-w-0 flex-1">
-                      <button onClick={() => !r.have && toggle(r.providerId)} className="text-left w-full">
+                      <button onClick={() => setFinding(r.providerId)} className="text-left w-full">
                         <span className="block font-semibold text-[15px] leading-snug">{r.name}</span>
                         <span className="block text-[12.5px] text-ink-muted truncate">{[r.category, r.area].filter(Boolean).join(" · ")}</span>
                         <span className="block text-[12.5px] text-ink-muted">
                           {r.photos} photo{r.photos === 1 ? "" : "s"} · {r.days} visit{r.days === 1 ? "" : "s"} · {monthYear(r.first)}
                           {monthYear(r.first) !== monthYear(r.last) ? `–${monthYear(r.last)}` : ""}
-                          {r.have ? " · already in your places" : ""}
+                          {r.haveIn ? ` · already in ${r.haveIn}` : ""}
                         </span>
                       </button>
-                      {!r.have && r.alts.length > 0 && (
-                        <div className="flex flex-wrap items-center gap-1.5 pt-1.5 text-[12px]">
-                          <span className="text-ink-muted">Not it?</span>
-                          {r.alts.slice(0, 2).map((a) => (
-                            <button key={a.providerId} onClick={() => swap(r.providerId, a.providerId)} className="rounded-full bg-cream-deep px-2.5 py-0.5 text-ink">
+                      <div className="flex flex-wrap items-center gap-1.5 pt-1.5 text-[12px]">
+                        <span className="text-ink-muted">Not it?</span>
+                        {r.alts
+                          .filter((a) => !a.haveIn)
+                          .slice(0, 2)
+                          .map((a) => (
+                            <button key={a.providerId} onClick={() => choose(r.providerId, a)} className="rounded-full bg-cream-deep px-2.5 py-0.5 text-ink">
                               {a.name}
                             </button>
                           ))}
-                        </div>
-                      )}
+                        <button onClick={() => setFinding(r.providerId)} className="rounded-full border border-terracotta-soft px-2.5 py-0.5 font-semibold text-terracotta">
+                          Find it
+                        </button>
+                      </div>
                     </div>
                     {r.photoUrl && (
                       // eslint-disable-next-line @next/next/no-img-element
@@ -302,6 +337,17 @@ export function PhotoPlacesFlow() {
             </div>
           </section>
         ))
+      )}
+
+      {findingRow && (
+        <PhotoPlaceFinder
+          key={findingRow.providerId}
+          suggestion={findingRow}
+          files={findingRow.spotIds.flatMap((id) => spotItems.get(id) ?? []).map((i) => files[i]).filter(Boolean)}
+          onPick={(o) => choose(findingRow.providerId, o)}
+          onSkip={() => skip(findingRow.providerId)}
+          onClose={() => setFinding(null)}
+        />
       )}
 
       <div className="fixed inset-x-0 bottom-0 z-30 bg-cream/95 backdrop-blur border-t border-line/70 px-4 pt-3 pb-[max(12px,env(safe-area-inset-bottom))]">

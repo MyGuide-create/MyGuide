@@ -297,6 +297,27 @@ export async function nearbyVenues(lat: number, lng: number, radiusMeters = 45):
     .sort((a, b) => a.distanceMeters - b.distanceMeters);
 }
 
+/** Everything Google lists right around a point (any type), nearest first: for "where was this photo?". */
+export async function placesAround(lat: number, lng: number, radiusMeters = 120): Promise<Array<PlaceResult & { distanceMeters: number }>> {
+  if (!key()) return [];
+  const data = await gfetch<{ places?: GooglePlace[] }>("/places:searchNearby", {
+    method: "POST",
+    fieldMask: VENUE_FIELDS.map((f) => `places.${f}`).join(","),
+    body: JSON.stringify({
+      maxResultCount: 20,
+      rankPreference: "DISTANCE",
+      locationRestriction: { circle: { center: { latitude: lat, longitude: lng }, radius: radiusMeters } },
+    }),
+  });
+  return (data?.places ?? [])
+    .filter((p) => p.businessStatus !== "CLOSED_PERMANENTLY" && p.location)
+    .map((p) => {
+      const r = toResult(p);
+      return { ...r, distanceMeters: haversineMeters(lat, lng, r.lat, r.lng) };
+    })
+    .sort((a, b) => a.distanceMeters - b.distanceMeters);
+}
+
 /** Resolve a Google photo resource name to a CDN URL (no API key in the URL). */
 /**
  * Google's best matches for a name right around a known point (e.g. a place from a saved

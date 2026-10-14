@@ -32,6 +32,7 @@ import { PlaceTile } from "./PlaceTile";
 import { Sheet } from "./ShareSheet";
 import { CollaboratorsEditor } from "./CollaboratorsEditor";
 import { Button, Input, Label, LinkButton, Spinner, Tag, Textarea, cx } from "./ui";
+import { isStash } from "@/lib/stash";
 
 export function GuideEditor({ detail, justForked, justCreated, viewerId, wishFor = [] }: { detail: GuideDetail; justForked?: boolean; justCreated?: boolean; viewerId: string; /** First names whose wish this guide is for (until it's published and sent). */ wishFor?: string[] }) {
   const router = useRouter();
@@ -64,6 +65,8 @@ export function GuideEditor({ detail, justForked, justCreated, viewerId, wishFor
   const [pending, start] = useTransition();
   const owner = detail.owner;
   const isDraft = !guide.publishedAt;
+  /** My places (the private list, never a guide): only its places are edited here — no cover, title or publishing. */
+  const stash = isStash(guide);
   const hasCover = !!(guide.coverMediaId || guide.coverUrl);
   /** Saves still in flight, so "Save draft" can wait for the last edit before leaving. */
   const inflight = useRef(new Set<Promise<void>>());
@@ -309,7 +312,7 @@ export function GuideEditor({ detail, justForked, justCreated, viewerId, wishFor
 
   return (
     <div className="pb-10">
-      {(justForked || justCreated) && !startedEmpty && (
+      {(justForked || justCreated) && !startedEmpty && !stash && (
         <div className="mx-4 mt-3 rounded-2xl bg-sage-tint text-sage px-4 py-3 text-[13px] leading-snug flex gap-2">
           {justForked ? <ForkIcon size={16} className="shrink-0 mt-0.5" /> : <PinIcon size={16} className="shrink-0 mt-0.5" />}
           <span>
@@ -327,13 +330,19 @@ export function GuideEditor({ detail, justForked, justCreated, viewerId, wishFor
         </div>
       )}
 
-      {isDraft && !justCreated && !justForked && !startedEmpty && detail.viewerIsOwner && (
+      {isDraft && !justCreated && !justForked && !startedEmpty && detail.viewerIsOwner && !stash && (
         <div className="mx-4 mt-3 rounded-2xl bg-ochre-soft/60 px-4 py-2.5 text-[12.5px] leading-snug flex gap-2 items-center">
           <LockIcon size={14} className="shrink-0 text-ink-muted" />
           <span><b className="font-semibold">Draft</b> — only you{detail.collaborators?.length ? " and your co-editors" : ""} can see it. Followers aren&apos;t notified until you publish.</span>
         </div>
       )}
 
+      {stash ? (
+        <p className="mx-5 mt-3 text-[13px] text-ink-muted leading-snug">
+          Edit or remove your places. Changes save as you go — My places is your own list, not a guide, so there&apos;s nothing to publish.
+        </p>
+      ) : (
+      <>
       {/* Cover */}
       <div className="relative mt-3 mx-4 rounded-[22px] overflow-hidden">
         <GuideCover guide={guide} ownerUsername={owner.username} className="aspect-[16/9]" cityLabel={coverCity} />
@@ -389,7 +398,12 @@ export function GuideEditor({ detail, justForked, justCreated, viewerId, wishFor
         </div>
       </div>
 
-      {startedEmpty ? (
+      </>
+      )}
+
+      {stash ? (
+        placesSection
+      ) : startedEmpty ? (
         <>
           {placesSection}
           <div className="px-5 mt-8">
@@ -407,7 +421,15 @@ export function GuideEditor({ detail, justForked, justCreated, viewerId, wishFor
         </>
       )}
 
-      {/* Publish bar */}
+      {/* Publish bar (My places: just Done) */}
+      {stash ? (
+        <div className="fixed bottom-0 inset-x-0 z-30 flex justify-center pointer-events-none">
+          <div className="pointer-events-auto w-full max-w-[480px] safe-bottom bg-paper/95 backdrop-blur border-t border-line px-4 py-3 flex items-center gap-2">
+            <span className="flex-1 text-[12px] text-ink-muted">Changes save as you go</span>
+            <LinkButton href="/my-places">Done</LinkButton>
+          </div>
+        </div>
+      ) : (
       <div className="fixed bottom-0 inset-x-0 z-30 flex justify-center pointer-events-none">
         <div className="pointer-events-auto w-full max-w-[480px] safe-bottom bg-paper/95 backdrop-blur border-t border-line px-4 py-3 flex items-center gap-2">
           <LinkButton href={`/g/${guide.slug}`} variant="ghost" className="border border-line px-3.5!">{isDraft ? "Preview" : "Done"}</LinkButton>
@@ -429,6 +451,7 @@ export function GuideEditor({ detail, justForked, justCreated, viewerId, wishFor
           )}
         </div>
       </div>
+      )}
 
       {publishStep === "cover" && (
         <Sheet title="Add a cover photo" onClose={() => setPublishStep(null)}>
