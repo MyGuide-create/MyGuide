@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { errorText } from "@/lib/errorText";
 import { toggleReaction } from "@/lib/actions/saved";
@@ -23,6 +23,7 @@ export function BeenHere({
   count,
   signedIn,
   youHaveIt,
+  variant = "chip",
 }: {
   placeId: string;
   placeName: string;
@@ -32,8 +33,11 @@ export function BeenHere({
   signedIn: boolean;
   /** You already have this spot (My places or a guide): no "recommend it?" step. */
   youHaveIt: boolean;
+  /** "chip": "Been here?" on a place page. "icon": a small ✓ on a city page row (14 Oct 2026). */
+  variant?: "chip" | "icon";
 }) {
   const path = usePathname();
+  const router = useRouter();
   const [been, setBeen] = useState(initial);
   const [n, setN] = useState(count);
   const [open, setOpen] = useState(false);
@@ -57,7 +61,21 @@ export function BeenHere({
     </>
   );
 
-  if (!signedIn) return <Link href={`/signup?why=save&next=${encodeURIComponent(path)}`} className={cls}>{label}</Link>;
+  const iconCls = cx(
+    "w-9 h-9 -m-1.5 flex items-center justify-center rounded-full",
+    been ? "text-sage" : "text-ink-faint hover:text-sage",
+  );
+  const iconBody = (
+    <span className={cx("w-[22px] h-[22px] rounded-full border-[1.6px] flex items-center justify-center", been ? "bg-sage border-sage text-white" : "border-current")}>
+      <CheckIcon size={13} />
+    </span>
+  );
+  if (!signedIn)
+    return (
+      <Link href={`/signup?why=save&next=${encodeURIComponent(path)}`} className={variant === "icon" ? iconCls : cls} aria-label="Been here?">
+        {variant === "icon" ? iconBody : label}
+      </Link>
+    );
 
   const tap = () => {
     const on = !been;
@@ -77,6 +95,12 @@ export function BeenHere({
     }
   };
 
+  /** Close the sheet; on a city page row, refresh once it's yours so the row shows ✓ Yours. */
+  const close = () => {
+    setOpen(false);
+    if (done && variant === "icon") router.refresh();
+  };
+
   const vouch = async () => {
     setBusy(true);
     setError(null);
@@ -93,6 +117,11 @@ export function BeenHere({
 
   return (
     <>
+      {variant === "icon" ? (
+        <button type="button" aria-pressed={been} aria-label={been ? "Been here (tap to undo)" : "Been here?"} title="Been here?" className={iconCls} onClick={tap}>
+          {iconBody}
+        </button>
+      ) : (
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" aria-pressed={been} className={cls} onClick={tap}>
           {label}
@@ -103,16 +132,17 @@ export function BeenHere({
           </Link>
         )}
       </div>
+      )}
       {open && (
         <div className="fixed inset-0 z-50 flex items-end justify-center" role="dialog" aria-modal="true" aria-label="Would you recommend it?">
-          <button type="button" aria-label="Close" onClick={() => setOpen(false)} className="absolute inset-0 bg-ink/40" />
+          <button type="button" aria-label="Close" onClick={close} className="absolute inset-0 bg-ink/40" />
           <div className="relative w-full max-w-[480px] rounded-t-[28px] bg-cream px-5 pt-3 pb-8 safe-bottom max-h-[85dvh] overflow-y-auto fade-up">
             <div className="mx-auto w-10 h-1.5 rounded-full bg-line mb-3" />
             <div className="flex items-start justify-between gap-3 mb-1">
               <h2 className="font-display text-[24px] leading-tight">
                 {step === "done" ? "It's one of your spots now" : step === "words" ? "In your own words" : `You've been to ${placeName}!`}
               </h2>
-              <button type="button" aria-label="Close" onClick={() => setOpen(false)} className="w-9 h-9 -mr-2 shrink-0 flex items-center justify-center rounded-full text-ink-muted">
+              <button type="button" aria-label="Close" onClick={close} className="w-9 h-9 -mr-2 shrink-0 flex items-center justify-center rounded-full text-ink-muted">
                 <XIcon size={18} />
               </button>
             </div>
@@ -162,7 +192,7 @@ export function BeenHere({
                   It&apos;s recommended in My places{done.city ? ` under My ${done.city}` : ""}, and on the city page with {ownerFirst}&apos;s. {ownerFirst} will hear you went.
                 </p>
                 <div className="mt-4 flex flex-col gap-2.5">
-                  <Button size="lg" onClick={() => setOpen(false)}>Done</Button>
+                  <Button size="lg" onClick={close}>Done</Button>
                   <Link href={myPlacesHref(done.city)} className="text-center text-[14px] font-semibold text-terracotta py-2">
                     See My places
                   </Link>

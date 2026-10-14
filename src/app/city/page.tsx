@@ -21,8 +21,10 @@ import { CATEGORIES } from "@/lib/places";
 import { orderedCategories } from "@/lib/places/order";
 import { timeAgo } from "@/lib/utils";
 import { getDb } from "@/lib/db";
-import { savedPlaces } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { placeReactions, savedPlaces } from "@/lib/db/schema";
+import { and, eq } from "drizzle-orm";
+import { SaveButton } from "@/components/SaveButton";
+import { BeenHere } from "@/components/BeenHere";
 
 export const dynamic = "force-dynamic";
 
@@ -106,6 +108,9 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
     }
   }
   const wantActive = wantParam && wantSpots.length > 0;
+  // Places you've marked "Been here" (for the ✓ on each row).
+  const beenIds = user && city ? new Set((await (await getDb()).select({ id: placeReactions.placeId }).from(placeReactions).where(and(eq(placeReactions.userId, user.id), eq(placeReactions.kind, "been")))).map((r) => r.id)) : new Set<string>();
+  const marks = { want: wantIds, been: beenIds };
 
   // The friend row: everyone you follow with spots or guides here, most spots first (you get your own chip).
   const people = new Map<string, { user: PublicUser; spots: number; guides: number }>();
@@ -365,7 +370,7 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
               {spotGroups.map((g) => (
                 <SpotGroup key={g.category ?? "all"} category={headings ? g.category : null} count={g.spots.length}>
                   {g.spots.map((s) => (
-                    <SpotRow key={s.key} spot={s} picked={picked} fromFriends={fromFriends} viewerId={viewerId} follow={!fromFriends && canFollow(s)} signedIn={!!user} next={cityHref({})} grouped={headings} />
+                    <SpotRow key={s.key} spot={s} picked={picked} fromFriends={fromFriends} viewerId={viewerId} follow={!fromFriends && canFollow(s)} signedIn={!!user} next={cityHref({})} grouped={headings} marks={marks} />
                   ))}
                 </SpotGroup>
               ))}
@@ -382,7 +387,7 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
                 {moreGroups.map((g) => (
                   <SpotGroup key={g.category ?? "all"} category={headings ? g.category : null} count={g.spots.length}>
                     {g.spots.map((s) => (
-                      <SpotRow key={s.key} spot={s} picked={null} fromFriends={false} viewerId={viewerId} follow={canFollow(s)} signedIn={!!user} next={cityHref({})} grouped={headings} />
+                      <SpotRow key={s.key} spot={s} picked={null} fromFriends={false} viewerId={viewerId} follow={canFollow(s)} signedIn={!!user} next={cityHref({})} grouped={headings} marks={marks} />
                     ))}
                   </SpotGroup>
                 ))}
@@ -545,6 +550,7 @@ function SpotRow({
   signedIn = false,
   next = "/",
   grouped = false,
+  marks,
 }: {
   spot: CitySpot;
   picked: PublicUser | null;
@@ -556,6 +562,8 @@ function SpotRow({
   next?: string;
   /** Under a category heading: the row shows just the area (the heading already names the category). */
   grouped?: boolean;
+  /** Your Want to go and Been here place ids, for the 🔖 and ✓ on the row (14 Oct 2026). */
+  marks?: { want: Set<string>; been: Set<string> };
 }) {
   const lead = leadFor(spot, picked, viewerId);
   const onlyMinePrivate = spot.recommenders.every((r) => r.user.id === viewerId && r.isPrivate);
@@ -563,13 +571,18 @@ function SpotRow({
   const p = spot.place;
   const many = spot.recommenders.length >= 3;
   const subline = [grouped ? "" : p.category, placeArea(p)].filter(Boolean).join(" · ");
+  const yours = !!viewerId && spot.recommenders.some((r) => r.user.id === viewerId);
+  // Someone else's copy to bookmark / mark: the one you saved, else the lead's.
+  const theirs = spot.recommenders.filter((r) => r.user.id !== viewerId);
+  const target = theirs.find((r) => marks?.want.has(r.placeId)) ?? (lead.user.id !== viewerId ? lead : theirs[0]);
+  const showMarks = !!marks && !!target;
   return (
     <div className="relative">
     <Link href={`/g/${lead.guideSlug}/p/${lead.placeId}`} className="flex gap-3 rounded-2xl border border-line/80 bg-paper p-3 hover:border-terracotta-soft">
       <PlaceTile place={p} size={68} />
       <span className="flex-1 min-w-0 flex flex-col gap-1">
-        <span className="font-semibold text-[15px] leading-snug">{p.name}</span>
-        {subline && <span className="text-[12.5px] text-ink-muted truncate">{subline}</span>}
+        <span className={cx("font-semibold text-[15px] leading-snug", (yours || showMarks) && "pr-16")}>{p.name}</span>
+        {subline && <span className={cx("text-[12.5px] text-ink-muted truncate", (yours || showMarks) && "pr-16")}>{subline}</span>}
         {lead.tip && (
           <span className="text-[13px] leading-snug text-ink/85 line-clamp-2">
             &ldquo;{lead.tip}&rdquo; <span className="text-ink-muted">{nm(lead.user, viewerId)}</span>
@@ -590,6 +603,25 @@ function SpotRow({
       </span>
     </Link>
     {follow && <FollowPill userId={lead.user.id} signedIn={signedIn} next={next} className="absolute right-3 bottom-3" />}
+    {yours ? (
+      <span className="absolute right-3 top-3 rounded-full bg-sage-tint px-2 py-0.5 text-[11px] font-semibold text-sage" title="One of your spots">✓ Yours</span>
+    ) : (
+      showMarks && (
+        <span className="absolute right-3.5 top-3.5 flex items-center gap-3.5">
+          <SaveButton placeId={target.placeId} initial={spot.recommenders.some((r) => marks.want.has(r.placeId))} signedIn={signedIn} />
+          <BeenHere
+            variant="icon"
+            placeId={target.placeId}
+            placeName={p.name}
+            ownerFirst={target.user.displayName.split(" ")[0]}
+            initial={spot.recommenders.some((r) => marks.been.has(r.placeId))}
+            count={0}
+            signedIn={signedIn}
+            youHaveIt={false}
+          />
+        </span>
+      )
+    )}
     </div>
   );
 }

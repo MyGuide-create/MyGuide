@@ -1,7 +1,6 @@
 "use server";
 
 import { and, eq, isNull } from "drizzle-orm";
-import { revalidatePath } from "next/cache";
 import { getCurrentUser } from "../auth";
 import { getDb } from "../db";
 import { guides, placeReactions, placeTips, places, savedPlaces } from "../db/schema";
@@ -82,8 +81,8 @@ export async function vouchForPlace(placeId: string, input: { note?: string; tip
 
   await addNotifications([{ id: newId(), userId: guide.ownerId, type: "vouched", actorId: user.id, guideId: guide.id, placeId: place.id, note: note || tip || null, createdAt: now }]);
 
-  revalidatePath("/my-places");
-  revalidatePath("/saved");
+  // No revalidatePath: it would refresh the page underneath and close the "It's one of your spots" sheet
+  // (a city page row turns into ✓ Yours). My places and Want to go are dynamic pages anyway.
   return { placeId: mineId, slug: stash.slug, city: place.city ? canonicalCity(place.city) : "" };
 }
 
@@ -93,5 +92,4 @@ export async function beenNotForMe(placeId: string): Promise<void> {
   if (!user) return;
   const db = await getDb();
   await db.delete(savedPlaces).where(and(eq(savedPlaces.userId, user.id), eq(savedPlaces.placeId, placeId)));
-  revalidatePath("/saved");
 }
