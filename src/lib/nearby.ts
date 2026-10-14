@@ -7,7 +7,7 @@ import { headers } from "next/headers";
 import { isNotNull } from "drizzle-orm";
 import { getDb } from "./db";
 import { places } from "./db/schema";
-import { canonicalCity, findCityExact } from "./places/cities";
+import { CITIES, canonicalCity, findCityExact } from "./places/cities";
 import { haversineMeters } from "./places/geo";
 
 export type LatLng = { lat: number; lng: number };
@@ -81,3 +81,14 @@ export async function nearestFirst<T extends { city: string; spots: number }>(it
 }
 
 export const nearKeyOf = keyOf;
+
+/** The known city the viewer is in or next to (within 100 km), for "Your Dubai" on a new person's Home. */
+export function nearestKnownCity(here: LatLng | null): { city: string; country: string } | null {
+  if (!here) return null;
+  let best: { city: string; country: string; km: number } | null = null;
+  for (const c of CITIES) {
+    const km = haversineMeters(here.lat, here.lng, c.lat, c.lng) / 1000;
+    if (km <= 100 && (!best || km < best.km)) best = { city: c.city, country: c.country, km };
+  }
+  return best ? { city: best.city, country: best.country } : null;
+}

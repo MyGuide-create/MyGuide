@@ -14,13 +14,13 @@ import { cityPhotoKey, cityPhotosFor } from "@/lib/cityPhotos";
 import type { CityPhoto } from "@/lib/db/schema";
 import { getDb } from "@/lib/db";
 import { savedPlaces } from "@/lib/db/schema";
-import { listFeed, type GuideCard } from "@/lib/guides";
+import { listFeed, peopleToFollow, type GuideCard } from "@/lib/guides";
 import { cityKey, cityTiles, everyoneFeed, feedOwner, homeFeed, nameList, nextTrip, wantedGuides, type FeedEntry } from "@/lib/homeV2";
 import { capRuns } from "@/lib/fill";
 import { HomeScreenNudge } from "@/components/HomeScreenNudge";
 import { pushPublicKey } from "@/lib/push";
 import { userVisits } from "@/lib/db/schema";
-import { nearestFirst, viewerLocation } from "@/lib/nearby";
+import { nearestFirst, nearestKnownCity, viewerLocation } from "@/lib/nearby";
 import { FollowPill } from "@/components/FollowPill";
 import { ClapBar } from "@/components/ClapBar";
 import { loadClaps } from "@/lib/claps";
@@ -86,9 +86,13 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   // Each row's nearest city leads it, labelled "Near you".
   const nearKeys = new Set([mineRow.nearKey, friendsRow.nearKey, popularTiles.length ? popularRow.nearKey : null].filter(Boolean) as string[]);
   const cities = [...myCities, ...friendsCities];
+  // New here (no places yet): "Your Dubai — add your go-to spots", for the city they're in.
+  const startCity = user && myCities.length === 0 ? nearestKnownCity(here) : null;
+  // Following few people: a row of people to follow.
+  const people = user && followingIds.length < 3 ? (await peopleToFollow(user.id, 12)).hits : [];
   const photos = await cityPhotosFor(
-    [...(trip ? [trip.trip.city] : []), ...cities.map((c) => c.city), ...popularTiles.map((t) => t.city)],
-    new Map([...cities, ...popularTiles].filter((c) => c.country).map((c) => [cityPhotoKey(c.city), c.country])),
+    [...(trip ? [trip.trip.city] : []), ...(startCity ? [startCity.city] : []), ...cities.map((c) => c.city), ...popularTiles.map((t) => t.city)],
+    new Map([...(startCity ? [startCity] : []), ...cities, ...popularTiles].filter((c) => c.country).map((c) => [cityPhotoKey(c.city), c.country])),
   );
   const photoFor = (city: string) => photos.get(cityPhotoKey(city));
   const cityOf = new Map(known.map((c) => [cityKey(c.city), c]));
@@ -185,11 +189,17 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
           </div>
         )}
 
-        {user && cities.length === 0 && (
-          <div className="mx-4 mt-6 rounded-2xl bg-cream-deep/50 px-4 py-3 text-[13.5px] leading-snug">
-            Follow people you know and the cities they recommend spots in show up here.{" "}
-            <Link href="/search" className="font-medium text-terracotta-deep">Find people</Link>
-          </div>
+        {user && myCities.length === 0 && (
+          <CityRow title="Your cities" sub="The spots you'd send a friend to.">
+            <StartTile
+              href="/record"
+              photo={startCity ? photoFor(startCity.city) : undefined}
+              title={startCity ? `Your ${startCity.city}` : "Your city"}
+              line="Add your go-to spots: where you eat, drink, work out, unwind"
+              cta="Add your first spot"
+            />
+            <AddCityTile first />
+          </CityRow>
         )}
         {myCities.length > 0 && (
           <CityRow title="Your cities" all>
@@ -199,7 +209,33 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
                 <span>{c.friends.length ? `you + ${c.friends.length}` : "you"}</span>
               </CityTile>
             ))}
+            <AddCityTile />
           </CityRow>
+        )}
+        {people.length > 0 && (
+          <section className="pt-8 flex flex-col gap-3">
+            <div className="px-5 flex items-end justify-between gap-3">
+              <div className="min-w-0">
+                <h2 className="font-display text-[22px]">People to follow</h2>
+                <p className="text-[13px] text-ink-muted">Follow friends and their cities and spots show up here.</p>
+              </div>
+              <Link href="/search" className="shrink-0 text-[13px] font-semibold text-terracotta whitespace-nowrap">Find someone →</Link>
+            </div>
+            <div className="flex gap-3 overflow-x-auto no-scrollbar px-5">
+              {people.map((p) => (
+                <span key={p.user.id} className="shrink-0 w-[118px] rounded-2xl border border-line/80 bg-paper p-3 flex flex-col items-center gap-1.5 text-center">
+                  <Link href={`/u/${p.user.username}`} className="flex flex-col items-center gap-1.5 min-w-0 w-full">
+                    <Avatar user={p.user} size={56} />
+                    <span className="text-[13.5px] font-semibold leading-tight truncate w-full">{first(p.user)}</span>
+                    <span className="-mt-1 text-[11.5px] text-ink-muted truncate w-full">
+                      {p.followsViewer ? "Follows you" : p.guideCount ? `${p.guideCount} guide${p.guideCount === 1 ? "" : "s"}` : "New on MyGuide"}
+                    </span>
+                  </Link>
+                  <FollowPill userId={p.user.id} signedIn next="/" />
+                </span>
+              ))}
+            </div>
+          </section>
         )}
         {(friendsCities.length > 0 || popularTiles.length > 0) && (
           <CityRow title={friendsCities.length ? "Cities your friends know" : "Popular on MyGuide"} sub={friendsCities.length ? "Where people you follow have spots." : undefined} all={!myCities.length}>
@@ -513,5 +549,35 @@ function FeedCard({ f, savedIds, signedIn, followable = false, viewerId, claps, 
       )}
       <ClapBar kind="spots" target={spotsTarget(f.user.id, f.city, f.at)} ownerId={f.user.id} ownerName={first(f.user)} city={f.city} count={f.recs.length} initial={claps} signedIn={signedIn} own={viewerId === f.user.id} />
     </div>
+  );
+}
+
+/** New here: the first tile of "Your cities" — the city you're in, waiting for your spots. */
+function StartTile({ href, photo, title, line, cta }: { href: string; photo?: CityPhoto; title: string; line: string; cta: string }) {
+  return (
+    <Link href={href} className="shrink-0 w-[220px] flex flex-col gap-2">
+      <span className="relative block">
+        <CityImage photo={photo} className="h-[170px] w-full rounded-2xl opacity-60" />
+        <span aria-hidden className="absolute inset-0 rounded-2xl bg-gradient-to-t from-black/60 to-black/10" />
+        <span className="absolute left-3 right-3 bottom-3 flex flex-col gap-1.5 text-white">
+          <span className="font-display text-[22px] leading-tight drop-shadow-[0_1px_4px_rgb(0_0_0/0.45)]">{title}</span>
+          <span className="text-[12px] leading-snug text-white/90">{line}</span>
+          <span className="self-start mt-0.5 inline-flex items-center gap-1 rounded-full bg-paper text-ink px-3 py-1 text-[12.5px] font-semibold">+ {cta}</span>
+        </span>
+      </span>
+    </Link>
+  );
+}
+
+/** The last tile of "Your cities": add spots in another city you know — even one helps friends going there. */
+function AddCityTile({ first = false }: { first?: boolean }) {
+  return (
+    <Link href="/record" className="shrink-0 w-[150px] flex flex-col gap-2">
+      <span className="h-[170px] w-full rounded-2xl border-2 border-dashed border-cream-line bg-paper/60 flex flex-col items-center justify-center gap-2 px-3 text-center hover:border-terracotta-soft">
+        <span className="w-10 h-10 rounded-full bg-terracotta-tint text-terracotta flex items-center justify-center text-[22px] leading-none">+</span>
+        <span className="font-display text-[18px] leading-tight">{first ? "A city you know" : "Another city you know"}</span>
+        <span className="text-[11.5px] leading-snug text-ink-muted">Even one spot helps a friend going there</span>
+      </span>
+    </Link>
   );
 }
