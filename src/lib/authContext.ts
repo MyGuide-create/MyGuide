@@ -1,5 +1,5 @@
 /** Why someone landed on the login / sign-up screen, so we can tell them. */
-export type AuthReason = "follow" | "fork" | "create" | "record" | "notifications" | "comment" | "following" | "save" | "ask";
+export type AuthReason = "follow" | "fork" | "create" | "record" | "notifications" | "comment" | "following" | "save" | "ask" | "clap";
 
 export const SUPPORT_CONTACT = "Hisham";
 
@@ -12,6 +12,7 @@ const REASONS: Record<AuthReason, string> = {
   comment: "Create a free account to comment on places.",
   following: "Sign up or log in to see spots from people you follow.",
   save: "Create a free account to keep favourite places in your own shortlist.",
+  clap: "Create a free account to clap for friends\u2019 finds and see the spots they love.",
   ask: "Create a free account to send your friend your spots — it takes a minute, then you’re straight in.",
 };
 

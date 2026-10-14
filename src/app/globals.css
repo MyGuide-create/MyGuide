@@ -105,3 +105,10 @@ textarea {
   animation: fade-up 0.25s ease-out both;
 }
 
+
+/* 👏 pop when you clap (ClapBar). */
+@keyframes clap {
+  0% { transform: scale(1) rotate(0); }
+  40% { transform: scale(1.45) rotate(-12deg); }
+  100% { transform: scale(1) rotate(0); }
+}

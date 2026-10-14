@@ -284,7 +284,7 @@ export const notifications = sqliteTable(
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    /** "guide_shared" | "new_follower" | "follow_request" | "follow_accepted" | "place_comment" | "guide_published" | "places_added" | "guide_used" | "collab_invite" | "user_joined" | "wish_granted" | "guide_request" | "request_joined" | "request_declined" | "request_passed" | "request_passed_done" | "spots_sent" */
+    /** "guide_shared" | "new_follower" | "follow_request" | "follow_accepted" | "place_comment" | "guide_published" | "places_added" | "guide_used" | "collab_invite" | "user_joined" | "wish_granted" | "guide_request" | "request_joined" | "request_declined" | "request_passed" | "request_passed_done" | "spots_sent" | "clap" */
     type: text("type").notNull(),
     actorId: text("actor_id").references(() => users.id, { onDelete: "cascade" }),
     guideId: text("guide_id").references(() => guides.id, { onDelete: "cascade" }),
@@ -294,12 +294,37 @@ export const notifications = sqliteTable(
     requestId: text("request_id"),
     /** The city a notification is about, when there's no guide ("spots_sent": Hisham sent you his Lisbon spots). */
     city: text("city"),
+    /** A short note that came with it (a clap's "Want to try these"). */
+    note: text("note"),
     readAt: integer("read_at", { mode: "timestamp_ms" }),
     /** How many things this notification covers (e.g. places added in one batch). */
     count: integer("count").notNull().default(1),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   },
   (t) => [index("notifications_user_idx").on(t.userId, t.createdAt)],
+);
+
+/**
+ * Claps (14 Oct 2026): 👏 on a friend's activity post, with an optional one-tap note. `kind` "spots" =
+ * spots they recommended in a city on a day (target "<ownerId>|<city lower-case>|<YYYY-MM-DD>"), "guide" =
+ * a new guide (target = guide id). Saves nothing to the clapper's places.
+ */
+export const claps = sqliteTable(
+  "claps",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    target: text("target").notNull(),
+    note: text("note"),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [uniqueIndex("claps_user_target").on(t.userId, t.kind, t.target), index("claps_target_idx").on(t.kind, t.target)],
 );
 
 export const media = sqliteTable("media", {

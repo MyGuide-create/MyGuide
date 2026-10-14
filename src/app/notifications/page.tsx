@@ -125,6 +125,12 @@ export default async function NotificationsPage() {
                       {who} sent you {n.count} {n.city ? `${n.city} ` : ""}spot{n.count === 1 ? "" : "s"} for your wish list.
                     </>
                   )}
+                  {n.type === "clap" && (
+                    <>
+                      {who} 👏 {rawGuide ? <>your guide <span className="font-display text-[16px]">“{rawGuide.title}”</span></> : <>your {n.city ? <b className="font-semibold">{n.city}</b> : null} spot{n.count === 1 ? "" : "s"}</>}
+                      {n.note ? <span className="block text-[13px] italic text-ink/85">“{n.note}”</span> : null}
+                    </>
+                  )}
                   {n.type === "user_joined" && (
                     <>
                       {who} joined MyGuide.{" "}
@@ -216,6 +222,9 @@ export default async function NotificationsPage() {
                     {timeAgo(n.createdAt)}
                   </span>
                   {n.type === "wish_granted" && rawGuide && <Link href={`/g/${rawGuide.slug}`} className="font-medium text-terracotta">Open your guide →</Link>}
+                  {n.type === "clap" && !rawGuide && n.city && (
+                    <Link href={`/city?${new URLSearchParams({ name: n.city, friend: user.username }).toString()}`} className="font-medium text-terracotta">See your spots →</Link>
+                  )}
                   {n.type === "spots_sent" && actor && n.city && (
                     <Link href={`/city?${new URLSearchParams({ name: n.city, friend: actor.username }).toString()}`} className="font-medium text-terracotta">See their spots →</Link>
                   )}

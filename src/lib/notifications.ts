@@ -133,6 +133,11 @@ export async function addNotifications(rows: NewNotification[]): Promise<void> {
             body = "Ask someone else who knows it?";
             url = "/wishes";
             break;
+          case "clap":
+            title = g ? `${who} 👏 your guide ${g.title}` : `${who} 👏 your ${r.city ? `${r.city} ` : ""}spot${n === 1 ? "" : "s"}`;
+            body = r.note ?? "";
+            if (g) url = `/g/${g.slug}`;
+            break;
           case "collab_invite":
             title = `${who} invited you to edit a guide`;
             body = g?.title ?? "";

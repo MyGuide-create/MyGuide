@@ -22,6 +22,9 @@ import { pushPublicKey } from "@/lib/push";
 import { userVisits } from "@/lib/db/schema";
 import { nearestFirst, viewerLocation } from "@/lib/nearby";
 import { FollowPill } from "@/components/FollowPill";
+import { ClapBar } from "@/components/ClapBar";
+import { loadClaps } from "@/lib/claps";
+import { clapKey, spotsTarget, type ClapSummary } from "@/lib/clapTargets";
 import { placeArea } from "@/lib/places/neighbourhood";
 import { timeAgo } from "@/lib/utils";
 
@@ -102,6 +105,14 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
     const db = await getDb();
     for (const r of await db.select({ id: savedPlaces.placeId }).from(savedPlaces).where(and(eq(savedPlaces.userId, user.id), inArray(savedPlaces.placeId, feedPlaceIds)))) savedIds.add(r.id);
   }
+
+  // 👏 on activity posts (spots on a day, new guides).
+  const clapTargetOf = (f: FeedEntry) => (f.kind === "guide" ? { kind: "guide" as const, target: f.card.guide.id } : f.kind === "spots" ? { kind: "spots" as const, target: spotsTarget(f.user.id, f.city, f.at) } : null);
+  const clapMap = await loadClaps(user?.id, [...feed, ...everyone].map(clapTargetOf).filter((x) => !!x));
+  const clapsFor = (f: FeedEntry) => {
+    const t = clapTargetOf(f);
+    return t ? clapMap.get(clapKey(t.kind, t.target)) : undefined;
+  };
 
   const signupNext = (next: string, why?: string) => `/signup?next=${encodeURIComponent(next)}${why ? `&why=${why}` : ""}`;
 
@@ -222,7 +233,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
         {feed.length > 0 && (
           <section className="px-4 pt-8 flex flex-col gap-3">
             <h2 className="px-1 font-display text-[22px]">New from friends</h2>
-            {feed.map((f) => <FeedCard key={feedKey(f)} f={f} savedIds={savedIds} signedIn={!!user} />)}
+            {feed.map((f) => <FeedCard key={feedKey(f)} f={f} savedIds={savedIds} signedIn={!!user} viewerId={user?.id} claps={clapsFor(f)} />)}
           </section>
         )}
         {everyone.length > 0 && (
@@ -231,7 +242,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
               <h2 className="font-display text-[22px]">New on MyGuide</h2>
               <p className="text-[13px] text-ink-muted">{feed.length ? "More from people you don\u2019t follow yet." : "What people are recommending right now. Follow anyone whose taste you like."}</p>
             </div>
-            {everyone.map((f) => <FeedCard key={feedKey(f)} f={f} savedIds={savedIds} signedIn={!!user} followable />)}
+            {everyone.map((f) => <FeedCard key={feedKey(f)} f={f} savedIds={savedIds} signedIn={!!user} viewerId={user?.id} claps={clapsFor(f)} followable />)}
           </section>
         )}
 
@@ -406,7 +417,7 @@ function Faces({ users, ring }: { users: PublicUser[]; ring: string }) {
  * One item on Home. `followable`: from someone you don't follow ("New on MyGuide") — a small
  * Follow sits next to their name.
  */
-function FeedCard({ f, savedIds, signedIn, followable = false }: { f: FeedEntry; savedIds: Set<string>; signedIn: boolean; followable?: boolean }) {
+function FeedCard({ f, savedIds, signedIn, followable = false, viewerId, claps }: { f: FeedEntry; savedIds: Set<string>; signedIn: boolean; followable?: boolean; viewerId?: string; claps?: ClapSummary }) {
   if (f.kind === "guide") {
     const g = f.card;
     return (
@@ -425,6 +436,9 @@ function FeedCard({ f, savedIds, signedIn, followable = false }: { f: FeedEntry;
           </Link>
           {followable && <FollowPill userId={g.owner.id} signedIn={signedIn} next="/" />}
         </span>
+        <div className="px-3.5 pb-3 -mt-0.5">
+          <ClapBar kind="guide" target={g.guide.id} ownerId={g.owner.id} ownerName={first(g.owner)} initial={claps} signedIn={signedIn} own={viewerId === g.owner.id} />
+        </div>
       </div>
     );
   }
@@ -478,6 +492,7 @@ function FeedCard({ f, savedIds, signedIn, followable = false }: { f: FeedEntry;
           ))}
         </span>
       )}
+      <ClapBar kind="spots" target={spotsTarget(f.user.id, f.city, f.at)} ownerId={f.user.id} ownerName={first(f.user)} city={f.city} count={f.recs.length} initial={claps} signedIn={signedIn} own={viewerId === f.user.id} />
     </div>
   );
 }
