@@ -9,7 +9,7 @@ import { SaveButton } from "@/components/SaveButton";
 import { SendSpotsButton } from "@/components/SendSpotsButton";
 import { Avatar, LinkButton, cx } from "@/components/ui";
 import { getCurrentUser, toPublicUser, type PublicUser } from "@/lib/auth";
-import { acceptedFollowingIds, friendCities, loadRecommendations } from "@/lib/citySpots";
+import { acceptedFollowingIds, friendCities, loadRecommendations, ownSpotKeys, spotKey } from "@/lib/citySpots";
 import { cityPhotoKey, cityPhotosFor } from "@/lib/cityPhotos";
 import type { CityPhoto } from "@/lib/db/schema";
 import { getDb } from "@/lib/db";
@@ -105,6 +105,9 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
     const db = await getDb();
     for (const r of await db.select({ id: savedPlaces.placeId }).from(savedPlaces).where(and(eq(savedPlaces.userId, user.id), inArray(savedPlaces.placeId, feedPlaceIds)))) savedIds.add(r.id);
   }
+
+  // Spots you already have (any of your places): no "Want to go" on those, a ✓ instead.
+  const ownKeys = new Set(user ? [...(await ownSpotKeys(user.id)).values()].flatMap((k) => [...k]) : []);
 
   // 👏 on activity posts (spots on a day, new guides).
   const clapTargetOf = (f: FeedEntry) => (f.kind === "guide" ? { kind: "guide" as const, target: f.card.guide.id } : f.kind === "spots" ? { kind: "spots" as const, target: spotsTarget(f.user.id, f.city, f.at) } : null);
@@ -233,7 +236,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
         {feed.length > 0 && (
           <section className="px-4 pt-8 flex flex-col gap-3">
             <h2 className="px-1 font-display text-[22px]">New from friends</h2>
-            {feed.map((f) => <FeedCard key={feedKey(f)} f={f} savedIds={savedIds} signedIn={!!user} viewerId={user?.id} claps={clapsFor(f)} />)}
+            {feed.map((f) => <FeedCard key={feedKey(f)} f={f} savedIds={savedIds} signedIn={!!user} viewerId={user?.id} claps={clapsFor(f)} ownKeys={ownKeys} />)}
           </section>
         )}
         {everyone.length > 0 && (
@@ -242,7 +245,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
               <h2 className="font-display text-[22px]">New on MyGuide</h2>
               <p className="text-[13px] text-ink-muted">{feed.length ? "More from people you don\u2019t follow yet." : "What people are recommending right now. Follow anyone whose taste you like."}</p>
             </div>
-            {everyone.map((f) => <FeedCard key={feedKey(f)} f={f} savedIds={savedIds} signedIn={!!user} viewerId={user?.id} claps={clapsFor(f)} followable />)}
+            {everyone.map((f) => <FeedCard key={feedKey(f)} f={f} savedIds={savedIds} signedIn={!!user} viewerId={user?.id} claps={clapsFor(f)} ownKeys={ownKeys} followable />)}
           </section>
         )}
 
@@ -417,7 +420,8 @@ function Faces({ users, ring }: { users: PublicUser[]; ring: string }) {
  * One item on Home. `followable`: from someone you don't follow ("New on MyGuide") — a small
  * Follow sits next to their name.
  */
-function FeedCard({ f, savedIds, signedIn, followable = false, viewerId, claps }: { f: FeedEntry; savedIds: Set<string>; signedIn: boolean; followable?: boolean; viewerId?: string; claps?: ClapSummary }) {
+function FeedCard({ f, savedIds, signedIn, followable = false, viewerId, claps, ownKeys }: { f: FeedEntry; savedIds: Set<string>; signedIn: boolean; followable?: boolean; viewerId?: string; claps?: ClapSummary; ownKeys?: Set<string> }) {
+  const yours = (p: Parameters<typeof spotKey>[0]) => !!ownKeys?.has(spotKey(p));
   if (f.kind === "guide") {
     const g = f.card;
     return (
@@ -477,7 +481,12 @@ function FeedCard({ f, savedIds, signedIn, followable = false, viewerId, claps }
             </span>
           </Link>
           <span className="flex items-center gap-2">
-            {viewerId !== f.user.id && <SaveButton placeId={r0.place.id} initial={savedIds.has(r0.place.id)} signedIn={signedIn} variant="pill" />}
+            {viewerId !== f.user.id &&
+              (yours(r0.place) ? (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-sage-tint px-3 py-1.5 text-[12.5px] font-medium text-sage">✓ One of your spots</span>
+              ) : (
+                <SaveButton placeId={r0.place.id} initial={savedIds.has(r0.place.id)} signedIn={signedIn} variant="pill" />
+              ))}
             {f.city && <Link href={cityHref({ city: f.city })} className="inline-flex items-center h-9 px-3.5 rounded-full border border-line text-[13px] font-semibold">All {f.city} spots</Link>}
           </span>
         </>
@@ -490,11 +499,14 @@ function FeedCard({ f, savedIds, signedIn, followable = false, viewerId, claps }
                 <span className="text-[13px] font-semibold leading-tight line-clamp-2">{r.place.name}</span>
                 <span className="-mt-1 text-[11.5px] text-ink-muted truncate">{[r.place.category, placeArea(r.place)].filter(Boolean).join(" · ")}</span>
               </Link>
-              {viewerId !== f.user.id && (
-                <span className="absolute top-1.5 right-1.5 rounded-full bg-paper/90 backdrop-blur shadow-sm">
-                  <SaveButton placeId={r.place.id} initial={savedIds.has(r.place.id)} signedIn={signedIn} className="m-0!" />
-                </span>
-              )}
+              {viewerId !== f.user.id &&
+                (yours(r.place) ? (
+                  <span className="absolute top-1.5 right-1.5 rounded-full bg-sage text-white text-[11px] font-semibold px-2 py-0.5 shadow-sm" title="One of your spots">✓ Yours</span>
+                ) : (
+                  <span className="absolute top-1.5 right-1.5 rounded-full bg-paper/90 backdrop-blur shadow-sm">
+                    <SaveButton placeId={r.place.id} initial={savedIds.has(r.place.id)} signedIn={signedIn} className="m-0!" />
+                  </span>
+                ))}
             </span>
           ))}
         </span>

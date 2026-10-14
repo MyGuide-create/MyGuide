@@ -11,7 +11,7 @@ import { GuideMap } from "@/components/GuideMap";
 import { PlaceTile } from "@/components/PlaceTile";
 import { TipsEditor } from "@/components/TipsEditor";
 import { TrackView } from "@/components/Tracking";
-import { AlertIcon, CalendarIcon, ChevronLeft, ChevronRight, GlobeIcon, InstagramIcon, PinIcon, SparkleIcon, WhatsAppIcon } from "@/components/Icons";
+import { AlertIcon, CalendarIcon, CheckIcon, ChevronLeft, ChevronRight, GlobeIcon, InstagramIcon, PinIcon, SparkleIcon, WhatsAppIcon } from "@/components/Icons";
 import { HoursSummary } from "@/components/HoursSummary";
 import { SaveButton } from "@/components/SaveButton";
 import { orderPlaces } from "@/lib/places/order";
@@ -161,7 +161,7 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
           </div>
           <div className="mt-2 flex items-start gap-3">
             <h1 className="flex-1 font-display text-[28px] leading-[1.05]">{place.name}</h1>
-            {!detail.viewerCanEdit && <SaveButton placeId={place.id} initial={detail.savedPlaceIds.includes(place.id)} signedIn={!!user} variant="pill" className="mt-1 shrink-0" />}
+            {!detail.viewerCanEdit && !mine && <SaveButton placeId={place.id} initial={detail.savedPlaceIds.includes(place.id)} signedIn={!!user} variant="pill" className="mt-1 shrink-0" />}
           </div>
           {stashPlace ? (
             detail.viewerCanEdit ? (
@@ -204,10 +204,17 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
             />
           )}
           {mine && (
-            <div className="mt-2">
-              <p className="text-[12px] text-ink-faint">
-                It&apos;s in <Link href={`/g/${mine.slug}/p/${mine.placeId}`} className="underline underline-offset-2">your places</Link> too.
+            <div className="mt-3 rounded-2xl bg-sage-tint px-3.5 py-3">
+              <p className="text-[13.5px] font-semibold text-sage inline-flex items-center gap-1.5">
+                <CheckIcon size={15} /> One of your spots
               </p>
+              <p className="mt-0.5 text-[12.5px] text-ink-muted">
+                {mine.recommended ? "You recommend it too — friends see you both." : mine.inStash ? "It's in My places, private for now." : "It's in one of your guides."}{" "}
+                <Link href={`/g/${mine.slug}/p/${mine.placeId}`} className="font-semibold text-terracotta">Open yours →</Link>
+              </p>
+              {mine.inStash && !mine.recommended && (
+                <div className="mt-2"><RecommendToggle placeIds={[mine.placeId]} shared={false} city={mine.city} /></div>
+              )}
               <FixPlaceLocation
                 guideId={mine.guideId}
                 placeId={mine.placeId}
@@ -223,7 +230,7 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
               ♥ {namesSentence(detail.friendsWhoLike[place.id].map((u) => u.displayName.split(" ")[0]))} {detail.friendsWhoLike[place.id].length === 1 ? "likes" : "like"} this — people you follow
             </p>
           )}
-          {!detail.viewerCanEdit && (
+          {!detail.viewerCanEdit && !mine && (
             <div className="mt-3">
               <BeenHere
                 placeId={place.id}
