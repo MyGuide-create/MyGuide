@@ -715,9 +715,17 @@ export async function listSavedPlaces(userId: string): Promise<SavedPlaceView[]>
     .orderBy(desc(savedPlaces.createdAt));
   const visible = new Map<string, boolean>();
   const out: SavedPlaceView[] = [];
+  const sharedOk = new Map<string, boolean>();
+  const { canViewSharedPlace } = await import("./citySpots");
   for (const r of rows) {
     if (!visible.has(r.guide.id)) visible.set(r.guide.id, await canViewGuide(r.guide, userId));
-    if (!visible.get(r.guide.id)) continue;
+    // A spot a friend recommended on its own (their My places isn't a guide you can open) still counts.
+    let ok = visible.get(r.guide.id)!;
+    if (!ok && r.place.sharedAt) {
+      if (!sharedOk.has(r.guide.ownerId)) sharedOk.set(r.guide.ownerId, await canViewSharedPlace(r.guide.ownerId, userId));
+      ok = sharedOk.get(r.guide.ownerId)!;
+    }
+    if (!ok) continue;
     const { id, slug, title, shareToken, visibility, ownerId } = r.guide;
     out.push({ place: r.place, guide: { id, slug, title, shareToken, visibility, ownerId }, savedAt: r.savedAt });
   }
