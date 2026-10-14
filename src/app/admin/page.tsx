@@ -25,10 +25,11 @@ export default async function AdminPage({ searchParams }: PageProps<"/admin">) {
   return (
     <AppShell>
       <TopBar back="/me" title="Admin" avatarUser={toPublicUser(user)} />
-      <nav className="px-4 pt-3 flex gap-2" aria-label="Admin sections">
+      <nav className="px-4 pt-3 flex flex-wrap gap-2" aria-label="Admin sections">
         <TabLink href="/admin" active={tab === "stats"}>Pilot stats</TabLink>
         <TabLink href="/admin?tab=users" active={tab === "users"}>Users</TabLink>
         <TabLink href="/admin?tab=cities" active={tab === "cities"}>Cities</TabLink>
+        <TabLink href="/photo-places" active={false}>Photo test</TabLink>
       </nav>
       {tab === "users" ? <UsersTab filter={filter} /> : tab === "cities" ? <CitiesTab /> : <StatsTab />}
     </AppShell>

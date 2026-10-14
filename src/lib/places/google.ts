@@ -255,6 +255,48 @@ export const googleProvider: PlacesProvider = {
   },
 };
 
+/** Venue types worth suggesting from photo locations (photo-places test, 14 Oct 2026). */
+const VENUE_TYPES = ["restaurant", "cafe", "coffee_shop", "bakery", "bar", "pub", "wine_bar", "night_club", "ice_cream_shop",
+  "dessert_shop", "gym", "fitness_center", "yoga_studio", "spa", "beauty_salon", "hair_salon", "nail_salon", "barber_shop",
+  "museum", "art_gallery", "park", "beach", "tourist_attraction", "amusement_park", "zoo", "aquarium", "golf_course",
+  "sports_club", "swimming_pool", "movie_theater", "bowling_alley"];
+const VENUE_TYPES_SAFE = ["restaurant", "cafe", "bakery", "bar", "night_club", "gym", "spa", "beauty_salon", "hair_salon",
+  "museum", "art_gallery", "park", "tourist_attraction", "amusement_park", "zoo", "aquarium", "movie_theater"];
+let venueTypes = VENUE_TYPES;
+const VENUE_FIELDS = ["id", "displayName", "formattedAddress", "addressComponents", "location", "primaryType", "types", "photos", "businessStatus"];
+
+/**
+ * Up to 3 places people go (restaurants, cafés, gyms, spas, museums…) right around a point, nearest first,
+ * permanently closed ones left out. Used to guess where a cluster of photos was taken.
+ */
+export async function nearbyVenues(lat: number, lng: number, radiusMeters = 45): Promise<Array<PlaceResult & { distanceMeters: number }>> {
+  if (!key()) return [];
+  const ask = (types: string[]) =>
+    gfetch<{ places?: GooglePlace[] }>("/places:searchNearby", {
+      method: "POST",
+      fieldMask: VENUE_FIELDS.map((f) => `places.${f}`).join(","),
+      body: JSON.stringify({
+        includedTypes: types,
+        maxResultCount: 3,
+        rankPreference: "DISTANCE",
+        locationRestriction: { circle: { center: { latitude: lat, longitude: lng }, radius: radiusMeters } },
+      }),
+    });
+  let data = await ask(venueTypes);
+  // An unknown type name makes Google reject the whole request: fall back to long-standing types once.
+  if (!data && venueTypes !== VENUE_TYPES_SAFE) {
+    data = await ask(VENUE_TYPES_SAFE);
+    if (data) venueTypes = VENUE_TYPES_SAFE;
+  }
+  return (data?.places ?? [])
+    .filter((p) => p.businessStatus !== "CLOSED_PERMANENTLY" && p.location)
+    .map((p) => {
+      const r = toResult(p);
+      return { ...r, distanceMeters: haversineMeters(lat, lng, r.lat, r.lng) };
+    })
+    .sort((a, b) => a.distanceMeters - b.distanceMeters);
+}
+
 /** Resolve a Google photo resource name to a CDN URL (no API key in the URL). */
 /**
  * Google's best matches for a name right around a known point (e.g. a place from a saved
