@@ -89,7 +89,22 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   // New here (no places yet): "Your Dubai — add your go-to spots", for the city they're in.
   const startCity = user && myCities.length === 0 ? nearestKnownCity(here) : null;
   // Following few people: a row of people to follow.
-  const people = user && followingIds.length < 3 ? (await peopleToFollow(user.id, 12)).hits : [];
+  const peopleHits = user && followingIds.length < 3 ? (await peopleToFollow(user.id, 30)).hits : [];
+  // What each has to offer: spots they recommend and in how many cities (places first, not guides).
+  const peopleRecs = peopleHits.length ? await loadRecommendations({ viewerId: user!.id, ownerIds: peopleHits.map((p) => p.user.id) }) : [];
+  const offer = new Map<string, { spots: Set<string>; cities: Set<string> }>();
+  for (const r of peopleRecs) {
+    const o = offer.get(r.owner.id) ?? { spots: new Set<string>(), cities: new Set<string>() };
+    o.spots.add(spotKey(r.place));
+    if (r.city) o.cities.add(cityKey(r.city));
+    offer.set(r.owner.id, o);
+  }
+  const spotsOf = (id: string) => offer.get(id)?.spots.size ?? 0;
+  const citiesOf = (id: string) => offer.get(id)?.cities.size ?? 0;
+  // People who follow you first, then most spots, then the rest as they came (newest members).
+  const people = [...peopleHits]
+    .sort((a, b) => Number(b.followsViewer) - Number(a.followsViewer) || spotsOf(b.user.id) - spotsOf(a.user.id))
+    .slice(0, 12);
   const photos = await cityPhotosFor(
     [...(trip ? [trip.trip.city] : []), ...(startCity ? [startCity.city] : []), ...cities.map((c) => c.city), ...popularTiles.map((t) => t.city)],
     new Map([...(startCity ? [startCity] : []), ...cities, ...popularTiles].filter((c) => c.country).map((c) => [cityPhotoKey(c.city), c.country])),
@@ -227,9 +242,20 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
                   <Link href={`/u/${p.user.username}`} className="flex flex-col items-center gap-1.5 min-w-0 w-full">
                     <Avatar user={p.user} size={56} />
                     <span className="text-[13.5px] font-semibold leading-tight truncate w-full">{first(p.user)}</span>
-                    <span className="-mt-1 text-[11.5px] text-ink-muted truncate w-full">
-                      {p.followsViewer ? "Follows you" : p.guideCount ? `${p.guideCount} guide${p.guideCount === 1 ? "" : "s"}` : "New on MyGuide"}
+                    <span className="-mt-1 text-[11.5px] leading-snug text-ink-muted w-full">
+                      {spotsOf(p.user.id) ? (
+                        <>
+                          {spotsOf(p.user.id)} spot{spotsOf(p.user.id) === 1 ? "" : "s"}
+                          <span className="block">in {citiesOf(p.user.id) || 1} cit{(citiesOf(p.user.id) || 1) === 1 ? "y" : "ies"}</span>
+                        </>
+                      ) : (
+                        <>
+                          New on MyGuide
+                          <span className="block">&nbsp;</span>
+                        </>
+                      )}
                     </span>
+                    {p.followsViewer && <span className="text-[11px] font-semibold text-sage">Follows you</span>}
                   </Link>
                   <FollowPill userId={p.user.id} signedIn next="/" />
                 </span>
