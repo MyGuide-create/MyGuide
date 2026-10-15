@@ -252,7 +252,7 @@ export function PhotoPlacesFlow() {
     );
 
   return (
-    <div className="pb-32">
+    <div className="pb-[calc(11rem+env(safe-area-inset-bottom))]">
       {fileInput}
       <div className="px-5 pt-4 flex flex-col gap-2">
         <h1 className="font-display text-[28px] leading-tight">Looks like you&apos;ve been to these</h1>

@@ -82,7 +82,7 @@ export function PhotoPlaceFinder({
         <h2 className="font-display text-[22px] leading-tight flex-1 min-w-0 truncate">Where were you?</h2>
       </div>
 
-      <div className="flex-1 overflow-y-auto pb-28">
+      <div className="flex-1 overflow-y-auto pb-[calc(9rem+env(safe-area-inset-bottom))]">
         {thumbs.length > 0 && (
           <div className="flex gap-2 overflow-x-auto no-scrollbar px-4 pt-3">
             {thumbs.map((t) => (
