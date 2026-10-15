@@ -25,6 +25,9 @@ export interface PersonSuggestion {
   /** Spots added in the last 14 days, and where most of them were. */
   recent: number;
   recentCity: string;
+  /** How many of the recent spots are in recentCity, and how many cities they span. */
+  recentInCity: number;
+  recentCities: number;
   /** A few of their recent places (for photos on the spotlight card). */
   recentPlaces: Recommendation[];
   /** First names of people you follow who follow them. */
@@ -103,7 +106,7 @@ export async function suggestPeople(
     if (!a.keys.size) continue;
     const recentCities = new Map<string, number>();
     for (const r of a.recent) if (r.city) recentCities.set(r.city, (recentCities.get(r.city) ?? 0) + 1);
-    const recentCity = [...recentCities.entries()].sort((x, y) => y[1] - x[1])[0]?.[0] ?? "";
+    const [recentCity = "", recentInCity = 0] = [...recentCities.entries()].sort((x, y) => y[1] - x[1])[0] ?? [];
     const followedBy = [...new Set(fof.get(id) ?? [])];
     const saved = savedFrom.get(id) ?? 0;
     const score =
@@ -122,6 +125,8 @@ export async function suggestPeople(
       inCity: a.inCity.size,
       recent: a.recent.length,
       recentCity,
+      recentInCity,
+      recentCities: recentCities.size,
       recentPlaces: [...a.recent].sort((x, y) => y.at.getTime() - x.at.getTime()).slice(0, 4),
       followedBy,
       shared: a.shared.size,

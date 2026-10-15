@@ -615,7 +615,7 @@ function SpotRow({
         {subline && <span className={cx("text-[12.5px] text-ink-muted truncate", (yours || showMarks) && "pr-16")}>{subline}</span>}
         {lead.tip && (
           <span className="text-[13px] leading-snug text-ink/85 line-clamp-2">
-            &ldquo;{lead.tip}&rdquo; <span className="text-ink-muted">{nm(lead.user, viewerId)} · {sharedLabel(lead.freshAt)}</span>
+            &ldquo;{lead.tip}&rdquo; <span className="text-ink-muted">{nm(lead.user, viewerId)}</span>
           </span>
         )}
         <span className="mt-0.5 flex items-center gap-2">
@@ -627,7 +627,7 @@ function SpotRow({
           <span className={cx("text-[12.5px] font-semibold inline-flex items-center gap-1", many ? "text-sage" : "text-ink-muted")}>
             {onlyMinePrivate && <LockIcon size={12} />}
             {recommendLabel(spot, picked, fromFriends, viewerId)}
-            {!lead.tip && <span className="font-normal text-ink-faint">· {sharedLabel(lead.freshAt)}</span>}
+            <span className="font-normal text-ink-faint whitespace-nowrap">· {sharedLabel(lead.freshAt)}</span>
           </span>
           {follow && <span className="w-[72px] shrink-0 ml-auto" aria-hidden />}
         </span>

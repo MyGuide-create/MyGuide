@@ -164,15 +164,24 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
             <h1 className="flex-1 font-display text-[28px] leading-[1.05]">{place.name}</h1>
             {!detail.viewerCanEdit && !mine && <SaveButton placeId={place.id} initial={detail.savedPlaceIds.includes(place.id)} signedIn={!!user} variant="pill" className="mt-1 shrink-0" />}
           </div>
-          {stashPlace ? (
-            detail.viewerCanEdit ? (
-              <div className="mt-2"><RecommendToggle placeIds={[place.id]} shared={!!place.sharedAt} city={place.city} /></div>
-            ) : (
-              <p className="mt-1 text-[11.5px] text-ink-faint">Recommended by {detail.owner.displayName.split(" ")[0]} · Shared {sharedLabel(freshOf(place))}</p>
-            )
-          ) : (
-            pos >= 0 && <p className="mt-1 text-[11.5px] text-ink-faint">Place {pos + 1} of {ordered.length} in {detail.guide.title} · Shared {sharedLabel(freshOf(place))}</p>
+          {stashPlace && detail.viewerCanEdit && (
+            <div className="mt-2"><RecommendToggle placeIds={[place.id]} shared={!!place.sharedAt} city={place.city} /></div>
           )}
+          {/* When it was last shared or updated, on every place page (15 Oct 2026). */}
+          <p className="mt-1 text-[11.5px] text-ink-faint">
+            {[
+              stashPlace
+                ? detail.viewerCanEdit
+                  ? ""
+                  : `Recommended by ${detail.owner.displayName.split(" ")[0]}`
+                : pos >= 0
+                  ? `Place ${pos + 1} of ${ordered.length} in ${detail.guide.title}`
+                  : `In ${detail.guide.title}`,
+              `${stashPlace && detail.viewerCanEdit && !place.sharedAt ? "Added" : "Shared"} ${sharedLabel(freshOf(place))}`,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+          </p>
           {isDroppedPin(place) ? (
             <p className="mt-1 text-[13px] text-ink-muted">
               <span className="text-sage font-medium">Dropped pin</span>

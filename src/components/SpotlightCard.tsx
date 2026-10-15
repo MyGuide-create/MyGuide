@@ -18,7 +18,14 @@ export function SpotlightCard({ s, reason, preview = false }: { s: PersonSuggest
   const [, start] = useTransition();
   if (state === "hidden") return null;
   const first = s.user.displayName.split(" ")[0];
-  const where = s.recentCity ? ` in ${s.recentCity}` : "";
+  // Only say "in <city>" when they all are; otherwise how many cities, and how many in the main one.
+  const where =
+    s.recentCities <= 1
+      ? s.recentCity
+        ? ` in ${s.recentCity}`
+        : ""
+      : ` in ${s.recentCities} cities`;
+  const most = s.recentCities > 1 && s.recentCity ? ` · ${s.recentInCity} in ${s.recentCity}` : "";
   const extra = Math.max(0, s.recent - s.recentPlaces.length);
 
   const follow = () =>
@@ -55,7 +62,7 @@ export function SpotlightCard({ s, reason, preview = false }: { s: PersonSuggest
           <span className="block font-display text-[22px] leading-tight truncate">{s.user.displayName}</span>
           <span className="block text-[13px] text-cream-deep leading-snug">
             Added {s.recent} spot{s.recent === 1 ? "" : "s"}
-            {where} lately
+            {where} lately{most}
           </span>
         </Link>
       </div>
