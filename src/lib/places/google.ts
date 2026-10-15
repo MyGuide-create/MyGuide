@@ -38,6 +38,7 @@ interface GooglePlace {
   photos?: Array<{ name: string }>;
   regularOpeningHours?: { weekdayDescriptions?: string[] };
   businessStatus?: string;
+  userRatingCount?: number;
   nationalPhoneNumber?: string;
   internationalPhoneNumber?: string;
   websiteUri?: string;
@@ -265,19 +266,40 @@ const VENUE_TYPES_SAFE = ["restaurant", "cafe", "bakery", "bar", "night_club", "
 let venueTypes = VENUE_TYPES;
 const VENUE_FIELDS = ["id", "displayName", "formattedAddress", "addressComponents", "location", "primaryType", "types", "photos", "businessStatus"];
 
+/** A place near a photo spot, with what's needed to judge how likely it is. */
+export type VenueCandidate = PlaceResult & {
+  distanceMeters: number;
+  /** Google's main type ("italian_restaurant", "resort_hotel"…). */
+  primaryType: string;
+  types: string[];
+  /** Number of Google reviews (how well known it is). */
+  ratingCount: number;
+};
+
+function toCandidate(p: GooglePlace, lat: number, lng: number): VenueCandidate {
+  const r = toResult(p);
+  return {
+    ...r,
+    distanceMeters: haversineMeters(lat, lng, r.lat, r.lng),
+    primaryType: p.primaryType ?? "",
+    types: p.types ?? [],
+    ratingCount: p.userRatingCount ?? 0,
+  };
+}
+
 /**
- * Up to 3 places people go (restaurants, cafés, gyms, spas, museums…) right around a point, nearest first,
+ * Places people go (restaurants, cafés, gyms, spas, museums, hotels…) around a point, nearest first,
  * permanently closed ones left out. Used to guess where a cluster of photos was taken.
  */
-export async function nearbyVenues(lat: number, lng: number, radiusMeters = 45, onlyTypes?: string[]): Promise<Array<PlaceResult & { distanceMeters: number }>> {
+export async function venueCandidates(lat: number, lng: number, radiusMeters = 45, onlyTypes?: string[], max = 10): Promise<VenueCandidate[]> {
   if (!key()) return [];
   const ask = (types: string[]) =>
     gfetch<{ places?: GooglePlace[] }>("/places:searchNearby", {
       method: "POST",
-      fieldMask: VENUE_FIELDS.map((f) => `places.${f}`).join(","),
+      fieldMask: [...VENUE_FIELDS, "userRatingCount"].map((f) => `places.${f}`).join(","),
       body: JSON.stringify({
         includedTypes: types,
-        maxResultCount: 3,
+        maxResultCount: Math.min(Math.max(max, 1), 20),
         rankPreference: "DISTANCE",
         locationRestriction: { circle: { center: { latitude: lat, longitude: lng }, radius: radiusMeters } },
       }),
@@ -290,15 +312,17 @@ export async function nearbyVenues(lat: number, lng: number, radiusMeters = 45, 
   }
   return (data?.places ?? [])
     .filter((p) => p.businessStatus !== "CLOSED_PERMANENTLY" && p.location)
-    .map((p) => {
-      const r = toResult(p);
-      return { ...r, distanceMeters: haversineMeters(lat, lng, r.lat, r.lng) };
-    })
+    .map((p) => toCandidate(p, lat, lng))
     .sort((a, b) => a.distanceMeters - b.distanceMeters);
 }
 
+/** Up to 3 venues right around a point, nearest first. */
+export async function nearbyVenues(lat: number, lng: number, radiusMeters = 45, onlyTypes?: string[]): Promise<VenueCandidate[]> {
+  return venueCandidates(lat, lng, radiusMeters, onlyTypes, 3);
+}
+
 /** Everything Google lists right around a point (any type), nearest first: for "where was this photo?". */
-export async function placesAround(lat: number, lng: number, radiusMeters = 120): Promise<Array<PlaceResult & { distanceMeters: number }>> {
+export async function placesAround(lat: number, lng: number, radiusMeters = 120): Promise<VenueCandidate[]> {
   if (!key()) return [];
   const data = await gfetch<{ places?: GooglePlace[] }>("/places:searchNearby", {
     method: "POST",
@@ -311,10 +335,7 @@ export async function placesAround(lat: number, lng: number, radiusMeters = 120)
   });
   return (data?.places ?? [])
     .filter((p) => p.businessStatus !== "CLOSED_PERMANENTLY" && p.location)
-    .map((p) => {
-      const r = toResult(p);
-      return { ...r, distanceMeters: haversineMeters(lat, lng, r.lat, r.lng) };
-    })
+    .map((p) => toCandidate(p, lat, lng))
     .sort((a, b) => a.distanceMeters - b.distanceMeters);
 }
 

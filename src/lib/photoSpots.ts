@@ -10,6 +10,10 @@ export interface PhotoPoint {
   t: number;
   /** Which picked photo it came from (stays on the phone, to show the photos of a spot). */
   i?: number;
+  /** Local hour on the camera's clock (0-23), when the photo says. */
+  h?: number;
+  /** How far off the phone said its GPS could be (metres), when the photo says. */
+  acc?: number;
 }
 
 export interface PhotoSpot {
@@ -22,6 +26,14 @@ export interface PhotoSpot {
   last: number;
   /** The photos (indexes into the picked files) taken here. Never sent to MyGuide. */
   items?: number[];
+  /** Photos per local hour of day (24 numbers), to tell breakfast from dinner from a night out. */
+  hours?: number[];
+  /** Longest single visit, in minutes (first to last photo on one go). Under ~10 is usually walking past. */
+  dwell?: number;
+  /** How spread out the photos are (median metres from the centre). */
+  spread?: number;
+  /** Typical GPS error the phone reported for these photos (metres), when known. */
+  acc?: number;
 }
 
 /** Photos within this distance of a spot's centre count as the same spot. */
@@ -42,9 +54,34 @@ function dayOf(p: PhotoPoint): string {
   return new Date((p.t + Math.round(p.lng / 15) * 3600) * 1000).toISOString().slice(0, 10);
 }
 
+/** Local hour of a photo: the camera's own clock when known, else a rough guess from the longitude. */
+function hourOf(p: PhotoPoint): number {
+  if (typeof p.h === "number" && p.h >= 0 && p.h < 24) return Math.floor(p.h);
+  return new Date((p.t + Math.round(p.lng / 15) * 3600) * 1000).getUTCHours();
+}
+
+const median = (xs: number[]) => {
+  if (!xs.length) return 0;
+  const a = [...xs].sort((x, y) => x - y);
+  const m = a.length >> 1;
+  return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
+};
+
+/** Longest run of photos with no gap over 3 hours, in minutes. */
+function longestVisit(times: number[]): number {
+  const t = [...times].sort((a, b) => a - b);
+  let best = 0;
+  let start = t[0] ?? 0;
+  for (let k = 1; k < t.length; k++) {
+    if (t[k] - t[k - 1] > 3 * 3600) start = t[k];
+    best = Math.max(best, t[k] - start);
+  }
+  return Math.round(best / 60);
+}
+
 /** Groups photos into spots, busiest first. Spots that look like home/work are counted separately. */
 export function groupPhotos(points: PhotoPoint[]): { spots: PhotoSpot[]; homeLike: number } {
-  type Acc = { lat: number; lng: number; n: number; days: Set<string>; first: number; last: number; items: number[] };
+  type Acc = { lat: number; lng: number; n: number; days: Set<string>; first: number; last: number; items: number[]; pts: PhotoPoint[] };
   const grid = new Map<string, Acc[]>();
   const all: Acc[] = [];
   const cellOf = (p: { lat: number; lng: number }) => [Math.floor(p.lat / 0.001), Math.floor(p.lng / 0.001)];
@@ -69,8 +106,9 @@ export function groupPhotos(points: PhotoPoint[]): { spots: PhotoSpot[]; homeLik
       best.first = Math.min(best.first, p.t);
       best.last = Math.max(best.last, p.t);
       if (p.i != null) best.items.push(p.i);
+      best.pts.push(p);
     } else {
-      const c: Acc = { lat: p.lat, lng: p.lng, n: 1, days: new Set([dayOf(p)]), first: p.t, last: p.t, items: p.i != null ? [p.i] : [] };
+      const c: Acc = { lat: p.lat, lng: p.lng, n: 1, days: new Set([dayOf(p)]), first: p.t, last: p.t, items: p.i != null ? [p.i] : [], pts: [p] };
       all.push(c);
       const k = `${ci},${cj}`;
       grid.set(k, [...(grid.get(k) ?? []), c]);
@@ -78,7 +116,27 @@ export function groupPhotos(points: PhotoPoint[]): { spots: PhotoSpot[]; homeLik
   }
   const spots = all
     .filter((c) => c.days.size <= HOME_DAYS)
-    .map((c) => ({ lat: c.lat, lng: c.lng, photos: c.n, days: c.days.size, first: c.first, last: c.last, items: c.items }))
+    .map((c) => {
+      // The middle photo position (a stray reading can't drag it the way an average would).
+      const lat = median(c.pts.map((p) => p.lat));
+      const lng = median(c.pts.map((p) => p.lng));
+      const hours = Array.from({ length: 24 }, () => 0);
+      for (const p of c.pts) hours[hourOf(p)]++;
+      const accs = c.pts.map((p) => p.acc).filter((a): a is number => typeof a === "number" && a > 0 && a < 5000);
+      return {
+        lat,
+        lng,
+        photos: c.n,
+        days: c.days.size,
+        first: c.first,
+        last: c.last,
+        items: c.items,
+        hours,
+        dwell: longestVisit(c.pts.map((p) => p.t)),
+        spread: Math.round(median(c.pts.map((p) => distanceM({ lat, lng }, p)))),
+        acc: accs.length ? Math.round(median(accs)) : undefined,
+      };
+    })
     .sort((a, b) => b.days - a.days || b.photos - a.photos);
   return { spots, homeLike: all.length - spots.length };
 }

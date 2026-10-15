@@ -679,3 +679,25 @@ export const cityMerges = sqliteTable("city_merges", {
   into: text("into").notNull().default(""),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 });
+
+/** Photo places (team test, 15 Oct 2026): what people kept or corrected, to tune the guesses. */
+export const photoPlaceFeedback = sqliteTable(
+  "photo_place_feedback",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    how: text("how").notNull(),
+    confidence: text("confidence").notNull(),
+    guessId: text("guess_id").notNull(),
+    guessName: text("guess_name").notNull(),
+    guessKind: text("guess_kind").notNull(),
+    chosenId: text("chosen_id"),
+    chosenName: text("chosen_name"),
+    chosenKind: text("chosen_kind"),
+    detail: text("detail"),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [index("photo_place_feedback_created_idx").on(t.createdAt)],
+);

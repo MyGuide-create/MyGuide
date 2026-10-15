@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { errorText } from "@/lib/errorText";
 import { importToMyPlaces } from "@/lib/actions/guides";
-import { lookupPhotoSpots, type PhotoPlaceOption, type PhotoPlaceSuggestion } from "@/lib/actions/photoPlaces";
+import { logPhotoFeedback, lookupPhotoSpots, type PhotoFeedbackIn, type PhotoPlaceOption, type PhotoPlaceSuggestion } from "@/lib/actions/photoPlaces";
 import { distanceM, groupPhotos, type PhotoPoint } from "@/lib/photoSpots";
 import { myPlacesHref } from "@/lib/stash";
 import { mapLimit } from "@/lib/utils";
@@ -20,14 +20,18 @@ async function readPoint(file: File, i: number): Promise<PhotoPoint | null> {
   try {
     const exifr = (await import("exifr")).default;
     const d = (await exifr.parse(file, { tiff: true, gps: true, exif: true, xmp: false, icc: false, iptc: false, jfif: false, ihdr: false })) as
-      | { latitude?: number; longitude?: number; DateTimeOriginal?: Date; CreateDate?: Date }
+      | { latitude?: number; longitude?: number; DateTimeOriginal?: Date; CreateDate?: Date; GPSHPositioningError?: number }
       | undefined;
     const lat = d?.latitude;
     const lng = d?.longitude;
     if (typeof lat !== "number" || typeof lng !== "number" || !Number.isFinite(lat) || !Number.isFinite(lng) || (lat === 0 && lng === 0)) return null;
     const when = d?.DateTimeOriginal ?? d?.CreateDate;
-    const t = when instanceof Date && !isNaN(when.getTime()) ? when.getTime() / 1000 : file.lastModified / 1000;
-    return { lat, lng, t, i };
+    const ok = when instanceof Date && !isNaN(when.getTime());
+    const t = ok ? when.getTime() / 1000 : file.lastModified / 1000;
+    // The photo's date has no time zone, so this reads back the camera's own clock: the local hour there.
+    const h = ok ? when.getHours() : undefined;
+    const acc = typeof d?.GPSHPositioningError === "number" ? d.GPSHPositioningError : undefined;
+    return { lat, lng, t, i, h, acc };
   } catch {
     return null;
   }
@@ -43,7 +47,8 @@ export function PhotoPlacesFlow() {
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [counts, setCounts] = useState({ photos: 0, located: 0, spots: 0, homeLike: 0, looked: 0, empty: 0 });
   const [results, setResults] = useState<PhotoPlaceSuggestion[]>([]);
-  const [minPhotos, setMinPhotos] = useState<number>(2);
+  const [minPhotos, setMinPhotos] = useState<number>(1);
+  const [showGuesses, setShowGuesses] = useState(false);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   // The picked photos and which of them belong to each spot (all stay on the phone).
   const [files, setFiles] = useState<File[]>([]);
@@ -100,14 +105,28 @@ export function PhotoPlacesFlow() {
       return;
     }
     // Look up every spot, busiest first (so "Any" really shows single-photo spots too).
-    const multi = spots.filter((s) => s.photos >= 2);
     const toLook = [...spots].sort((a, b) => b.photos - a.photos);
     setStage("looking");
     try {
-      const res = await lookupPhotoSpots(toLook.slice(0, 80).map((sp) => ({ id: sp.id, lat: sp.lat, lng: sp.lng, photos: sp.photos, days: sp.days, first: sp.first, last: sp.last })));
+      const res = await lookupPhotoSpots(
+        toLook.slice(0, 80).map((sp) => ({
+          id: sp.id,
+          lat: sp.lat,
+          lng: sp.lng,
+          photos: sp.photos,
+          days: sp.days,
+          first: sp.first,
+          last: sp.last,
+          hours: sp.hours,
+          dwell: sp.dwell,
+          spread: sp.spread,
+          acc: sp.acc,
+        })),
+      );
       setResults(res.suggestions);
       setCounts((c) => ({ ...c, looked: res.looked, empty: res.empty }));
-      setMinPhotos(multi.length ? 2 : 1);
+      setMinPhotos(1);
+      setShowGuesses(!res.suggestions.some((x) => x.confidence === "sure"));
       setPicked(new Set());
       setStage("results");
     } catch (e) {
@@ -117,8 +136,7 @@ export function PhotoPlacesFlow() {
   };
 
   const shown = useMemo(() => results.filter((r) => r.photos >= minPhotos), [results, minPhotos]);
-  const byCity = useMemo(() => {
-    const m = new Map<string, PhotoPlaceSuggestion[]>();
+  const groups = useMemo(() => {
     // A spot we couldn't name goes with the nearest named place (within 60 km).
     const named = results.filter((r) => !r.unknown && r.city);
     const cityOf = (r: PhotoPlaceSuggestion) => {
@@ -134,11 +152,17 @@ export function PhotoPlacesFlow() {
       }
       return best?.city ?? "";
     };
-    for (const r of shown) {
-      const k = cityOf(r) || "Other places";
-      m.set(k, [...(m.get(k) ?? []), r]);
-    }
-    return [...m.entries()].sort((a, b) => b[1].length - a[1].length);
+    const byCity = (list: PhotoPlaceSuggestion[]) => {
+      const m = new Map<string, PhotoPlaceSuggestion[]>();
+      for (const r of list) {
+        const k = cityOf(r) || "Other places";
+        m.set(k, [...(m.get(k) ?? []), r]);
+      }
+      return [...m.entries()].sort((a, b) => b[1].length - a[1].length);
+    };
+    const sure = shown.filter((r) => r.confidence === "sure");
+    const guess = shown.filter((r) => r.confidence !== "sure");
+    return { sure: byCity(sure), guess: byCity(guess), sureCount: sure.length, guessCount: guess.length };
   }, [shown, results]);
 
   const toggle = (id: string) =>
@@ -149,8 +173,40 @@ export function PhotoPlacesFlow() {
       return n;
     });
 
+  /** Tell MyGuide what was kept or corrected (to tune the guesses); never gets in the way. */
+  const report = (r: PhotoPlaceSuggestion, how: PhotoFeedbackIn["how"], o?: PhotoPlaceOption) => {
+    if (r.unknown && how === "none") return;
+    const rank = o ? r.alts.findIndex((a) => a.providerId === o.providerId) : -1;
+    return {
+      how,
+      confidence: r.confidence,
+      guessId: r.guess.id,
+      guessName: r.guess.name || "(couldn't name)",
+      guessKind: r.guess.kind,
+      chosenId: o?.providerId,
+      chosenName: o?.name,
+      chosenKind: o?.kind ?? o?.category,
+      detail: {
+        photos: r.photos,
+        days: r.days,
+        dwell: r.dwell,
+        passing: r.passing,
+        guessMetres: r.guess.id === r.providerId ? r.distance : null,
+        chosenMetres: o?.distance ?? null,
+        altRank: rank >= 0 ? rank + 1 : null,
+        reason: r.reason,
+      },
+    } satisfies PhotoFeedbackIn;
+  };
+  const send = (entries: Array<PhotoFeedbackIn | undefined>) => {
+    const list = entries.filter((e): e is PhotoFeedbackIn => !!e);
+    if (list.length) logPhotoFeedback(list).catch(() => {});
+  };
+
   /** Swap the guess for another place there (from "Not it?" or the finder); it gets ticked. */
-  const choose = (id: string, o: PhotoPlaceOption) => {
+  const choose = (id: string, o: PhotoPlaceOption, how: "alt" | "list" | "search" = "alt") => {
+    const was = results.find((r) => r.providerId === id);
+    if (was && o.providerId !== id) send([report(was, how, o)]);
     setResults((rs) => {
       const cur = rs.find((r) => r.providerId === id);
       if (!cur || o.providerId === id) return rs;
@@ -183,6 +239,8 @@ export function PhotoPlacesFlow() {
 
   /** "None of these": leave the spot out. */
   const skip = (id: string) => {
+    const was = results.find((r) => r.providerId === id);
+    if (was) send([report(was, "none")]);
     setResults((rs) => rs.filter((r) => r.providerId !== id));
     setPicked((s) => {
       const n = new Set(s);
@@ -198,6 +256,7 @@ export function PhotoPlacesFlow() {
   const save = async () => {
     const chosen = results.filter((r) => picked.has(r.providerId));
     if (!chosen.length) return;
+    send(chosen.filter((r) => r.providerId === r.guess.id).map((r) => report(r, "kept")));
     setStage("saving");
     setError("");
     try {
@@ -309,36 +368,8 @@ export function PhotoPlacesFlow() {
       </div>
     );
 
-  return (
-    <div className="pb-[calc(11rem+env(safe-area-inset-bottom))]">
-      <div className="px-5 pt-4 flex flex-col gap-2">
-        <h1 className="font-display text-[28px] leading-tight">Looks like you&apos;ve been to these</h1>
-        <p className="text-[13.5px] text-ink-muted leading-relaxed">
-          {counts.photos.toLocaleString()} photos · {counts.located.toLocaleString()} with a location · {counts.spots.toLocaleString()} spots
-          {counts.homeLike ? ` (${counts.homeLike} that look like home or work left out)` : ""} · checked {counts.looked} · {named} place{named === 1 ? "" : "s"} found
-          {counts.empty ? ` · ${counts.empty} we couldn't name` : ""}
-        </p>
-        <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[13px]">
-          <span className="text-ink-muted pr-0.5">Photos at a spot:</span>
-          {[1, ...MIN_CHOICES].filter((n, i, a) => a.indexOf(n) === i).map((n) => (
-            <button
-              key={n}
-              onClick={() => setMinPhotos(n)}
-              className={cx("rounded-full px-3 py-1 border whitespace-nowrap", minPhotos === n ? "bg-ink text-cream border-ink" : "bg-paper border-line text-ink")}
-            >
-              {n === 1 ? "Any" : `${n}+`}
-            </button>
-          ))}
-        </div>
-        <button onClick={pickPhotos} className="self-start text-[13px] font-semibold text-terracotta">
-          Choose different photos
-        </button>
-      </div>
-
-      {!shown.length ? (
-        <p className="px-5 pt-8 text-[14px] text-ink-muted">No places with {minPhotos}+ photos. Try a lower number above, or choose more photos.</p>
-      ) : (
-        byCity.map(([city, rows]) => (
+  const sections = (list: Array<[string, PhotoPlaceSuggestion[]]>) =>
+    list.map(([city, rows]) => (
           <section key={city} className="px-4 pt-6">
             <h2 className="px-1 pb-2 font-display text-[21px]">
               {city} <span className="text-[13px] font-sans text-ink-muted">{rows.length}</span>
@@ -370,6 +401,9 @@ export function PhotoPlacesFlow() {
                           {monthYear(r.first) !== monthYear(r.last) ? `–${monthYear(r.last)}` : ""}
                           {r.haveIn ? ` · already in ${r.haveIn}` : ""}
                         </span>
+                        {!r.unknown && (r.passing || r.reason) && (
+                          <span className="block text-[12px] text-ink-faint">{[r.passing ? "Maybe just walking past" : "", r.reason].filter(Boolean).join(" · ")}</span>
+                        )}
                       </button>
                       <div className="flex flex-wrap items-center gap-1.5 pt-1.5 text-[12px]">
                         {!r.unknown && <span className="text-ink-muted">Not it?</span>}
@@ -398,7 +432,58 @@ export function PhotoPlacesFlow() {
               })}
             </div>
           </section>
-        ))
+        ));
+
+  return (
+    <div className="pb-[calc(11rem+env(safe-area-inset-bottom))]">
+      <div className="px-5 pt-4 flex flex-col gap-2">
+        <h1 className="font-display text-[28px] leading-tight">Looks like you&apos;ve been to these</h1>
+        <p className="text-[13.5px] text-ink-muted leading-relaxed">
+          {counts.photos.toLocaleString()} photos · {counts.located.toLocaleString()} with a location · {counts.spots.toLocaleString()} spots
+          {counts.homeLike ? ` (${counts.homeLike} that look like home or work left out)` : ""} · checked {counts.looked} · {named} place{named === 1 ? "" : "s"} found
+          {counts.empty ? ` · ${counts.empty} we couldn't name` : ""}
+        </p>
+        <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[13px]">
+          <span className="text-ink-muted pr-0.5">Photos at a spot:</span>
+          {[1, ...MIN_CHOICES].filter((n, i, a) => a.indexOf(n) === i).map((n) => (
+            <button
+              key={n}
+              onClick={() => setMinPhotos(n)}
+              className={cx("rounded-full px-3 py-1 border whitespace-nowrap", minPhotos === n ? "bg-ink text-cream border-ink" : "bg-paper border-line text-ink")}
+            >
+              {n === 1 ? "Any" : `${n}+`}
+            </button>
+          ))}
+        </div>
+        <button onClick={pickPhotos} className="self-start text-[13px] font-semibold text-terracotta">
+          Choose different photos
+        </button>
+        <a href="/photo-places/corrections" className="self-start text-[12.5px] text-ink-muted underline underline-offset-2">
+          What the team has corrected so far
+        </a>
+      </div>
+
+      {!shown.length ? (
+        <p className="px-5 pt-8 text-[14px] text-ink-muted">No places with {minPhotos}+ photos. Try a lower number above, or choose more photos.</p>
+      ) : (
+        <>
+          {sections(groups.sure)}
+          {groups.guessCount > 0 && (
+            <div className="px-4 pt-6">
+              {groups.sureCount > 0 && (
+                <button
+                  onClick={() => setShowGuesses((v) => !v)}
+                  className="w-full rounded-2xl border border-line/80 bg-paper px-4 py-3 text-left text-[14px] font-semibold text-ink"
+                >
+                  {showGuesses ? "Hide the guesses" : `Show ${groups.guessCount} more guess${groups.guessCount === 1 ? "" : "es"}`}
+                  <span className="block text-[12.5px] font-normal text-ink-muted">Places we&apos;re less sure about, or where you may have just walked past.</span>
+                </button>
+              )}
+              {showGuesses && groups.sureCount > 0 && <h2 className="px-1 pt-5 font-display text-[19px] text-ink-muted">Best guesses</h2>}
+            </div>
+          )}
+          {(showGuesses || !groups.sureCount) && sections(groups.guess)}
+        </>
       )}
 
       {findingRow && (
@@ -406,7 +491,7 @@ export function PhotoPlacesFlow() {
           key={findingRow.providerId}
           suggestion={findingRow}
           files={findingRow.spotIds.flatMap((id) => spotItems.get(id) ?? []).map((i) => files[i]).filter(Boolean)}
-          onPick={(o) => choose(findingRow.providerId, o)}
+          onPick={(o, how) => choose(findingRow.providerId, o, how)}
           onSkip={() => skip(findingRow.providerId)}
           onClose={() => setFinding(null)}
         />

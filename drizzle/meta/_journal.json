@@ -253,6 +253,13 @@
       "when": 1791910000000,
       "tag": "0035_follow_suggestion_dismissals",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "6",
+      "when": 1791990000000,
+      "tag": "0036_photo_place_feedback",
+      "breakpoints": true
     }
   ]
 }

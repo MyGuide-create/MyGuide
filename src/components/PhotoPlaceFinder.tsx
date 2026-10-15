@@ -23,7 +23,7 @@ export function PhotoPlaceFinder({
   suggestion: PhotoPlaceSuggestion;
   /** The picked photos taken at this spot (stay on the phone). */
   files: File[];
-  onPick: (o: PhotoPlaceOption) => void;
+  onPick: (o: PhotoPlaceOption, how: "list" | "search") => void;
   onSkip: () => void;
   onClose: () => void;
 }) {
@@ -35,6 +35,7 @@ export function PhotoPlaceFinder({
   const loading = loadedRadius !== radius;
   const [query, setQuery] = useState("");
   const [searching, setSearching] = useState(false);
+  const [searched, setSearched] = useState<Set<string>>(new Set());
   const [error, setError] = useState("");
 
   // Thumbnails of the photos (object URLs, freed on close).
@@ -60,6 +61,7 @@ export function PhotoPlaceFinder({
     try {
       const found = await searchNearSpot(q, s.spotLat, s.spotLng);
       if (!found.length) setError(`Nothing called “${q}” near here.`);
+      setSearched((x) => new Set([...x, ...found.map((f) => f.providerId)]));
       setOptions((o) => dedupe([...found, ...o]));
     } catch (e) {
       setError(errorText(e, "Couldn't search."));
@@ -122,7 +124,7 @@ export function PhotoPlaceFinder({
             return (
               <li key={o.providerId} id={`opt-${o.providerId}`}>
                 <button
-                  onClick={() => onPick(o)}
+                  onClick={() => onPick(o, searched.has(o.providerId) ? "search" : "list")}
                   className={cx("w-full text-left rounded-2xl border bg-paper p-3 flex items-center gap-3", isCurrent ? "border-terracotta" : "border-line/80 hover:border-terracotta-soft")}
                 >
                   <span className="w-7 h-7 shrink-0 rounded-full bg-terracotta text-white text-[12px] font-semibold flex items-center justify-center">{i + 1}</span>
