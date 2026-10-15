@@ -12,6 +12,7 @@ import { ResetPasswordButton } from "@/components/ResetPasswordButton";
 import { CityDecisionButtons } from "@/components/CityDecisionButtons";
 import { cityDecisions, loneCities } from "@/lib/cityAdmin";
 import { getDb } from "@/lib/db";
+import { sql } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Admin" };
@@ -213,6 +214,8 @@ async function StatsTab() {
 
         <RetentionTiles r={ret.summary} />
 
+        <TripsAndWishes />
+
         <section>
           <h2 className="px-1 text-[12px] font-medium uppercase tracking-[0.08em] text-ink-muted mb-2">All time</h2>
           <div className="grid grid-cols-3 gap-2">
@@ -312,6 +315,55 @@ async function StatsTab() {
           )}
         </section>
       </div>
+  );
+}
+
+/** Are Plan a trip and the wish list used? (15 Oct 2026, to decide whether to keep them.) */
+async function TripsAndWishes() {
+  const db = await getDb();
+  const one = async (q: ReturnType<typeof sql>) => Number(((await db.get(q)) as { n?: number } | undefined)?.n ?? 0);
+  const [trips, tripPeople, tripsDated, tripGuides, wishes, wishPeople, wishesAnswered, asks, asksDone] = await Promise.all([
+    one(sql`select count(*) as n from trips where planned = 1`),
+    one(sql`select count(distinct user_id) as n from trips where planned = 1`),
+    one(sql`select count(*) as n from trips where planned = 1 and start_date is not null`),
+    one(sql`select count(*) as n from trips where planned = 1 and guide_id is not null`),
+    one(sql`select count(*) as n from guide_wishes`),
+    one(sql`select count(distinct user_id) as n from guide_wishes`),
+    one(sql`select count(distinct wish_id) as n from wish_grants where sent_at is not null`),
+    one(sql`select count(*) as n from guide_requests`),
+    one(sql`select count(*) as n from guide_requests where status = 'done'`),
+  ]);
+  type Row = { kind: string; who: string; city: string; at: number };
+  const latest = (await db.all(sql`
+    select 'Trip' as kind, u.username as who, t.city as city, t.created_at as at from trips t join users u on u.id = t.user_id where t.planned = 1
+    union all
+    select 'Wish' as kind, u.username as who, w.city as city, w.created_at as at from guide_wishes w join users u on u.id = w.user_id
+    order by at desc limit 15`)) as Row[];
+  return (
+    <section>
+      <h2 className="px-1 text-[12px] font-medium uppercase tracking-[0.08em] text-ink-muted mb-2">Trips &amp; wish lists (all time)</h2>
+      <div className="grid grid-cols-3 gap-2">
+        <Tile label="Trips planned" value={trips} note={`by ${tripPeople} ${tripPeople === 1 ? "person" : "people"}`} />
+        <Tile label="With dates" value={tripsDated} />
+        <Tile label="Made a trip guide" value={tripGuides} />
+        <Tile label="Wishes" value={wishes} note={`by ${wishPeople} ${wishPeople === 1 ? "person" : "people"}`} />
+        <Tile label="Wishes answered" value={wishesAnswered} hint="Someone sent a guide for it" />
+        <Tile label="Asks sent" value={asks} note={`${asksDone} answered`} />
+      </div>
+      {latest.length > 0 && (
+        <ul className="mt-2 rounded-2xl border border-line bg-paper divide-y divide-line/70 text-[12.5px]">
+          {latest.map((r, i) => (
+            <li key={i} className="flex items-center gap-2 px-3 py-2">
+              <span className={cx("w-10 shrink-0 font-semibold", r.kind === "Trip" ? "text-terracotta" : "text-sage")}>{r.kind}</span>
+              <span className="flex-1 min-w-0 truncate">
+                {r.city} <span className="text-ink-muted">· @{r.who}</span>
+              </span>
+              <span className="text-ink-faint">{timeAgo(new Date(Number(r.at)))}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 
