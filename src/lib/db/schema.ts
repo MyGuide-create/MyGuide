@@ -161,6 +161,8 @@ export const places = sqliteTable(
      * Saved places): it then shows on the city page's spots. Copies never inherit it.
      */
     sharedAt: integer("shared_at", { mode: "timestamp_ms" }),
+    /** Last time the owner shared it or wrote/changed its description or a tip (src/lib/fresh.ts). */
+    freshAt: integer("fresh_at", { mode: "timestamp_ms" }),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   },
   (t) => [index("places_guide_idx").on(t.guideId, t.position)],

@@ -711,10 +711,15 @@ export async function updatePlace(
   const { guide, userId } = await requireOwner(guideId);
   const db = await getDb();
   const set: Partial<typeof places.$inferInsert> = {};
+  // Only a real change to their words makes the recommendation current again.
+  const before = patch.note !== undefined || patch.special !== undefined
+    ? await db.query.places.findFirst({ where: and(eq(places.id, placeId), eq(places.guideId, guideId)), columns: { note: true, special: true } })
+    : undefined;
   if (patch.name !== undefined && patch.name.trim()) set.name = patch.name.trim();
   if (patch.note !== undefined) {
     set.note = patch.note.trim();
     set.noteAuthorId = userId; // editing a carried-over note makes it yours
+    if (set.note !== (before?.note ?? "").trim()) set.freshAt = new Date(); // their words are current again (src/lib/fresh.ts)
   }
   if (patch.category !== undefined && isCategory(patch.category)) set.category = patch.category;
   if (patch.noteClipMediaId !== undefined) {
@@ -722,7 +727,10 @@ export async function updatePlace(
     if (patch.noteClipMediaId) set.noteAuthorId = userId;
   }
   if (patch.photoMediaId !== undefined) set.photoMediaId = patch.photoMediaId;
-  if (patch.special !== undefined) set.special = patch.special?.trim() || null;
+  if (patch.special !== undefined) {
+    set.special = patch.special?.trim() || null;
+    if ((set.special ?? "") !== (before?.special ?? "").trim()) set.freshAt = new Date();
+  }
   if (patch.website !== undefined || patch.instagram !== undefined || patch.whatsapp !== undefined || patch.reserveUrl !== undefined) {
     const current = await db.query.places.findFirst({ where: and(eq(places.id, placeId), eq(places.guideId, guideId)), columns: { country: true } });
     const take = (r: Normalised): string | null => {
@@ -766,6 +774,7 @@ export async function addPlaceTip(guideId: string, placeId: string, body: string
   const [{ max }] = await db.select({ max: sql<number>`coalesce(max(${placeTips.position}), -1)` }).from(placeTips).where(eq(placeTips.placeId, placeId));
   const id = newId();
   await db.insert(placeTips).values({ id, placeId, body: text, position: Number(max) + 1, createdAt: new Date() });
+  await db.update(places).set({ freshAt: new Date() }).where(eq(places.id, placeId));
   await touch(guideId);
   revalidateGuide(guide.slug);
   return (await db.query.placeTips.findFirst({ where: eq(placeTips.id, id) }))!;
@@ -777,7 +786,9 @@ export async function updatePlaceTip(guideId: string, tipId: string, body: strin
   if (!text) throw new UserError("Tip can't be empty.", "invalid");
   await requireTipInGuide(guideId, tipId);
   const db = await getDb();
+  const tip = await db.query.placeTips.findFirst({ where: eq(placeTips.id, tipId), columns: { placeId: true, body: true } });
   await db.update(placeTips).set({ body: text }).where(eq(placeTips.id, tipId));
+  if (tip && tip.body.trim() !== text) await db.update(places).set({ freshAt: new Date() }).where(eq(places.id, tip.placeId));
   await touch(guideId);
   revalidateGuide(guide.slug);
 }

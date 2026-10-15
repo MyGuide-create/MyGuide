@@ -1,3 +1,4 @@
+import { freshOf, sharedLabel } from "@/lib/fresh";
 import type { Metadata } from "next";
 import { CreditedNotes } from "@/components/CreditedNotes";
 import Link from "next/link";
@@ -167,10 +168,10 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
             detail.viewerCanEdit ? (
               <div className="mt-2"><RecommendToggle placeIds={[place.id]} shared={!!place.sharedAt} city={place.city} /></div>
             ) : (
-              <p className="mt-1 text-[11.5px] text-ink-faint">Recommended by {detail.owner.displayName.split(" ")[0]}</p>
+              <p className="mt-1 text-[11.5px] text-ink-faint">Recommended by {detail.owner.displayName.split(" ")[0]} · Shared {sharedLabel(freshOf(place))}</p>
             )
           ) : (
-            pos >= 0 && <p className="mt-1 text-[11.5px] text-ink-faint">Place {pos + 1} of {ordered.length} in {detail.guide.title}</p>
+            pos >= 0 && <p className="mt-1 text-[11.5px] text-ink-faint">Place {pos + 1} of {ordered.length} in {detail.guide.title} · Shared {sharedLabel(freshOf(place))}</p>
           )}
           {isDroppedPin(place) ? (
             <p className="mt-1 text-[13px] text-ink-muted">

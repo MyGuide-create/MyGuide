@@ -9,6 +9,7 @@ import { getDb } from "./db";
 import { follows, guides, placeTips, places, users, type Place } from "./db/schema";
 import { toPublicUser, type PublicUser } from "./auth";
 import { hiddenUserIds } from "./blocks";
+import { freshOf } from "./fresh";
 import { canonicalCity, cityNameVariants } from "./places/cities";
 
 const sameCity = (a: string, b: string) => canonicalCity(a).toLowerCase() === canonicalCity(b).toLowerCase();
@@ -21,6 +22,8 @@ export interface SpotRecommender {
   /** Their own words about the place: their description, else their first tip. "" when none. */
   tip: string;
   addedAt: Date;
+  /** Last time they shared it or changed its words. */
+  freshAt: Date;
   /** The viewer's own place that nobody else can see (draft/private guide, unshared Saved place). */
   isPrivate?: boolean;
 }
@@ -61,6 +64,8 @@ export interface Recommendation {
   tip: string;
   /** When it became a recommendation: shared from My places, else added. */
   at: Date;
+  /** Last time its owner shared it or wrote/changed its words (src/lib/fresh.ts). */
+  freshAt: Date;
   /** The spot's city, tidied ("Lisboa" → Lisbon); "" when unknown. */
   city: string;
   /** The viewer's own place that only they can see. */
@@ -124,7 +129,7 @@ export async function loadRecommendations(opts: { viewerId?: string | null; owne
     const rawCity = r.place.city.trim() || r.guide.city.trim();
     const { forkedFrom: _f, ...guide } = r.guide;
     void _f;
-    out.push({ place: r.place, guide, owner: toPublicUser(r.owner), tip, at: r.place.sharedAt ?? r.place.createdAt, city: rawCity ? canonicalCity(rawCity) : "" });
+    out.push({ place: r.place, guide, owner: toPublicUser(r.owner), tip, at: r.place.sharedAt ?? r.place.createdAt, freshAt: freshOf(r.place), city: rawCity ? canonicalCity(rawCity) : "" });
   }
   return out;
 }
@@ -163,6 +168,7 @@ export async function loadOwnPlaces(viewerId: string, city: string): Promise<Rec
       owner: toPublicUser(r.owner),
       tip: clip((theirs ? r.place.note : "") || firstTip.get(r.place.id) || ""),
       at: r.place.sharedAt ?? r.place.createdAt,
+      freshAt: freshOf(r.place),
       city: canonicalCity(r.place.city.trim() || r.guide.city.trim() || city),
       isPrivate: !isPublic && !r.place.sharedAt,
     };
@@ -183,15 +189,16 @@ export function mergeSpots(recs: Recommendation[]): CitySpot[] {
     if (existing) {
       // Prefer the copy others can see, then one with words.
       if ((existing.isPrivate && !r.isPrivate) || (!existing.tip && r.tip && !!existing.isPrivate === !!r.isPrivate))
-        Object.assign(existing, { tip: r.tip || existing.tip, placeId: r.place.id, guideSlug: r.guide.slug, guideTitle: r.guide.title, isPrivate: r.isPrivate });
+        Object.assign(existing, { tip: r.tip || existing.tip, placeId: r.place.id, guideSlug: r.guide.slug, guideTitle: r.guide.title, isPrivate: r.isPrivate, freshAt: r.freshAt > existing.freshAt ? r.freshAt : existing.freshAt });
       continue;
     }
-    g.recommenders.push({ user: r.owner, placeId: r.place.id, guideSlug: r.guide.slug, guideTitle: r.guide.title, tip: r.tip, addedAt: r.at, isPrivate: r.isPrivate });
+    g.recommenders.push({ user: r.owner, placeId: r.place.id, guideSlug: r.guide.slug, guideTitle: r.guide.title, tip: r.tip, addedAt: r.at, freshAt: r.freshAt, isPrivate: r.isPrivate });
     // Prefer a copy with a photo for the card.
     if (!g.place.photoMediaId && !g.place.photoUrl && (r.place.photoMediaId || r.place.photoUrl)) g.place = r.place;
   }
-  const latest = (s: CitySpot) => Math.max(...s.recommenders.map((x) => x.addedAt.getTime()));
-  for (const g of groups.values()) g.recommenders.sort((a, b) => Number(!!b.tip) - Number(!!a.tip) || b.addedAt.getTime() - a.addedAt.getTime());
+  // Most recommended, then the most recently shared/updated (dated tips sink, 14 Oct 2026).
+  const latest = (s: CitySpot) => Math.max(...s.recommenders.map((x) => x.freshAt.getTime()));
+  for (const g of groups.values()) g.recommenders.sort((a, b) => Number(!!b.tip) - Number(!!a.tip) || b.freshAt.getTime() - a.freshAt.getTime());
   return [...groups.values()].filter((g) => g.recommenders.length > 0).sort((a, b) => b.recommenders.length - a.recommenders.length || latest(b) - latest(a));
 }
 
