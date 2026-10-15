@@ -269,7 +269,7 @@ const VENUE_FIELDS = ["id", "displayName", "formattedAddress", "addressComponent
  * Up to 3 places people go (restaurants, cafés, gyms, spas, museums…) right around a point, nearest first,
  * permanently closed ones left out. Used to guess where a cluster of photos was taken.
  */
-export async function nearbyVenues(lat: number, lng: number, radiusMeters = 45): Promise<Array<PlaceResult & { distanceMeters: number }>> {
+export async function nearbyVenues(lat: number, lng: number, radiusMeters = 45, onlyTypes?: string[]): Promise<Array<PlaceResult & { distanceMeters: number }>> {
   if (!key()) return [];
   const ask = (types: string[]) =>
     gfetch<{ places?: GooglePlace[] }>("/places:searchNearby", {
@@ -282,9 +282,9 @@ export async function nearbyVenues(lat: number, lng: number, radiusMeters = 45):
         locationRestriction: { circle: { center: { latitude: lat, longitude: lng }, radius: radiusMeters } },
       }),
     });
-  let data = await ask(venueTypes);
+  let data = await ask(onlyTypes ?? venueTypes);
   // An unknown type name makes Google reject the whole request: fall back to long-standing types once.
-  if (!data && venueTypes !== VENUE_TYPES_SAFE) {
+  if (!data && !onlyTypes && venueTypes !== VENUE_TYPES_SAFE) {
     data = await ask(VENUE_TYPES_SAFE);
     if (data) venueTypes = VENUE_TYPES_SAFE;
   }

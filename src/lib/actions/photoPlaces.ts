@@ -126,6 +126,8 @@ export async function lookupPhotoSpots(input: PhotoSpotIn[]): Promise<{ suggesti
             // Right where the photos were; if nothing, look a bit wider (hotels, beaches and parks are big).
             let venues = await nearbyVenues(spot.lat, spot.lng).catch(() => []);
             if (!venues.length) venues = await nearbyVenues(spot.lat, spot.lng, 200).catch(() => []);
+            // Still nothing: you may be deep inside a resort or big hotel whose pin is far from where you were.
+            if (!venues.length) venues = await nearbyVenues(spot.lat, spot.lng, 800, ["lodging"]).catch(() => []);
             out.push({ spot, venues });
           }
         }),
