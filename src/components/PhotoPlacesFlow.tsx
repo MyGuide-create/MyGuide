@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { errorText } from "@/lib/errorText";
 import { importToMyPlaces } from "@/lib/actions/guides";
@@ -12,7 +12,7 @@ import { CameraIcon, CheckIcon } from "./Icons";
 import { PhotoPlaceFinder } from "./PhotoPlaceFinder";
 import { Button, Spinner, cx } from "./ui";
 
-type Stage = "intro" | "reading" | "looking" | "results" | "saving";
+type Stage = "intro" | "waiting" | "reading" | "looking" | "results" | "saving";
 const MIN_CHOICES = [2, 3, 5] as const;
 
 /** Location + date from one photo, read on the phone (the photo itself never leaves it). */
@@ -50,15 +50,33 @@ export function PhotoPlacesFlow() {
   const [spotItems, setSpotItems] = useState<Map<string, number[]>>(new Map());
   const [finding, setFinding] = useState<string | null>(null);
 
+  // Where to go back to if the photo picker is cancelled.
+  const [before, setBefore] = useState<Stage>("intro");
   const pickPhotos = () => {
     setError("");
+    // The phone can take a while to hand the photos over after you tap Done in its picker,
+    // so show that something's happening straight away.
+    setBefore(stage === "waiting" ? before : stage);
+    setStage("waiting");
     input.current?.click();
   };
+
+  // Picker closed without choosing anything (Safari fires "cancel").
+  useEffect(() => {
+    const el = input.current;
+    if (!el) return;
+    const onCancel = () => setStage((s) => (s === "waiting" ? before : s));
+    el.addEventListener("cancel", onCancel);
+    return () => el.removeEventListener("cancel", onCancel);
+  }, [before]);
 
   const onFiles = async (list: FileList | null) => {
     const list_ = [...(list ?? [])];
     if (input.current) input.current.value = "";
-    if (!list_.length) return;
+    if (!list_.length) {
+      setStage((s) => (s === "waiting" ? before : s));
+      return;
+    }
     setFiles(list_);
     setStage("reading");
     setProgress({ done: 0, total: list_.length });
@@ -177,13 +195,34 @@ export function PhotoPlacesFlow() {
   };
 
   const fileInput = (
-    <input ref={input} type="file" accept="image/*,.heic,.heif" multiple className="hidden" onChange={(e) => onFiles(e.target.files)} />
+    <input ref={input} type="file" accept="image/heic,image/heif,image/jpeg,image/png,image/webp,.heic,.heif,.jpg,.jpeg,.png" multiple className="hidden" onChange={(e) => onFiles(e.target.files)} />
   );
+
+  return (
+    <>
+      {fileInput}
+      {body()}
+    </>
+  );
+
+  function body() {
+  if (stage === "waiting")
+    return (
+      <div className="px-5 pt-16 pb-10 flex flex-col items-center gap-4 text-center">
+        <Spinner />
+        <p className="font-display text-[22px]">Getting your photos</p>
+        <p className="text-[14px] text-ink-muted leading-relaxed max-w-[300px]">
+          Your phone can take a little while to hand them over, longer when you&apos;ve picked a lot or some are stored in iCloud.
+        </p>
+        <button onClick={() => setStage(before)} className="text-[13px] font-semibold text-terracotta">
+          Cancel
+        </button>
+      </div>
+    );
 
   if (stage === "intro")
     return (
       <div className="px-5 pt-4 pb-10 flex flex-col gap-5">
-        {fileInput}
         <div className="flex flex-col gap-2">
           <span className="inline-flex self-start rounded-full bg-sage-tint px-2.5 py-0.5 text-[11px] font-semibold text-sage">Team test</span>
           <h1 className="font-display text-[30px] leading-tight">Places from your photos</h1>
@@ -238,7 +277,6 @@ export function PhotoPlacesFlow() {
   if (!counts.located)
     return (
       <div className="px-5 pt-8 pb-10 flex flex-col gap-4">
-        {fileInput}
         <h1 className="font-display text-[26px] leading-tight">None of those photos had a location</h1>
         <p className="text-[15px] text-ink-muted leading-relaxed">
           We read {counts.photos.toLocaleString()} photo{counts.photos === 1 ? "" : "s"} and none said where they were taken. Either location was off on the camera, or your
@@ -253,7 +291,6 @@ export function PhotoPlacesFlow() {
 
   return (
     <div className="pb-[calc(11rem+env(safe-area-inset-bottom))]">
-      {fileInput}
       <div className="px-5 pt-4 flex flex-col gap-2">
         <h1 className="font-display text-[28px] leading-tight">Looks like you&apos;ve been to these</h1>
         <p className="text-[13.5px] text-ink-muted leading-relaxed">
@@ -360,4 +397,5 @@ export function PhotoPlacesFlow() {
       </div>
     </div>
   );
+  }
 }
