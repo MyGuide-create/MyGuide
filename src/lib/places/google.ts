@@ -259,9 +259,9 @@ export const googleProvider: PlacesProvider = {
 const VENUE_TYPES = ["restaurant", "cafe", "coffee_shop", "bakery", "bar", "pub", "wine_bar", "night_club", "ice_cream_shop",
   "dessert_shop", "gym", "fitness_center", "yoga_studio", "spa", "beauty_salon", "hair_salon", "nail_salon", "barber_shop",
   "museum", "art_gallery", "park", "beach", "tourist_attraction", "amusement_park", "zoo", "aquarium", "golf_course",
-  "sports_club", "swimming_pool", "movie_theater", "bowling_alley"];
+  "sports_club", "swimming_pool", "movie_theater", "bowling_alley", "lodging", "hotel", "resort_hotel"];
 const VENUE_TYPES_SAFE = ["restaurant", "cafe", "bakery", "bar", "night_club", "gym", "spa", "beauty_salon", "hair_salon",
-  "museum", "art_gallery", "park", "tourist_attraction", "amusement_park", "zoo", "aquarium", "movie_theater"];
+  "museum", "art_gallery", "park", "tourist_attraction", "amusement_park", "zoo", "aquarium", "movie_theater", "lodging"];
 let venueTypes = VENUE_TYPES;
 const VENUE_FIELDS = ["id", "displayName", "formattedAddress", "addressComponents", "location", "primaryType", "types", "photos", "businessStatus"];
 

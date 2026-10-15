@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { errorText } from "@/lib/errorText";
 import { importToMyPlaces } from "@/lib/actions/guides";
 import { lookupPhotoSpots, type PhotoPlaceOption, type PhotoPlaceSuggestion } from "@/lib/actions/photoPlaces";
-import { groupPhotos, type PhotoPoint } from "@/lib/photoSpots";
+import { distanceM, groupPhotos, type PhotoPoint } from "@/lib/photoSpots";
 import { myPlacesHref } from "@/lib/stash";
 import { mapLimit } from "@/lib/utils";
 import { CameraIcon, CheckIcon } from "./Icons";
@@ -99,9 +99,9 @@ export function PhotoPlacesFlow() {
       setStage("results");
       return;
     }
-    // Look up spots with 2+ photos (busiest first); if there are none, every spot.
+    // Look up every spot, busiest first (so "Any" really shows single-photo spots too).
     const multi = spots.filter((s) => s.photos >= 2);
-    const toLook = multi.length ? multi : spots;
+    const toLook = [...spots].sort((a, b) => b.photos - a.photos);
     setStage("looking");
     try {
       const res = await lookupPhotoSpots(toLook.slice(0, 80).map((sp) => ({ id: sp.id, lat: sp.lat, lng: sp.lng, photos: sp.photos, days: sp.days, first: sp.first, last: sp.last })));
@@ -119,12 +119,27 @@ export function PhotoPlacesFlow() {
   const shown = useMemo(() => results.filter((r) => r.photos >= minPhotos), [results, minPhotos]);
   const byCity = useMemo(() => {
     const m = new Map<string, PhotoPlaceSuggestion[]>();
+    // A spot we couldn't name goes with the nearest named place (within 60 km).
+    const named = results.filter((r) => !r.unknown && r.city);
+    const cityOf = (r: PhotoPlaceSuggestion) => {
+      if (r.city) return r.city;
+      let best: PhotoPlaceSuggestion | null = null;
+      let bestD = 60_000;
+      for (const n of named) {
+        const d = distanceM({ lat: r.spotLat, lng: r.spotLng }, { lat: n.spotLat, lng: n.spotLng });
+        if (d < bestD) {
+          best = n;
+          bestD = d;
+        }
+      }
+      return best?.city ?? "";
+    };
     for (const r of shown) {
-      const k = r.city || "Other places";
+      const k = cityOf(r) || "Other places";
       m.set(k, [...(m.get(k) ?? []), r]);
     }
     return [...m.entries()].sort((a, b) => b[1].length - a[1].length);
-  }, [shown]);
+  }, [shown, results]);
 
   const toggle = (id: string) =>
     setPicked((s) => {
@@ -151,7 +166,11 @@ export function PhotoPlacesFlow() {
               : r,
           );
       }
-      return rs.map((r) => (r.providerId === id ? { ...r, ...o, city: o.city || r.city, alts: [old, ...r.alts.filter((a) => a.providerId !== o.providerId)] } : r));
+      return rs.map((r) =>
+        r.providerId === id
+          ? { ...r, ...o, unknown: false, city: o.city || r.city, alts: [...(cur.unknown ? [] : [old]), ...r.alts.filter((a) => a.providerId !== o.providerId)] }
+          : r,
+      );
     });
     setPicked((s) => {
       const n = new Set(s);
@@ -173,6 +192,7 @@ export function PhotoPlacesFlow() {
     setFinding(null);
   };
 
+  const named = results.filter((r) => !r.unknown).length;
   const findingRow = finding ? results.find((r) => r.providerId === finding) ?? null : null;
 
   const save = async () => {
@@ -295,8 +315,8 @@ export function PhotoPlacesFlow() {
         <h1 className="font-display text-[28px] leading-tight">Looks like you&apos;ve been to these</h1>
         <p className="text-[13.5px] text-ink-muted leading-relaxed">
           {counts.photos.toLocaleString()} photos · {counts.located.toLocaleString()} with a location · {counts.spots.toLocaleString()} spots
-          {counts.homeLike ? ` (${counts.homeLike} that look like home or work left out)` : ""} · checked {counts.looked} · {results.length} places found
-          {counts.empty ? ` · ${counts.empty} spots with nothing nearby` : ""}
+          {counts.homeLike ? ` (${counts.homeLike} that look like home or work left out)` : ""} · checked {counts.looked} · {named} place{named === 1 ? "" : "s"} found
+          {counts.empty ? ` · ${counts.empty} we couldn't name` : ""}
         </p>
         <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[13px]">
           <span className="text-ink-muted pr-0.5">Photos at a spot:</span>
@@ -329,7 +349,7 @@ export function PhotoPlacesFlow() {
                 return (
                   <div key={r.providerId} className={cx("rounded-2xl border bg-paper p-3 flex gap-3", on ? "border-terracotta" : "border-line/80")}>
                     <button
-                      onClick={() => !r.haveIn && toggle(r.providerId)}
+                      onClick={() => (r.unknown ? setFinding(r.providerId) : !r.haveIn && toggle(r.providerId))}
                       disabled={!!r.haveIn}
                       aria-label={on ? `Untick ${r.name}` : `Tick ${r.name}`}
                       className={cx(
@@ -341,8 +361,10 @@ export function PhotoPlacesFlow() {
                     </button>
                     <div className="min-w-0 flex-1">
                       <button onClick={() => setFinding(r.providerId)} className="text-left w-full">
-                        <span className="block font-semibold text-[15px] leading-snug">{r.name}</span>
-                        <span className="block text-[12.5px] text-ink-muted truncate">{[r.category, r.area].filter(Boolean).join(" · ")}</span>
+                        <span className={cx("block font-semibold text-[15px] leading-snug", r.unknown && "text-ink-muted")}>{r.unknown ? "Not sure what's here" : r.name}</span>
+                        <span className={cx("block text-[12.5px] text-ink-muted", !r.unknown && "truncate")}>
+                          {r.unknown ? "Nothing obvious nearby. Tap Find it to pick it on the map or search." : [r.category, r.area].filter(Boolean).join(" · ")}
+                        </span>
                         <span className="block text-[12.5px] text-ink-muted">
                           {r.photos} photo{r.photos === 1 ? "" : "s"} · {r.days} visit{r.days === 1 ? "" : "s"} · {monthYear(r.first)}
                           {monthYear(r.first) !== monthYear(r.last) ? `–${monthYear(r.last)}` : ""}
@@ -350,7 +372,7 @@ export function PhotoPlacesFlow() {
                         </span>
                       </button>
                       <div className="flex flex-wrap items-center gap-1.5 pt-1.5 text-[12px]">
-                        <span className="text-ink-muted">Not it?</span>
+                        {!r.unknown && <span className="text-ink-muted">Not it?</span>}
                         {r.alts
                           .filter((a) => !a.haveIn)
                           .slice(0, 2)
@@ -359,7 +381,10 @@ export function PhotoPlacesFlow() {
                               {a.name}
                             </button>
                           ))}
-                        <button onClick={() => setFinding(r.providerId)} className="rounded-full border border-terracotta-soft px-2.5 py-0.5 font-semibold text-terracotta">
+                        <button
+                          onClick={() => setFinding(r.providerId)}
+                          className={cx("rounded-full px-2.5 py-0.5 font-semibold", r.unknown ? "bg-terracotta text-white" : "border border-terracotta-soft text-terracotta")}
+                        >
                           Find it
                         </button>
                       </div>

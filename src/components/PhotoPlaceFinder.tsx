@@ -29,7 +29,7 @@ export function PhotoPlaceFinder({
 }) {
   const s = suggestion;
   const current: PhotoPlaceOption = { providerId: s.providerId, name: s.name, category: s.category, area: s.area, city: s.city, photoUrl: s.photoUrl, distance: s.distance, haveIn: s.haveIn, lat: s.lat, lng: s.lng };
-  const [options, setOptions] = useState<PhotoPlaceOption[]>(() => dedupe([current, ...s.alts]));
+  const [options, setOptions] = useState<PhotoPlaceOption[]>(() => dedupe(s.unknown ? s.alts : [current, ...s.alts]));
   const [radius, setRadius] = useState(120);
   const [loadedRadius, setLoadedRadius] = useState(0);
   const loading = loadedRadius !== radius;

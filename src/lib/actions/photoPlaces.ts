@@ -46,6 +46,8 @@ export interface PhotoPlaceSuggestion extends PhotoPlaceOption {
   spotLng: number;
   /** Other places right there, in case the first guess is wrong. */
   alts: PhotoPlaceOption[];
+  /** Nothing obvious there: shown as "Not sure what's here" so you can find it yourself (providerId "spot:<id>"). */
+  unknown?: boolean;
 }
 
 export type PhotoSpotIn = PhotoSpot & { id: string };
@@ -121,7 +123,10 @@ export async function lookupPhotoSpots(input: PhotoSpotIn[]): Promise<{ suggesti
         Array.from({ length: CONCURRENCY }, async () => {
           while (next < spots.length) {
             const spot = spots[next++];
-            out.push({ spot, venues: await nearbyVenues(spot.lat, spot.lng).catch(() => []) });
+            // Right where the photos were; if nothing, look a bit wider (hotels, beaches and parks are big).
+            let venues = await nearbyVenues(spot.lat, spot.lng).catch(() => []);
+            if (!venues.length) venues = await nearbyVenues(spot.lat, spot.lng, 200).catch(() => []);
+            out.push({ spot, venues });
           }
         }),
       );
@@ -135,6 +140,29 @@ export async function lookupPhotoSpots(input: PhotoSpotIn[]): Promise<{ suggesti
     const top = venues[0];
     if (!top) {
       empty++;
+      byId.set(`spot:${spot.id}`, {
+        providerId: `spot:${spot.id}`,
+        name: "",
+        category: "",
+        area: "",
+        city: "",
+        photoUrl: null,
+        distance: 0,
+        haveIn: null,
+        lat: spot.lat,
+        lng: spot.lng,
+        country: "",
+        photos: spot.photos,
+        days: spot.days,
+        first: spot.first,
+        last: spot.last,
+        spotIds: [spot.id],
+        spotLat: spot.lat,
+        spotLng: spot.lng,
+        biggest: spot.photos,
+        alts: [],
+        unknown: true,
+      });
       continue;
     }
     const alts = venues.slice(1).map((v) => option(v, mine));
