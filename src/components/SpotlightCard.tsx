@@ -13,7 +13,7 @@ import { Avatar, cx } from "./ui";
  * The black card at the top of the Home feed (15 Oct 2026): one person you don't follow who has
  * been adding a lot lately, chosen for you (src/lib/suggest.ts). Follow in one tap; ✕ hides them for good.
  */
-export function SpotlightCard({ s, reason }: { s: PersonSuggestion; reason: string }) {
+export function SpotlightCard({ s, reason, preview = false }: { s: PersonSuggestion; reason: string; /** Admin preview (may be someone you follow): buttons do nothing. */ preview?: boolean }) {
   const [state, setState] = useState<"none" | "following" | "requested" | "hidden">("none");
   const [, start] = useTransition();
   if (state === "hidden") return null;
@@ -40,13 +40,13 @@ export function SpotlightCard({ s, reason }: { s: PersonSuggestion; reason: stri
         aria-label={`Don't suggest ${first}`}
         onClick={() => {
           setState("hidden");
-          dismissSuggestion(s.user.id).catch(() => {});
+          if (!preview) dismissSuggestion(s.user.id).catch(() => {});
         }}
         className="absolute right-2.5 top-2.5 w-8 h-8 rounded-full flex items-center justify-center text-cream/60 hover:text-cream"
       >
         <XIcon size={16} />
       </button>
-      <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-cream-deep/80">Someone to follow</p>
+      <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-cream-deep/80">Someone to follow{preview ? " · preview" : ""}</p>
       <div className="mt-2.5 flex items-center gap-3 pr-6">
         <Link href={`/u/${s.user.username}`} className="shrink-0">
           <Avatar user={s.user} size={44} className="ring-2 ring-cream/20" />
@@ -77,7 +77,7 @@ export function SpotlightCard({ s, reason }: { s: PersonSuggestion; reason: stri
         <button
           type="button"
           onClick={follow}
-          disabled={state !== "none"}
+          disabled={state !== "none" || preview}
           className={cx(
             "shrink-0 h-9 px-4 rounded-full text-[13.5px] font-semibold",
             state === "none" ? "bg-cream text-ink" : "bg-cream/15 text-cream",

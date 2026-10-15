@@ -1,3 +1,4 @@
+import { isAdmin } from "@/lib/admin";
 import Link from "next/link";
 import { and, eq, inArray } from "drizzle-orm";
 import { AppShell, Wordmark } from "@/components/AppShell";
@@ -93,7 +94,11 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   // Following few people: a row of people to follow.
   // Who to follow (15 Oct 2026): one ranking (src/lib/suggest.ts) for the spotlight card and the row.
   const suggestions = user ? await suggestPeople(user.id, { limit: 13, extraCities: trip ? [trip.trip.city] : [] }) : [];
-  const spotlight = pickSpotlight(suggestions);
+  // Admins can preview the card while following everyone: /?preview=spotlight.
+  const previewSpotlight = !!user && isAdmin(user) && sp.preview === "spotlight";
+  const spotlight = previewSpotlight
+    ? pickSpotlight(await suggestPeople(user!.id, { limit: 13, includeFollowed: true })) ?? (await suggestPeople(user!.id, { limit: 1, includeFollowed: true }))[0] ?? null
+    : pickSpotlight(suggestions);
   let people: Array<{ user: PublicUser; line: string; followsYou: boolean }> = suggestions
     .filter((p) => p.user.id !== spotlight?.user.id)
     .slice(0, 12)
@@ -282,7 +287,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
           </CityRow>
         )}
 
-        {spotlight && <SpotlightCard s={spotlight} reason={reasonLine(spotlight)} />}
+        {spotlight && <SpotlightCard s={spotlight} reason={reasonLine(spotlight)} preview={previewSpotlight} />}
         {feed.length > 0 && (
           <section className="px-4 pt-8 flex flex-col gap-3">
             <h2 className="px-1 font-display text-[22px]">New from friends</h2>

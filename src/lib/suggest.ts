@@ -41,7 +41,7 @@ const DAY = 86_400_000;
 
 export async function suggestPeople(
   viewerId: string,
-  opts: { city?: string; limit?: number; extraCities?: string[] } = {},
+  opts: { city?: string; limit?: number; extraCities?: string[]; /** Admin preview: people you already follow count too. */ includeFollowed?: boolean } = {},
 ): Promise<PersonSuggestion[]> {
   const db = await getDb();
   const [recs, own, myFollows, followers, dismissed, savedRows] = await Promise.all([
@@ -83,7 +83,7 @@ export async function suggestPeople(
   const since = Date.now() - 14 * DAY;
   for (const r of recs) {
     const id = r.owner.id;
-    if (id === viewerId || following.has(id) || hiddenIds.has(id)) continue;
+    if (id === viewerId || (!opts.includeFollowed && following.has(id)) || hiddenIds.has(id)) continue;
     const a = by.get(id) ?? { user: r.owner, keys: new Set(), cities: new Set(), inCity: new Set(), recent: [], shared: new Set(), cityHits: new Set() };
     const k = spotKey(r.place);
     const c = r.city ? cityKey(r.city) : "";
