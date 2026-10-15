@@ -10,7 +10,7 @@ import { getCurrentUser, toPublicUser } from "@/lib/auth";
 import { AskForGuideButton } from "@/components/AskForGuide";
 import { getFollowStats, getUserByUsername, listGuidesByOwner } from "@/lib/guides";
 import { loadMyPlaces } from "@/lib/myPlaces";
-import { loadRecommendations, mergeSpots, type Recommendation } from "@/lib/citySpots";
+import { loadRecommendations, mergeSpots, ownSpotKeys, type Recommendation } from "@/lib/citySpots";
 import { PlaceTile } from "@/components/PlaceTile";
 import { hiddenUserIds, viewerBlocked } from "@/lib/blocks";
 import { BlockButton } from "@/components/BlockButton";
@@ -48,6 +48,9 @@ export default async function ProfilePage({ params, searchParams }: PageProps<"/
   for (const r of recs) if (r.city) byCity.set(r.city, [...(byCity.get(r.city) ?? []), r]);
   const spotCities = [...byCity.entries()].map(([city, list]) => ({ city, spots: mergeSpots(list) })).sort((a, b) => b.spots.length - a.spots.length);
   const spotCount = spotCities.reduce((n, c) => n + c.spots.length, 0);
+  // Shared taste (15 Oct 2026): places you both recommend / have.
+  const shared = viewer && !own ? new Set(spotCities.flatMap((c) => c.spots.map((s) => s.key))) : null;
+  const commonCount = shared && viewer ? [...(await ownSpotKeys(viewer.id)).values()].flatMap((k) => [...k]).filter((k) => shared.has(k)).length : 0;
   // Your own places (My places) get their own card, not a draft.
   const myPlaces = own ? (await loadMyPlaces(profile.id)).items : [];
   const published = cards.filter((c) => c.guide.publishedAt);
@@ -98,6 +101,12 @@ export default async function ProfilePage({ params, searchParams }: PageProps<"/
                 {stats.followsViewer && <span className="text-[12px] font-medium text-ink-muted rounded-full bg-cream-deep px-2.5 py-1">Follows you</span>}
               </div>
             )
+          )}
+          {!own && !hiddenFromMe && commonCount > 0 && (
+            <p className="mt-2.5 text-[13px] text-sage font-medium">
+              You both recommend {commonCount} place{commonCount === 1 ? "" : "s"}
+              {!stats.viewerFollows && commonCount >= 2 ? " — your taste matches" : ""}
+            </p>
           )}
           {!own && !hiddenFromMe && (
             viewer ? (

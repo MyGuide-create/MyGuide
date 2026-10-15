@@ -134,15 +134,23 @@ export async function addNotifications(rows: NewNotification[]): Promise<void> {
             url = "/wishes";
             break;
           case "vouched":
-            title = `${who} went to ${p?.name ?? "your spot"} and recommends it`;
-            body = r.note ? `“${r.note}”` : "Your recommendation worked.";
-            if (g) url = p ? `/g/${g.slug}/p/${p.id}` : `/g/${g.slug}`;
+          case "clap": {
+            if (r.type === "vouched") {
+              title = `${who} went to ${p?.name ?? "your spot"} and recommends it`;
+              body = r.note ? `“${r.note}”` : "Your recommendation worked.";
+              if (g) url = p ? `/g/${g.slug}/p/${p.id}` : `/g/${g.slug}`;
+            } else {
+              title = g ? `${who} 👏 your guide ${g.title}` : `${who} 👏 your ${r.city ? `${r.city} ` : ""}spot${n === 1 ? "" : "s"}`;
+              body = r.note ?? "";
+              if (g) url = `/g/${g.slug}`;
+            }
+            // Not following them yet: "Follow back" on the alert itself (15 Oct 2026).
+            if (a) {
+              const already = await db.query.follows.findFirst({ where: and(eq(follows.followerId, r.userId), eq(follows.followingId, a.id)) });
+              if (!already) extra = { actions: [{ action: "follow-back", title: "Follow back" }], followUserId: a.id };
+            }
             break;
-          case "clap":
-            title = g ? `${who} 👏 your guide ${g.title}` : `${who} 👏 your ${r.city ? `${r.city} ` : ""}spot${n === 1 ? "" : "s"}`;
-            body = r.note ?? "";
-            if (g) url = `/g/${g.slug}`;
-            break;
+          }
           case "collab_invite":
             title = `${who} invited you to edit a guide`;
             body = g?.title ?? "";

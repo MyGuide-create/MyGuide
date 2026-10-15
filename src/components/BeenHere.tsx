@@ -6,6 +6,7 @@ import { useState, useTransition } from "react";
 import { errorText } from "@/lib/errorText";
 import { toggleReaction } from "@/lib/actions/saved";
 import { beenNotForMe, vouchForPlace } from "@/lib/actions/vouch";
+import { FollowPill } from "./FollowPill";
 import { myPlacesHref } from "@/lib/stash";
 import { CheckIcon, XIcon } from "./Icons";
 import { Button, Input, Spinner, Textarea, cx } from "./ui";
@@ -46,7 +47,7 @@ export function BeenHere({
   const [tip, setTip] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState<{ city: string } | null>(null);
+  const [done, setDone] = useState<{ city: string; followOwner: string | null } | null>(null);
   const [, start] = useTransition();
 
   const cls = cx(
@@ -106,7 +107,7 @@ export function BeenHere({
     setError(null);
     try {
       const r = await vouchForPlace(placeId, { note, tip });
-      setDone({ city: r.city });
+      setDone({ city: r.city, followOwner: r.followOwner });
       setStep("done");
     } catch (e) {
       setError(errorText(e, "Couldn't add it."));
@@ -191,6 +192,12 @@ export function BeenHere({
                 <p className="text-[14px] text-ink-muted leading-relaxed">
                   It&apos;s recommended in My places{done.city ? ` under My ${done.city}` : ""}, and on the city page with {ownerFirst}&apos;s. {ownerFirst} will hear you went.
                 </p>
+                {done.followOwner && (
+                  <div className="mt-3 flex items-center justify-between gap-3 rounded-2xl bg-paper border border-line/80 px-3.5 py-2.5">
+                    <span className="text-[13px] leading-snug">Follow {ownerFirst} to see their next spots on Home.</span>
+                    <FollowPill userId={done.followOwner} signedIn next={path} />
+                  </div>
+                )}
                 <div className="mt-4 flex flex-col gap-2.5">
                   <Button size="lg" onClick={close}>Done</Button>
                   <Link href={myPlacesHref(done.city)} className="text-center text-[14px] font-semibold text-terracotta py-2">

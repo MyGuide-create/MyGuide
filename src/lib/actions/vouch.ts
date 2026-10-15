@@ -3,7 +3,7 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { getCurrentUser } from "../auth";
 import { getDb } from "../db";
-import { guides, placeReactions, placeTips, places, savedPlaces } from "../db/schema";
+import { follows, guides, placeReactions, placeTips, places, savedPlaces } from "../db/schema";
 import { canViewGuide } from "../guides";
 import { canViewSharedPlace, spotKey } from "../citySpots";
 import { addToStash } from "../myPlaces";
@@ -30,7 +30,7 @@ async function visiblePlace(placeId: string, userId: string) {
  * recommended copy in My places with your own words (theirs stay theirs), so the city page shows
  * both of you. The friend hears you went, and it comes off your Want to go list.
  */
-export async function vouchForPlace(placeId: string, input: { note?: string; tip?: string }): Promise<{ placeId: string; slug: string; city: string }> {
+export async function vouchForPlace(placeId: string, input: { note?: string; tip?: string }): Promise<{ placeId: string; slug: string; city: string; followOwner: string | null }> {
   const user = await getCurrentUser();
   if (!user) throw new UserError("Log in to recommend places.", "auth");
   const { db, place, guide } = await visiblePlace(placeId, user.id);
@@ -83,7 +83,9 @@ export async function vouchForPlace(placeId: string, input: { note?: string; tip
 
   // No revalidatePath: it would refresh the page underneath and close the "It's one of your spots" sheet
   // (a city page row turns into ✓ Yours). My places and Want to go are dynamic pages anyway.
-  return { placeId: mineId, slug: stash.slug, city: place.city ? canonicalCity(place.city) : "" };
+  // Not following them yet → the done screen offers it (15 Oct 2026).
+  const followsOwner = await db.query.follows.findFirst({ where: and(eq(follows.followerId, user.id), eq(follows.followingId, guide.ownerId)) });
+  return { placeId: mineId, slug: stash.slug, city: place.city ? canonicalCity(place.city) : "", followOwner: followsOwner ? null : guide.ownerId };
 }
 
 /** "Been here" but not one you'd recommend: just takes it off your Want to go list. */

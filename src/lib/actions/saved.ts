@@ -1,13 +1,20 @@
 "use server";
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getCurrentUser } from "../auth";
 import { getDb } from "../db";
-import { placeReactions, savedGuides, savedPlaces } from "../db/schema";
+import { follows, guides, placeReactions, places, savedGuides, savedPlaces, users } from "../db/schema";
 
-/** Save or unsave a place for the signed-in reader. Returns the new state. */
-export async function toggleSavedPlace(placeId: string): Promise<{ saved: boolean; signedIn: boolean }> {
+/** "You've saved 3 of Sami's spots. Follow Sami?" — after a save, when you don't follow them yet. */
+export interface FollowNudge {
+  userId: string;
+  name: string;
+  count: number;
+}
+
+/** Save or unsave a place for the signed-in reader. Returns the new state (and a follow nudge). */
+export async function toggleSavedPlace(placeId: string): Promise<{ saved: boolean; signedIn: boolean; nudge?: FollowNudge }> {
   const user = await getCurrentUser();
   if (!user) return { saved: false, signedIn: false };
   const db = await getDb();
@@ -19,7 +26,27 @@ export async function toggleSavedPlace(placeId: string): Promise<{ saved: boolea
     await db.insert(savedPlaces).values({ userId: user.id, placeId, createdAt: new Date() }).onConflictDoNothing();
   }
   revalidatePath("/saved");
-  return { saved: !existing, signedIn: true };
+  if (existing) return { saved: false, signedIn: true };
+  // Second save from the same person you don't follow → suggest following them (15 Oct 2026).
+  const owner = await db
+    .select({ id: users.id, name: users.displayName })
+    .from(places)
+    .innerJoin(guides, eq(guides.id, places.guideId))
+    .innerJoin(users, eq(users.id, guides.ownerId))
+    .where(eq(places.id, placeId))
+    .limit(1);
+  const o = owner[0];
+  if (!o || o.id === user.id) return { saved: true, signedIn: true };
+  const already = await db.query.follows.findFirst({ where: and(eq(follows.followerId, user.id), eq(follows.followingId, o.id)) });
+  if (already) return { saved: true, signedIn: true };
+  const [{ n }] = await db
+    .select({ n: sql<number>`count(*)` })
+    .from(savedPlaces)
+    .innerJoin(places, eq(places.id, savedPlaces.placeId))
+    .innerJoin(guides, eq(guides.id, places.guideId))
+    .where(and(eq(savedPlaces.userId, user.id), eq(guides.ownerId, o.id)));
+  const count = Number(n);
+  return { saved: true, signedIn: true, ...(count >= 2 ? { nudge: { userId: o.id, name: o.name.split(" ")[0], count } } : {}) };
 }
 
 /** Toggle "Been here" or "Loved it" on a place. */

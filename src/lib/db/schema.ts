@@ -329,6 +329,21 @@ export const claps = sqliteTable(
   (t) => [uniqueIndex("claps_user_target").on(t.userId, t.kind, t.target), index("claps_target_idx").on(t.kind, t.target)],
 );
 
+/** People someone hid from follow suggestions (✕ on the Home spotlight, 15 Oct 2026). */
+export const suggestionDismissals = sqliteTable(
+  "suggestion_dismissals",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    targetId: text("target_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.targetId] })],
+);
+
 export const media = sqliteTable("media", {
   id: text("id").primaryKey(),
   ownerId: text("owner_id")

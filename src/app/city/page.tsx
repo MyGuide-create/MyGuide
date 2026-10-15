@@ -1,4 +1,5 @@
 import { sharedLabel } from "@/lib/fresh";
+import { suggestPeople } from "@/lib/suggest";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { AppShell, TopBar } from "@/components/AppShell";
@@ -112,6 +113,9 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
   // Places you've marked "Been here" (for the ✓ on each row).
   const beenIds = user && city ? new Set((await (await getDb()).select({ id: placeReactions.placeId }).from(placeReactions).where(and(eq(placeReactions.userId, user.id), eq(placeReactions.kind, "been")))).map((r) => r.id)) : new Set<string>();
   const marks = { want: wantIds, been: beenIds };
+  // Few friends' spots here: people who know this city, to follow (15 Oct 2026).
+  const friendSpotCount = fromFriends ? friendSpots.filter((s) => s.recommenders.some((r) => r.user.id !== viewerId)).length : 0;
+  const knowers = user && city && friendSpotCount < 5 ? await suggestPeople(user.id, { city, limit: 8 }) : [];
 
   // The friend row: everyone you follow with spots or guides here, most spots first (you get your own chip).
   const people = new Map<string, { user: PublicUser; spots: number; guides: number }>();
@@ -251,6 +255,31 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
                   </FriendChip>
                 );
               })}
+            </div>
+          </section>
+        )}
+
+        {knowers.length > 0 && (
+          <section className="pt-6 flex flex-col gap-2.5">
+            <div className="px-5">
+              <h2 className="text-[13px] font-semibold text-ink-muted">These people know {city}</h2>
+              <p className="text-[12px] text-ink-faint">Follow them and their spots join your friends&apos; here.</p>
+            </div>
+            <div className="flex gap-2.5 overflow-x-auto no-scrollbar px-5 pb-1">
+              {knowers.map((k) => (
+                <span key={k.user.id} className="shrink-0 flex items-center gap-2.5 rounded-2xl border border-line/80 bg-paper pl-2 pr-2.5 py-2">
+                  <Link href={`/u/${k.user.username}`} className="flex items-center gap-2.5 min-w-0">
+                    <Avatar user={k.user} size={36} />
+                    <span className="min-w-0">
+                      <span className="block text-[13px] font-semibold leading-tight">{first(k.user)}</span>
+                      <span className="block text-[11.5px] text-ink-muted leading-tight">
+                        {k.inCity} spot{k.inCity === 1 ? "" : "s"} here{k.followedBy.length ? ` · followed by ${k.followedBy[0]}` : k.shared ? ` · ${k.shared} in common` : ""}
+                      </span>
+                    </span>
+                  </Link>
+                  <FollowPill userId={k.user.id} signedIn next={cityHref({})} />
+                </span>
+              ))}
             </div>
           </section>
         )}

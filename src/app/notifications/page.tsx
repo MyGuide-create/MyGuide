@@ -270,6 +270,12 @@ export default async function NotificationsPage() {
                   <FollowButton userId={actor.id} initial={myStatus.get(actor.id) ?? "none"} next="/notifications" followsYou />
                 </div>
               )}
+              {/* Claps, vouches, comments, sends: a Follow back right there when you don't follow them (15 Oct 2026). */}
+              {actor && !hidden.has(actor.id) && !myStatus.get(actor.id) && ["clap", "vouched", "place_comment", "guide_used", "spots_sent"].includes(n.type) && (
+                <div className="shrink-0 self-center">
+                  <FollowButton userId={actor.id} initial="none" next="/notifications" followsYou={theirStatus.get(actor.id) === "accepted"} />
+                </div>
+              )}
               {actor && !hidden.has(actor.id) && n.type === "user_joined" && (
                 <div className="shrink-0 self-center">
                   <FollowButton userId={actor.id} initial={myStatus.get(actor.id) ?? "none"} next="/notifications" followsYou={theirStatus.get(actor.id) === "accepted"} />

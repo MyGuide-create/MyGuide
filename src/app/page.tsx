@@ -15,6 +15,8 @@ import type { CityPhoto } from "@/lib/db/schema";
 import { getDb } from "@/lib/db";
 import { savedPlaces } from "@/lib/db/schema";
 import { listFeed, peopleToFollow, type GuideCard } from "@/lib/guides";
+import { pickSpotlight, reasonLine, suggestPeople } from "@/lib/suggest";
+import { SpotlightCard } from "@/components/SpotlightCard";
 import { cityKey, cityTiles, everyoneFeed, feedOwner, homeFeed, nameList, nextTrip, wantedGuides, type FeedEntry } from "@/lib/homeV2";
 import { capRuns } from "@/lib/fill";
 import { HomeScreenNudge } from "@/components/HomeScreenNudge";
@@ -89,22 +91,17 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   // New here (no places yet): "Your Dubai — add your go-to spots", for the city they're in.
   const startCity = user && myCities.length === 0 ? nearestKnownCity(here) : null;
   // Following few people: a row of people to follow.
-  const peopleHits = user && followingIds.length < 3 ? (await peopleToFollow(user.id, 30)).hits : [];
-  // What each has to offer: spots they recommend and in how many cities (places first, not guides).
-  const peopleRecs = peopleHits.length ? await loadRecommendations({ viewerId: user!.id, ownerIds: peopleHits.map((p) => p.user.id) }) : [];
-  const offer = new Map<string, { spots: Set<string>; cities: Set<string> }>();
-  for (const r of peopleRecs) {
-    const o = offer.get(r.owner.id) ?? { spots: new Set<string>(), cities: new Set<string>() };
-    o.spots.add(spotKey(r.place));
-    if (r.city) o.cities.add(cityKey(r.city));
-    offer.set(r.owner.id, o);
-  }
-  const spotsOf = (id: string) => offer.get(id)?.spots.size ?? 0;
-  const citiesOf = (id: string) => offer.get(id)?.cities.size ?? 0;
-  // People who follow you first, then most spots, then the rest as they came (newest members).
-  const people = [...peopleHits]
-    .sort((a, b) => Number(b.followsViewer) - Number(a.followsViewer) || spotsOf(b.user.id) - spotsOf(a.user.id))
-    .slice(0, 12);
+  // Who to follow (15 Oct 2026): one ranking (src/lib/suggest.ts) for the spotlight card and the row.
+  const suggestions = user ? await suggestPeople(user.id, { limit: 13, extraCities: trip ? [trip.trip.city] : [] }) : [];
+  const spotlight = pickSpotlight(suggestions);
+  let people: Array<{ user: PublicUser; line: string; followsYou: boolean }> = suggestions
+    .filter((p) => p.user.id !== spotlight?.user.id)
+    .slice(0, 12)
+    .map((p) => ({ user: p.user, line: reasonLine(p), followsYou: p.followsYou }));
+  // Nobody with spots to suggest (a quiet network): newest members, so a new person still finds friends.
+  if (user && !people.length && followingIds.length < 3)
+    people = (await peopleToFollow(user.id, 12)).hits.map((h) => ({ user: h.user, line: "New on MyGuide", followsYou: h.followsViewer }));
+  const fewFollows = followingIds.length < 3;
   const photos = await cityPhotosFor(
     [...(trip ? [trip.trip.city] : []), ...(startCity ? [startCity.city] : []), ...cities.map((c) => c.city), ...popularTiles.map((t) => t.city)],
     new Map([...(startCity ? [startCity] : []), ...cities, ...popularTiles].filter((c) => c.country).map((c) => [cityPhotoKey(c.city), c.country])),
@@ -135,6 +132,31 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
     const t = clapTargetOf(f);
     return t ? clapMap.get(clapKey(t.kind, t.target)) : undefined;
   };
+
+  const peopleRow = people.length > 0 && (
+    <section className="pt-8 flex flex-col gap-3">
+      <div className="px-5 flex items-end justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="font-display text-[22px]">People to follow</h2>
+          <p className="text-[13px] text-ink-muted">{fewFollows ? "Follow friends and their cities and spots show up here." : "More people whose taste you might like."}</p>
+        </div>
+        <Link href="/search" className="shrink-0 text-[13px] font-semibold text-terracotta whitespace-nowrap">Find someone →</Link>
+      </div>
+      <div className="flex gap-3 overflow-x-auto no-scrollbar px-5">
+        {people.map((p) => (
+          <span key={p.user.id} className="shrink-0 w-[124px] rounded-2xl border border-line/80 bg-paper p-3 flex flex-col items-center gap-1.5 text-center">
+            <Link href={`/u/${p.user.username}`} className="flex flex-col items-center gap-1.5 min-w-0 w-full">
+              <Avatar user={p.user} size={56} />
+              <span className="text-[13.5px] font-semibold leading-tight truncate w-full">{first(p.user)}</span>
+              <span className="-mt-1 text-[11.5px] leading-snug text-ink-muted w-full line-clamp-2 min-h-[2.6em]">{p.line}</span>
+              {p.followsYou && p.line !== "Follows you" && <span className="text-[11px] font-semibold text-sage">Follows you</span>}
+            </Link>
+            <FollowPill userId={p.user.id} signedIn next="/" />
+          </span>
+        ))}
+      </div>
+    </section>
+  );
 
   const signupNext = (next: string, why?: string) => `/signup?next=${encodeURIComponent(next)}${why ? `&why=${why}` : ""}`;
 
@@ -227,42 +249,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
             <AddCityTile />
           </CityRow>
         )}
-        {people.length > 0 && (
-          <section className="pt-8 flex flex-col gap-3">
-            <div className="px-5 flex items-end justify-between gap-3">
-              <div className="min-w-0">
-                <h2 className="font-display text-[22px]">People to follow</h2>
-                <p className="text-[13px] text-ink-muted">Follow friends and their cities and spots show up here.</p>
-              </div>
-              <Link href="/search" className="shrink-0 text-[13px] font-semibold text-terracotta whitespace-nowrap">Find someone →</Link>
-            </div>
-            <div className="flex gap-3 overflow-x-auto no-scrollbar px-5">
-              {people.map((p) => (
-                <span key={p.user.id} className="shrink-0 w-[118px] rounded-2xl border border-line/80 bg-paper p-3 flex flex-col items-center gap-1.5 text-center">
-                  <Link href={`/u/${p.user.username}`} className="flex flex-col items-center gap-1.5 min-w-0 w-full">
-                    <Avatar user={p.user} size={56} />
-                    <span className="text-[13.5px] font-semibold leading-tight truncate w-full">{first(p.user)}</span>
-                    <span className="-mt-1 text-[11.5px] leading-snug text-ink-muted w-full">
-                      {spotsOf(p.user.id) ? (
-                        <>
-                          {spotsOf(p.user.id)} spot{spotsOf(p.user.id) === 1 ? "" : "s"}
-                          <span className="block">in {citiesOf(p.user.id) || 1} cit{(citiesOf(p.user.id) || 1) === 1 ? "y" : "ies"}</span>
-                        </>
-                      ) : (
-                        <>
-                          New on MyGuide
-                          <span className="block">&nbsp;</span>
-                        </>
-                      )}
-                    </span>
-                    {p.followsViewer && <span className="text-[11px] font-semibold text-sage">Follows you</span>}
-                  </Link>
-                  <FollowPill userId={p.user.id} signedIn next="/" />
-                </span>
-              ))}
-            </div>
-          </section>
-        )}
+        {fewFollows && peopleRow}
         {(friendsCities.length > 0 || popularTiles.length > 0) && (
           <CityRow title={friendsCities.length ? "Cities your friends know" : "Popular on MyGuide"} sub={friendsCities.length ? "Where people you follow have spots." : undefined} all={!myCities.length}>
             {friendsCities.map((c) => (
@@ -295,12 +282,14 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
           </CityRow>
         )}
 
+        {spotlight && <SpotlightCard s={spotlight} reason={reasonLine(spotlight)} />}
         {feed.length > 0 && (
           <section className="px-4 pt-8 flex flex-col gap-3">
             <h2 className="px-1 font-display text-[22px]">New from friends</h2>
             {feed.map((f) => <FeedCard key={feedKey(f)} f={f} savedIds={savedIds} signedIn={!!user} viewerId={user?.id} claps={clapsFor(f)} ownKeys={ownKeys} />)}
           </section>
         )}
+        {!fewFollows && peopleRow}
         {everyone.length > 0 && (
           <section className="px-4 pt-8 flex flex-col gap-3">
             <div className="px-1">

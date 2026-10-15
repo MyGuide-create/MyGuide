@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
-import { toggleSavedPlace } from "@/lib/actions/saved";
+import { toggleSavedPlace, type FollowNudge } from "@/lib/actions/saved";
+import { toggleFollow } from "@/lib/actions/social";
 import { BookmarkIcon } from "./Icons";
 import { cx } from "./ui";
 
@@ -24,11 +25,25 @@ export function SaveButton({
   const [saved, setSaved] = useState(initial);
   const [, start] = useTransition();
   const [toast, setToast] = useState<"first" | "short" | null>(null);
+  // "You've saved 2 of Sami's spots — Follow" (15 Oct 2026).
+  const [nudge, setNudge] = useState<FollowNudge | null>(null);
+  const [followed, setFollowed] = useState(false);
   useEffect(() => {
     if (!toast) return;
     const t = setTimeout(() => setToast(null), toast === "first" ? 4500 : 1600);
     return () => clearTimeout(t);
   }, [toast]);
+  // Only one toast on screen: a follow nudge clears any "Added to Want to go" from other buttons.
+  useEffect(() => {
+    const clear = () => setToast(null);
+    window.addEventListener("mg:save-toast-clear", clear);
+    return () => window.removeEventListener("mg:save-toast-clear", clear);
+  }, []);
+  useEffect(() => {
+    if (!nudge) return;
+    const t = setTimeout(() => setNudge(null), followed ? 1800 : 7000);
+    return () => clearTimeout(t);
+  }, [nudge, followed]);
   const path = usePathname();
   const label = "Want to go";
   const base =
@@ -63,6 +78,11 @@ export function SaveButton({
       try {
         const r = await toggleSavedPlace(placeId);
         setSaved(r.saved);
+        if (r.nudge) {
+          window.dispatchEvent(new Event("mg:save-toast-clear"));
+          setFollowed(false);
+          setNudge(r.nudge);
+        }
       } catch {
         setSaved(!next);
       }
@@ -85,6 +105,32 @@ export function SaveButton({
             </span>
           ) : (
             <span>Added to Want to go</span>
+          )}
+        </div>
+      </div>
+    )}
+    {nudge && (
+      <div role="status" className="fixed inset-x-0 bottom-24 z-50 flex justify-center px-4 pointer-events-none">
+        <div className="pointer-events-auto max-w-[440px] flex items-center gap-3 rounded-2xl bg-ink text-cream px-4 py-3 shadow-lg text-[13px] leading-snug">
+          <BookmarkIcon size={16} filled className="text-terracotta-soft shrink-0" />
+          <span className="flex-1">
+            {followed ? (
+              <>Following {nudge.name} — their new spots show up on Home.</>
+            ) : (
+              <>You&apos;ve saved {nudge.count} of {nudge.name}&apos;s spots. Follow {nudge.name}?</>
+            )}
+          </span>
+          {!followed && (
+            <button
+              type="button"
+              className="shrink-0 rounded-full bg-cream text-ink px-3 py-1 text-[12.5px] font-semibold"
+              onClick={() => {
+                setFollowed(true);
+                toggleFollow(nudge.userId).catch(() => setFollowed(false));
+              }}
+            >
+              Follow
+            </button>
           )}
         </div>
       </div>
