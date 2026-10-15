@@ -2,6 +2,7 @@ import Link from "next/link";
 import { desc, eq } from "drizzle-orm";
 import { AppShell, TopBar } from "@/components/AppShell";
 import { TripForm } from "@/components/TripForm";
+import { RemovableTrip } from "@/components/RemovableTrip";
 import { requireUser, toPublicUser } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 import { trips } from "@/lib/db/schema";
@@ -32,10 +33,12 @@ export default async function TripsPage({ searchParams }: { searchParams: Promis
             <ul className="flex flex-col gap-2">
               {mine.map((t) => (
                 <li key={t.id}>
-                  <Link href={`/trips/${t.id}`} className="flex items-center justify-between rounded-2xl border border-line/70 bg-paper px-4 py-3 hover:border-terracotta-soft">
-                    <span className="font-display text-[20px]">{t.city}</span>
-                    {formatTripDates(t.startDate, t.endDate) && <span className="text-[12px] text-ink-muted">{formatTripDates(t.startDate, t.endDate)}</span>}
-                  </Link>
+                  <RemovableTrip tripId={t.id} city={t.city} className="rounded-2xl">
+                    <Link href={`/trips/${t.id}`} className="flex items-center justify-between gap-3 rounded-2xl border border-line/70 bg-paper pl-4 pr-11 py-3 hover:border-terracotta-soft">
+                      <span className="font-display text-[20px]">{t.city}</span>
+                      {formatTripDates(t.startDate, t.endDate) && <span className="text-[12px] text-ink-muted">{formatTripDates(t.startDate, t.endDate)}</span>}
+                    </Link>
+                  </RemovableTrip>
                 </li>
               ))}
             </ul>

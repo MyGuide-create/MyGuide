@@ -1,3 +1,4 @@
+import { RemovableTrip } from "@/components/RemovableTrip";
 import { isAdmin } from "@/lib/admin";
 import Link from "next/link";
 import { and, eq, inArray } from "drizzle-orm";
@@ -208,8 +209,8 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
         {sp.deleted === "1" && <p className="mx-4 mt-3 rounded-2xl bg-sage-tint px-4 py-3 text-[13px]">Your account has been deleted. Thanks for trying MyGuide.</p>}
 
         {trip && (
-          <div className="px-4 pt-4">
-            <Link href={cityHref({ city: trip.trip.city, country: trip.trip.country })} className="flex items-center gap-3.5 rounded-[20px] bg-ink text-cream p-3">
+          <RemovableTrip key={trip.trip.id} tripId={trip.trip.id} city={trip.trip.city} tone="dark" className="mx-4 mt-4 rounded-[20px]">
+            <Link href={cityHref({ city: trip.trip.city, country: trip.trip.country })} className="flex items-center gap-3.5 rounded-[20px] bg-ink text-cream p-3 pr-10">
               <CityImage photo={photoFor(trip.trip.city)} className="w-16 h-16 rounded-xl" />
               <span className="flex-1 min-w-0 flex flex-col gap-1">
                 <span className="text-[11.5px] font-semibold uppercase tracking-[0.08em] text-cream-deep">{tripWhen}</span>
@@ -228,7 +229,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
               </span>
               <span aria-hidden className="pr-1 text-[20px]">›</span>
             </Link>
-          </div>
+          </RemovableTrip>
         )}
 
         {user && myCities.length === 0 && (

@@ -9,6 +9,7 @@ import { getDb } from "../db";
 import { trips } from "../db/schema";
 import { findCity } from "../places/cities";
 import { newId } from "../utils";
+import { UserError } from "../userError";
 
 export interface TripState {
   error?: string;
@@ -41,6 +42,16 @@ export async function createTrip(_prev: TripState, formData: FormData): Promise<
   });
   revalidatePath("/trips");
   redirect(`/trips/${id}`);
+}
+
+/** Delete a trip from its card (the ✕ on Home or the Trips list), staying on the page. */
+export async function removeTrip(tripId: string): Promise<void> {
+  const user = await getCurrentUser();
+  if (!user) throw new UserError("Log in to change your trips.", "auth");
+  const db = await getDb();
+  await db.delete(trips).where(and(eq(trips.id, String(tripId)), eq(trips.userId, user.id)));
+  revalidatePath("/");
+  revalidatePath("/trips");
 }
 
 export async function deleteTrip(tripId: string): Promise<void> {
