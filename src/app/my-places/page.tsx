@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { AppShell, TopBar } from "@/components/AppShell";
 import { GuideNudge } from "@/components/GuideNudge";
-import { BookmarkIcon, ChevronDown, EditIcon, PlusIcon } from "@/components/Icons";
+import { BookmarkIcon, CheckIcon, ChevronDown, EditIcon, PlusIcon } from "@/components/Icons";
 import { CityTileImage } from "@/components/CityImage";
 import { GuideCover } from "@/components/GuideCover";
 import { PlaceTile } from "@/components/PlaceTile";
@@ -71,7 +71,7 @@ export default async function MyPlacesPage({ searchParams }: { searchParams: Pro
   if (cityView) {
     const focusCity = sorted.find(([c]) => isFocus(c))![0];
     const cityRows = groups.get(focusCity) ?? [];
-    const cityShared = cityRows.filter((p) => p.inStash && p.place.sharedAt).length;
+    const cityShared = cityRows.filter((p) => p.recommended).length;
     return (
       <AppShell>
         <TopBar back="/my-places" title={null} />
@@ -116,7 +116,7 @@ export default async function MyPlacesPage({ searchParams }: { searchParams: Pro
             />
           ) : (
             sorted.filter(([c]) => isFocus(c)).map(([city, rows]) => {
-              const privateIds = rows.filter((p) => p.inStash && !p.place.sharedAt).map((p) => p.place.id);
+              const privateIds = rows.filter((p) => p.inStash && !p.recommended).map((p) => p.place.id);
               const loose = unguided.get(city)?.length ?? 0;
               return (
                 // Tap a city heading to collapse or expand it (native <details>, all open to start). The
@@ -157,7 +157,14 @@ export default async function MyPlacesPage({ searchParams }: { searchParams: Pro
                               )}
                             </span>
                           </Link>
-                          {it.inStash && <RecommendToggle variant="pill" placeIds={[p.id]} shared={!!p.sharedAt} city={city} />}
+                          {it.recommended && !p.sharedAt ? (
+                            // Public through a published guide: recommended already, nothing to switch here.
+                            <span title="In a public guide" className="shrink-0 inline-flex items-center gap-1 rounded-full px-2.5 py-1.5 text-[11.5px] font-semibold border bg-sage-tint border-sage-soft text-ink">
+                              <CheckIcon size={12} /> Recommended
+                            </span>
+                          ) : (
+                            it.inStash && <RecommendToggle variant="pill" placeIds={[p.id]} shared={!!p.sharedAt} city={city} />
+                          )}
                         </li>
                       );
                     })}
@@ -184,7 +191,7 @@ export default async function MyPlacesPage({ searchParams }: { searchParams: Pro
   }
   const yourTiles = sorted
     .filter(([c]) => !!c)
-    .map(([city, rows]) => ({ city, country: rows.find((r) => r.place.country)?.place.country ?? "", n: rows.length, shared: rows.filter((r) => r.inStash && r.place.sharedAt).length }));
+    .map(([city, rows]) => ({ city, country: rows.find((r) => r.place.country)?.place.country ?? "", n: rows.length, shared: rows.filter((r) => r.recommended).length }));
   const otherCount = groups.get("")?.length ?? 0;
   const savedTiles = [...savedByCity.values()].sort((a, b) => b.n - a.n);
   const photos = await cityPhotosFor(

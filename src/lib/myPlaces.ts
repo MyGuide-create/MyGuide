@@ -26,7 +26,12 @@ export interface MyPlace {
   /** In the My places list itself (you can recommend it there). False: only in one of your guides. */
   inStash: boolean;
   /** Your other guides that have this spot. */
-  inGuides: { slug: string; title: string }[];
+  inGuides: { slug: string; title: string; live: boolean }[];
+  /**
+   * Anyone can see it (16 Oct 2026): recommended on its own, or in one of your published public
+   * guides. Private places (only in your list, or only in drafts/private guides) are not.
+   */
+  recommended: boolean;
   /** Tidied city ("" when unknown). */
   city: string;
   /** Link to the place. */
@@ -38,7 +43,7 @@ export async function loadMyPlaces(userId: string): Promise<{ stash: Guide | und
   const db = await getDb();
   const stash = await findStash(userId);
   const rows = await db
-    .select({ place: places, guide: { id: guides.id, slug: guides.slug, title: guides.title, city: guides.city, forkedFrom: guides.forkedFromGuideId } })
+    .select({ place: places, guide: { id: guides.id, slug: guides.slug, title: guides.title, city: guides.city, forkedFrom: guides.forkedFromGuideId, visibility: guides.visibility, publishedAt: guides.publishedAt } })
     .from(places)
     .innerJoin(guides, eq(guides.id, places.guideId))
     .where(eq(guides.ownerId, userId))
@@ -61,11 +66,11 @@ export async function loadMyPlaces(userId: string): Promise<{ stash: Guide | und
     return (theirWords && !!r.place.note.trim()) || withTips.has(r.place.id);
   };
 
-  const guidesByKey = new Map<string, { slug: string; title: string }[]>();
+  const guidesByKey = new Map<string, { slug: string; title: string; live: boolean }[]>();
   for (const r of guideRows) {
     const k = spotKey(r.place);
     const list = guidesByKey.get(k) ?? [];
-    if (!list.some((g) => g.slug === r.guide.slug)) list.push({ slug: r.guide.slug, title: r.guide.title });
+    if (!list.some((g) => g.slug === r.guide.slug)) list.push({ slug: r.guide.slug, title: r.guide.title, live: r.guide.visibility === "public" && !!r.guide.publishedAt });
     guidesByKey.set(k, list);
   }
   const cityOf = (r: (typeof rows)[number]) => {
@@ -78,14 +83,16 @@ export async function loadMyPlaces(userId: string): Promise<{ stash: Guide | und
   for (const r of stashRows) {
     const k = spotKey(r.place);
     seen.add(k);
-    items.push({ place: r.place, inStash: true, inGuides: guidesByKey.get(k) ?? [], city: cityOf(r), href: `/g/${r.guide.slug}/p/${r.place.id}` });
+    const inGuides = guidesByKey.get(k) ?? [];
+    items.push({ place: r.place, inStash: true, inGuides, recommended: !!r.place.sharedAt || inGuides.some((g) => g.live), city: cityOf(r), href: `/g/${r.guide.slug}/p/${r.place.id}` });
   }
   const extra = guideRows.filter(yours).sort((a, b) => b.place.createdAt.getTime() - a.place.createdAt.getTime());
   for (const r of extra) {
     const k = spotKey(r.place);
     if (seen.has(k)) continue;
     seen.add(k);
-    items.push({ place: r.place, inStash: false, inGuides: guidesByKey.get(k) ?? [], city: cityOf(r), href: `/g/${r.guide.slug}/p/${r.place.id}` });
+    const inGuides = guidesByKey.get(k) ?? [];
+    items.push({ place: r.place, inStash: false, inGuides, recommended: !!r.place.sharedAt || inGuides.some((g) => g.live), city: cityOf(r), href: `/g/${r.guide.slug}/p/${r.place.id}` });
   }
   return { stash, items };
 }
