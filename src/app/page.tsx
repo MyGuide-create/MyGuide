@@ -439,15 +439,6 @@ function FeedCard({ f, savedIds, signedIn, followable = false, viewerId, claps, 
               {r0.tip && <span className="text-[13px] leading-snug text-ink/85 line-clamp-2">&ldquo;{r0.tip}&rdquo;</span>}
             </span>
           </Link>
-          <span className="flex items-center gap-2">
-            {viewerId !== f.user.id &&
-              (yours(r0.place) ? (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-sage-tint px-3 py-1.5 text-[12.5px] font-medium text-sage">✓ One of your spots</span>
-              ) : (
-                <SaveButton placeId={r0.place.id} initial={savedIds.has(r0.place.id)} signedIn={signedIn} variant="pill" />
-              ))}
-            {f.city && <Link href={cityHref({ city: f.city })} className="inline-flex items-center h-9 px-3.5 rounded-full border border-line text-[13px] font-semibold">All {f.city} spots</Link>}
-          </span>
         </>
       ) : (
         <span className="flex gap-2.5 overflow-x-auto no-scrollbar -mx-1 px-1">
@@ -473,7 +464,26 @@ function FeedCard({ f, savedIds, signedIn, followable = false, viewerId, claps, 
       {mine ? (
         <Reactions claps={claps} savers={savers} what={one ? "spot" : "spots"} />
       ) : (
-        <ClapBar kind="spots" target={spotsTarget(f.user.id, f.city, f.at)} ownerId={f.user.id} ownerName={first(f.user)} city={f.city} count={f.recs.length} initial={claps} signedIn={signedIn} own={false} />
+        // One line (16 Oct 2026): Clap, then Save for a one-spot post. The city is a tap away on the name above.
+        <ClapBar
+          kind="spots"
+          target={spotsTarget(f.user.id, f.city, f.at)}
+          ownerId={f.user.id}
+          ownerName={first(f.user)}
+          city={f.city}
+          count={f.recs.length}
+          initial={claps}
+          signedIn={signedIn}
+          own={false}
+          extra={
+            one &&
+            (yours(r0.place) ? (
+              <span className="inline-flex items-center gap-1.5 h-9 rounded-full bg-sage-tint px-3 text-[12.5px] font-medium text-sage whitespace-nowrap">✓ Your spot</span>
+            ) : (
+              <SaveButton placeId={r0.place.id} initial={savedIds.has(r0.place.id)} signedIn={signedIn} variant="pill" />
+            ))
+          }
+        />
       )}
     </div>
   );

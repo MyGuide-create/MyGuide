@@ -21,6 +21,7 @@ export function ClapBar({
   initial,
   signedIn,
   own,
+  extra,
 }: {
   kind: ClapKind;
   target: string;
@@ -33,6 +34,8 @@ export function ClapBar({
   initial: ClapSummary | undefined;
   signedIn: boolean;
   own: boolean;
+  /** More buttons on the same line, after Clap (Home's one-spot posts put Save here). */
+  extra?: React.ReactNode;
 }) {
   const [s, setS] = useState<ClapSummary>(initial ?? { count: 0, mine: false, myNote: null, names: [] });
   const [justClapped, setJustClapped] = useState(false);
@@ -91,6 +94,7 @@ export function ClapBar({
             <span aria-hidden className="text-[15px] leading-none">👏</span> Clap
           </Link>
         )}
+        {extra}
         {s.count > (s.mine ? 1 : 0) && <span className="text-[12.5px] text-ink-muted min-w-0 truncate">{clapNames(s)} clapped</span>}
       </div>
       {s.mine && !justClapped && s.myNote && <p className="text-[12px] text-ink-muted">You said “{s.myNote}”</p>}
