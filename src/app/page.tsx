@@ -1,4 +1,3 @@
-import { RemovableTrip } from "@/components/RemovableTrip";
 import { isAdmin } from "@/lib/admin";
 import Link from "next/link";
 import { and, eq, inArray } from "drizzle-orm";
@@ -118,7 +117,6 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
     new Map([...(startCity ? [startCity] : []), ...cities, ...popularTiles].filter((c) => c.country).map((c) => [cityPhotoKey(c.city), c.country])),
   );
   const photoFor = (city: string) => photos.get(cityPhotoKey(city));
-  const cityOf = new Map(known.map((c) => [cityKey(c.city), c]));
   // The cities map (16 Oct 2026): yours, your friends', then the most active elsewhere on MyGuide.
   const mapCities: MapCity[] = [];
   const onMap = new Set<string>();
@@ -139,7 +137,6 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
       more: "more" in c && !c.friends.length && !c.mine,
     });
   }
-  const tripCity = trip ? cityOf.get(cityKey(trip.trip.city)) : undefined;
 
   // New from friends: their spots, spots several friends now share, and newly published guides.
   // Then "New on MyGuide": everyone else's, filling up to FEED_TARGET (all of it when you follow nobody).
@@ -191,17 +188,6 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   );
 
 
-  const tripWhen = !trip
-    ? ""
-    : trip.daysAway === null
-      ? "Your trip"
-      : trip.daysAway <= 0
-        ? "Your trip · now"
-        : trip.daysAway === 1
-          ? "Your trip · tomorrow"
-          : trip.daysAway < 14
-            ? `Your trip · in ${trip.daysAway} days`
-            : `Your trip · in ${Math.round(trip.daysAway / 7)} weeks`;
 
   const help = wanted.help;
   const wishIds = (w: NonNullable<typeof help>) => w.others.map((p) => p.wish.id);
@@ -235,29 +221,6 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
       <main className="pb-6 flex flex-col">
         {sp.deleted === "1" && <p className="mx-4 mt-3 rounded-2xl bg-sage-tint px-4 py-3 text-[13px]">Your account has been deleted. Thanks for trying MyGuide.</p>}
 
-        {trip && (
-          <RemovableTrip key={trip.trip.id} tripId={trip.trip.id} city={trip.trip.city} tone="dark" className="mx-4 mt-4 rounded-[20px]">
-            <Link href={cityHref({ city: trip.trip.city, country: trip.trip.country })} className="flex items-center gap-3.5 rounded-[20px] bg-ink text-cream p-3 pr-10">
-              <CityImage photo={photoFor(trip.trip.city)} className="w-16 h-16 rounded-xl" />
-              <span className="flex-1 min-w-0 flex flex-col gap-1">
-                <span className="text-[11.5px] font-semibold uppercase tracking-[0.08em] text-cream-deep">{tripWhen}</span>
-                <span className="font-display text-[22px] leading-tight truncate">{trip.trip.city}</span>
-                {tripCity ? (
-                  <span className="flex items-center gap-2 text-[13px] text-cream-deep">
-                    <Faces users={tripCity.friends} ring="ring-ink" />
-                    {tripCity.spots} spot{tripCity.spots === 1 ? "" : "s"}
-                    {tripCity.friends.length
-                      ? ` from ${tripCity.mine ? "you and " : ""}${tripCity.friends.length} friend${tripCity.friends.length === 1 ? "" : "s"}`
-                      : " of yours"}
-                  </span>
-                ) : (
-                  <span className="text-[13px] text-cream-deep">See what people recommend there</span>
-                )}
-              </span>
-              <span aria-hidden className="pr-1 text-[20px]">›</span>
-            </Link>
-          </RemovableTrip>
-        )}
 
         {user && myCities.length === 0 && (
           <CityRow title="Your cities" sub="The spots you'd send a friend to.">

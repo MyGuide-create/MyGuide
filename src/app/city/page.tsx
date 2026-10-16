@@ -23,7 +23,8 @@ import { CATEGORIES } from "@/lib/places";
 import { orderedCategories } from "@/lib/places/order";
 import { timeAgo } from "@/lib/utils";
 import { getDb } from "@/lib/db";
-import { placeReactions, savedPlaces } from "@/lib/db/schema";
+import { guideWishes, placeReactions, savedPlaces } from "@/lib/db/schema";
+import { AskForSpots } from "@/components/WishList";
 import { and, eq } from "drizzle-orm";
 import { SaveButton } from "@/components/SaveButton";
 
@@ -153,6 +154,9 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
   const friendGuides = isMe ? ownGuides : picked ? mine.filter((g) => g.owner.id === picked.id) : mine.filter((g) => g.owner.id !== viewerId);
 
   const centre = findCity(city);
+  // Already asking friends for spots here (on your list)?
+  const asking =
+    !!user && !!city && (await (await getDb()).select({ city: guideWishes.city }).from(guideWishes).where(eq(guideWishes.userId, user.id))).some((w) => cityKey(w.city) === cityKey(city));
   const wish = [wanted.help, ...wanted.list].find((w) => w && cityKey(w.group.city) === cityKey(city)) ?? null;
 
   const base = { name: city, ...(country ? { country } : {}), ...(lat && lng ? { lat, lng } : {}) };
@@ -215,6 +219,11 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
               friendCount ? `${friendCount} friend${friendCount === 1 ? "" : "s"}` : "",
             ].filter(Boolean).join(" · ")}
           </p>
+        )}
+        {city && user && hasAny && ownSpots === 0 && (
+          <div className="mt-3">
+            <AskForSpots city={city} country={country || undefined} asked={asking} />
+          </div>
         )}
       </header>
 
@@ -433,7 +442,7 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
 
         {city && hasAny && (!ownSpots || wish) && (
           <div className="px-4 pt-8">
-            <div className="rounded-[20px] bg-sage-tint p-4 flex flex-col gap-2.5">
+            <div className="rounded-[20px] border border-line bg-paper p-4 flex flex-col gap-2.5">
               <p className="font-display text-[20px]">Know {city} well?</p>
               {wish ? (
                 <>

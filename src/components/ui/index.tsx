@@ -11,9 +11,10 @@ type Size = "sm" | "md" | "lg";
 
 const variantClass: Record<Variant, string> = {
   primary: "bg-terracotta text-white hover:bg-terracotta-deep active:bg-terracotta-deep shadow-[0_2px_8px_oklch(62%_0.13_45/0.25)]",
-  secondary: "bg-ink text-cream hover:bg-ink/90",
+  // Three button looks (16 Oct 2026): terracotta for the one main action, neutral for the rest, ghost for text.
+  secondary: "bg-cream-deep text-ink hover:bg-cream-line/60",
   ghost: "bg-transparent text-ink hover:bg-cream-deep/60",
-  outline: "border border-terracotta text-terracotta hover:bg-terracotta-tint",
+  outline: "border border-line bg-paper text-ink hover:border-ink-faint",
   danger: "bg-danger-tint text-danger hover:bg-danger/15",
 };
 const sizeClass: Record<Size, string> = {

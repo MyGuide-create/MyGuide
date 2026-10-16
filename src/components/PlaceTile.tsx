@@ -9,9 +9,8 @@ const GRADIENTS = [
   "linear-gradient(135deg, oklch(74% 0.11 80), oklch(62% 0.13 45))",
   "linear-gradient(135deg, oklch(56% 0.1 40), oklch(70% 0.1 60))",
 ];
-const ROTATIONS = [-3, 2, -2, 3, -1];
 
-/** The 72px rotated tile from the mockup: creator photo, Maps photo, or a category glyph on a warm gradient. */
+/** A place's square tile: creator photo, Maps photo, or a category glyph on a warm gradient (no tilt since 16 Oct 2026). */
 export function PlaceTile({
   place,
   size = 72,
@@ -26,7 +25,7 @@ export function PlaceTile({
   return (
     <div
       className={cx("shrink-0 rounded-tile overflow-hidden flex items-center justify-center shadow-[0_2px_6px_oklch(22%_0.02_60/0.12)]", className)}
-      style={{ width: size, height: size, background: GRADIENTS[i], transform: `rotate(${ROTATIONS[i]}deg)` }}
+      style={{ width: size, height: size, background: GRADIENTS[i] }}
     >
       {src ? (
         // eslint-disable-next-line @next/next/no-img-element

@@ -28,6 +28,8 @@ export function GuideCover({
     coverSource?: string | null;
     coverCredit?: string | null;
     coverCreditUrl?: string | null;
+    /** Up to 3 of its places' photos (from hydrateCards): a mosaic when there's no cover. */
+    mosaic?: string[];
   };
   ownerUsername: string;
   className?: string;
@@ -56,6 +58,24 @@ export function GuideCover({
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={guide.coverUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
         <CoverOverlay city={cityLabel} credit={thumb ? null : <CoverCredit guide={guide} links={creditLinks} />} />
+      </div>
+    );
+  }
+  const mosaic = guide.mosaic ?? [];
+  if (mosaic.length) {
+    return (
+      <div className={cx("relative overflow-hidden bg-cream-deep grid gap-[2px]", mosaic.length === 1 ? "grid-cols-1" : mosaic.length === 2 ? "grid-cols-2" : "grid-cols-[2fr_1fr] grid-rows-2", className)}>
+        {mosaic.map((src, i) => (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img key={i} src={src} alt="" loading="lazy" className={cx("w-full h-full object-cover min-h-0", mosaic.length >= 3 && i === 0 && "row-span-2")} />
+        ))}
+        {!bare && !thumb && (
+          <div className={cx("absolute inset-x-0 bottom-0 flex flex-col justify-end bg-gradient-to-t from-black/60 to-transparent text-white", compact ? "p-3 pt-10" : "p-5 pt-14")}>
+            <div className="font-display leading-[1.04] break-words drop-shadow" style={{ fontSize: titleSize(guide.title, compact ? 19 : 30) }}>{guide.title}</div>
+            <div className={cx("font-medium mt-1 opacity-90", compact ? "text-[10px]" : "text-[12px]")}>@{ownerUsername}</div>
+          </div>
+        )}
+        {(bare || thumb) && <CoverOverlay city={thumb ? null : cityLabel} />}
       </div>
     );
   }

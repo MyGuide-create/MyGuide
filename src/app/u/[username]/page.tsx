@@ -3,15 +3,15 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AppShell, TopBar } from "@/components/AppShell";
 import { FollowButton } from "@/components/FollowButton";
-import { GuideCard } from "@/components/GuideCard";
-import { BookmarkIcon, LockIcon, PlusIcon } from "@/components/Icons";
+import { LockIcon } from "@/components/Icons";
 import { Avatar, EmptyState, LinkButton } from "@/components/ui";
 import { getCurrentUser, toPublicUser } from "@/lib/auth";
 import { AskForGuideButton } from "@/components/AskForGuide";
 import { getFollowStats, getUserByUsername, listGuidesByOwner } from "@/lib/guides";
-import { loadMyPlaces } from "@/lib/myPlaces";
 import { loadRecommendations, mergeSpots, ownSpotKeys, type Recommendation } from "@/lib/citySpots";
-import { PlaceTile } from "@/components/PlaceTile";
+import { CityTileImage } from "@/components/CityImage";
+import { GuideCover } from "@/components/GuideCover";
+import { cityPhotoKey, cityPhotosFor } from "@/lib/cityPhotos";
 import { hiddenUserIds, viewerBlocked } from "@/lib/blocks";
 import { BlockButton } from "@/components/BlockButton";
 import { ReportButton } from "@/components/ReportButton";
@@ -51,12 +51,15 @@ export default async function ProfilePage({ params, searchParams }: PageProps<"/
   // Shared taste (15 Oct 2026): places you both recommend / have.
   const shared = viewer && !own ? new Set(spotCities.flatMap((c) => c.spots.map((s) => s.key))) : null;
   const commonCount = shared && viewer ? [...(await ownSpotKeys(viewer.id)).values()].flatMap((k) => [...k]).filter((k) => shared.has(k)).length : 0;
-  // Your own places (My spots) get their own card, not a draft.
-  const myPlaces = own ? (await loadMyPlaces(profile.id)).items : [];
   const published = cards.filter((c) => c.guide.publishedAt);
   const drafts = cards.filter((c) => !c.guide.publishedAt);
   // listGuidesByOwner already hides guides from a locked private profile, but the page still
   // needs to tell "private and you can't see it yet" apart from "genuinely nothing published".
+  const countryOf = new Map(recs.filter((r) => r.place.country).map((r) => [r.city, r.place.country]));
+  const cityPhotos = await cityPhotosFor(
+    spotCities.map((c) => c.city),
+    new Map(spotCities.filter((c) => countryOf.get(c.city)).map((c) => [cityPhotoKey(c.city), countryOf.get(c.city)!])),
+  );
   const locked = profile.profileVisibility === "private" && !own && !stats.viewerFollows;
 
   return (
@@ -92,8 +95,6 @@ export default async function ProfilePage({ params, searchParams }: PageProps<"/
         <div className="mt-4">
           {own ? (
             <div className="flex gap-2">
-              <LinkButton href="/saved" size="sm" variant="outline"><BookmarkIcon size={14} /> Saved</LinkButton>
-              <LinkButton href="/trips" size="sm" variant="outline">Trips</LinkButton>
               <LinkButton href="/stats" size="sm" variant="outline">Stats</LinkButton>
             </div>
           ) : (
@@ -130,74 +131,67 @@ export default async function ProfilePage({ params, searchParams }: PageProps<"/
           />
         ) : (
           <>
-            {own && (
-              <Link href="/my-places" className="flex items-center gap-3 rounded-[22px] border border-line bg-paper px-4 py-3.5 hover:border-terracotta-soft">
-                {myPlaces.length > 0 ? (
-                  <span className="flex -space-x-3 shrink-0">
-                    {myPlaces.slice(0, 3).map((p) => (
-                      <PlaceTile key={p.place.id} place={p.place} size={44} className="ring-2 ring-paper" />
-                    ))}
-                  </span>
-                ) : (
-                  <span className="w-11 h-11 rounded-full bg-terracotta-tint text-terracotta flex items-center justify-center shrink-0"><PlusIcon size={20} /></span>
-                )}
-                <span className="flex-1 min-w-0">
-                  <span className="block font-display text-[20px] leading-tight">My spots</span>
-                  <span className="block text-[12.5px] text-ink-muted">
-                    {myPlaces.length ? `${myPlaces.length} place${myPlaces.length === 1 ? "" : "s"}` : "Every place you add lands here"}
-                  </span>
-                </span>
-                <span aria-hidden className="text-[20px] text-terracotta">›</span>
-              </Link>
-            )}
-            {!own && spotCities.length > 0 && (
-              <section>
-                <h2 className="font-display text-[22px] px-1 mb-2">{profile.displayName.split(" ")[0]}&apos;s spots</h2>
-                <ul className="flex flex-col gap-2">
+            {/* Cities first (16 Oct 2026): the spots they recommend, city by city, as photo tiles. */}
+            {spotCities.length > 0 ? (
+              <section className="flex flex-col gap-2.5">
+                <div className="flex items-baseline justify-between px-1">
+                  <h2 className="font-display text-[22px]">{own ? "Your cities" : `${profile.displayName.split(" ")[0]}\u2019s cities`}</h2>
+                  {own && <span className="text-[12px] text-ink-muted">What friends see</span>}
+                </div>
+                <div className="grid grid-cols-2 gap-3">
                   {spotCities.map((c) => (
-                    <li key={c.city}>
-                      <Link
-                        href={`/city?${new URLSearchParams({ name: c.city, friend: profile.username }).toString()}`}
-                        className="flex items-center gap-3 rounded-2xl border border-line bg-paper px-3 py-2.5 hover:border-terracotta-soft"
-                      >
-                        <span className="flex -space-x-3 shrink-0">
-                          {c.spots.slice(0, 3).map((x) => (
-                            <PlaceTile key={x.key} place={x.place} size={40} className="ring-2 ring-paper" />
-                          ))}
-                        </span>
+                    <Link key={c.city} href={`/city?${new URLSearchParams({ name: c.city, friend: profile.username }).toString()}`} className="flex flex-col gap-1.5 min-w-0">
+                      <CityTileImage photo={cityPhotos.get(cityPhotoKey(c.city))} city={c.city} className="h-[128px]" />
+                      <span className="px-0.5 text-[12.5px] text-ink-muted truncate">
+                        <b className="font-semibold text-ink">{c.spots.length} spot{c.spots.length === 1 ? "" : "s"}</b>
+                        {" · "}
+                        {c.spots.slice(0, 2).map((x) => x.place.name).join(", ")}
+                      </span>
+                    </Link>
+                  ))}
+                </div>
+              </section>
+            ) : (
+              own && (
+                <EmptyState
+                  title="No recommended spots yet"
+                  body="Recommend places from My spots and they show here, city by city, for friends."
+                  action={<LinkButton href="/my-places" size="sm">Go to My spots</LinkButton>}
+                />
+              )
+            )}
+
+            {(published.length > 0 || (own && drafts.length > 0)) && (
+              <section className="flex flex-col gap-2.5 pt-2">
+                <div className="flex items-baseline justify-between px-1">
+                  <h2 className="font-display text-[22px]">Guides</h2>
+                  {own && <Link href="/create" className="text-[13px] font-semibold text-terracotta-deep">+ New guide</Link>}
+                </div>
+                {own && draftSaved && <p className="px-1 text-[12.5px] text-sage font-medium">Draft saved. Only you can see it. Open it any time to keep going, then publish.</p>}
+                <ul id="drafts" className="flex flex-col rounded-2xl border border-line bg-paper divide-y divide-line overflow-hidden scroll-mt-20">
+                  {[...(own ? drafts : []), ...published].map((c) => (
+                    <li key={c.guide.id}>
+                      <Link href={`/g/${c.guide.slug}`} className="flex items-center gap-3 px-3 py-2.5">
+                        <GuideCover guide={c.guide} ownerUsername={c.owner.username} bare thumb className="w-14 h-14 rounded-xl shrink-0" />
                         <span className="flex-1 min-w-0">
-                          <span className="block font-semibold text-[15px] truncate">{c.city}</span>
+                          <span className="block font-semibold text-[14.5px] truncate">{c.guide.title}</span>
                           <span className="block text-[12.5px] text-ink-muted truncate">
-                            {c.spots.length} spot{c.spots.length === 1 ? "" : "s"} · {c.spots.slice(0, 2).map((x) => x.place.name).join(", ")}
+                            {[c.coverCity, `${c.placeCount} spot${c.placeCount === 1 ? "" : "s"}`, !c.guide.publishedAt ? "Draft" : own && c.guide.visibility !== "public" ? "Private" : ""].filter(Boolean).join(" · ")}
                           </span>
                         </span>
-                        <span aria-hidden className="text-[20px] text-terracotta">›</span>
+                        <span aria-hidden className="text-ink-faint">›</span>
                       </Link>
                     </li>
                   ))}
                 </ul>
               </section>
             )}
+
+            {!own && spotCities.length === 0 && published.length === 0 && (
+              <EmptyState title={`${profile.displayName.split(" ")[0]} hasn't shared any spots yet`} />
+            )}
+
             {wishes && <WishList wishes={wishes} own={own} ownerName={profile.displayName} ownerUsername={profile.username} signedIn={!!viewer} />}
-            {own && (
-              <div className="flex items-center justify-between px-1 mt-1">
-                <h2 className="font-display text-[22px]">Your guides</h2>
-                <LinkButton href="/create" size="sm" variant="outline"><PlusIcon size={14} /> New guide</LinkButton>
-              </div>
-            )}
-            {own && drafts.length > 0 && (
-              <>
-                <h2 id="drafts" className="font-display text-[19px] px-1 scroll-mt-20 text-ink-muted">Drafts</h2>
-                {draftSaved && <p className="-mt-1 px-1 text-[12.5px] text-sage font-medium">Draft saved. Only you can see it — open it any time to keep going, then publish.</p>}
-                {drafts.map((c) => <GuideCard key={c.guide.id} data={c} showOwner={false} />)}
-                <h2 className="font-display text-[19px] px-1 mt-2 text-ink-muted">Published</h2>
-              </>
-            )}
-            {!own && spotCities.length > 0 && published.length > 0 && <h2 className="font-display text-[22px] px-1 mt-2">Guides</h2>}
-            {published.length === 0 && (own || spotCities.length === 0) && (
-              <EmptyState title={own ? "No guides yet" : `${profile.displayName.split(" ")[0]} hasn't shared any spots yet`} body={own ? "Group your places into a guide whenever you like — from My spots, a city page, or New guide above." : undefined} />
-            )}
-            {published.map((c) => <GuideCard key={c.guide.id} data={c} showOwner={false} />)}
           </>
         )}
         {viewer && !own && (

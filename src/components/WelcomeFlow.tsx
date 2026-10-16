@@ -28,7 +28,7 @@ const SLIDES = [
   { title: "Add a place", body: "Tap + wherever you are. Got a Google Maps list or screenshots? Bring in many at once. Group your places into guides whenever you like." },
 ];
 
-type Stage = "username" | "slides" | "follow" | "home";
+type Stage = "username" | "slides" | "follow" | "spots" | "home";
 
 const bigButton = "h-14 w-full rounded-full text-[17px] font-semibold inline-flex items-center justify-center transition-colors disabled:opacity-60";
 
@@ -65,9 +65,12 @@ export function WelcomeFlow({
   const router = useRouter();
   const [stage, setStageRaw] = useState<Stage>(() => {
     if (initialStep === "follow" && !tour) return "follow";
+    if (initialStep === "spots" && !tour) return "spots";
     if (initialStep === "home") return "home";
     if (initialStep === "slides") return "slides";
-    return askUsername && !tour ? "username" : "slides";
+    // New people skip the slides (16 Oct 2026): straight to people to follow, then their own first spots.
+    if (tour) return "slides";
+    return askUsername ? "username" : "follow";
   });
   // Keep the step in the address so back/refresh returns here instead of restarting the intro.
   const setStage = (s: Stage) => {
@@ -92,9 +95,17 @@ export function WelcomeFlow({
 
   // After following: phones get the home-screen step (onboarding is saved first, since iPhone users leave Safari for it).
   const afterFollow = async () => {
+    setStage("spots");
+  };
+  const afterSpots = async () => {
     if (!showHome) return finish();
     await markOnboarded().catch(() => {});
     setStage("home");
+  };
+  /** Leave onboarding for Add a spot / Import (it's saved as done first). */
+  const startAdding = async (href: string) => {
+    await markOnboarded().catch(() => {});
+    router.push(href);
   };
   const [index, setIndex] = useState(0);
   const scroller = useRef<HTMLDivElement>(null);
@@ -117,7 +128,7 @@ export function WelcomeFlow({
           </div>
           <UsernameForm current={currentUsername} />
         </div>
-        <button type="button" onClick={() => setStage("slides")} className={cx(bigButton, "mt-6 bg-terracotta text-white hover:bg-terracotta-deep")}>
+        <button type="button" onClick={() => setStage("follow")} className={cx(bigButton, "mt-6 bg-terracotta text-white hover:bg-terracotta-deep")}>
           Continue
         </button>
       </Screen>
@@ -125,7 +136,33 @@ export function WelcomeFlow({
   }
 
   const total = tour ? 2 : showHome ? 3 : 2;
-  if (stage === "follow") return <FollowStep people={people} finish={afterFollow} stepLabel={`Step 2 of ${total}`} />;
+  if (stage === "follow") return <FollowStep people={people} finish={afterFollow} stepLabel={`Step 1 of ${total}`} />;
+  if (stage === "spots")
+    return (
+      <Screen>
+        <Header right={<button type="button" onClick={afterSpots} className="min-h-11 min-w-11 flex items-center justify-end text-[15px] font-medium text-ink-muted hover:text-ink whitespace-nowrap">Later</button>} />
+        <div className="flex-1 flex flex-col justify-center gap-6">
+          <div className="text-center">
+            <p className="text-[13px] font-semibold uppercase tracking-[0.08em] text-ink-muted">Step 2 of {total}</p>
+            <h1 className="mt-2 font-display text-[30px] leading-[1.15] font-semibold">Add 3 spots you love</h1>
+            <p className="mt-2 text-[17px] leading-normal text-ink-muted">
+              Where you eat, drink, work out or unwind. Your own map in seconds, and friends see the ones you recommend.
+            </p>
+          </div>
+          <div className="flex flex-col gap-3">
+            <button type="button" onClick={() => startAdding("/record")} className={cx(bigButton, "bg-terracotta text-white hover:bg-terracotta-deep")}>
+              <PlusIcon size={20} /> <span className="ml-2">Add a spot</span>
+            </button>
+            <button type="button" onClick={() => startAdding("/create?import=1")} className={cx(bigButton, "border border-line bg-paper text-ink")}>
+              Import a Google Maps list
+            </button>
+          </div>
+        </div>
+        <button type="button" onClick={afterSpots} className="mt-6 h-12 text-[15px] font-medium text-ink-muted">
+          Explore first
+        </button>
+      </Screen>
+    );
   if (stage === "home")
     return (
       <HomeScreenStep
@@ -313,7 +350,7 @@ function FollowStep({ people, finish, stepLabel }: { people: WelcomePerson[]; fi
       <div className="mt-6 flex flex-col gap-2 text-center">
         <span className="text-[13px] font-semibold uppercase tracking-[0.08em] text-terracotta">{stepLabel}</span>
         <h1 className="font-display text-[30px] leading-[1.15] font-semibold">Follow people you know</h1>
-        <p className="text-[17px] leading-normal text-ink-muted">Their guides show up on your Home, and you&apos;ll hear when they add something new.</p>
+        <p className="text-[17px] leading-normal text-ink-muted">Their spots show up on Explore and on every city page, and you&apos;ll hear when they add something new.</p>
       </div>
 
       {people.length > 0 ? (

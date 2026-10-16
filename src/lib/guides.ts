@@ -97,20 +97,23 @@ async function hydrateCards(rows: Guide[]): Promise<GuideCard[]> {
   const ownerMap = new Map(owners.map((u) => [u.id, toPublicUser(u)]));
   const guideIds = rows.map((g) => g.id);
   const placeRows = await db
-    .select({ guideId: places.guideId, category: places.category, city: places.city })
+    .select({ guideId: places.guideId, category: places.category, city: places.city, photoUrl: places.photoUrl, photoMediaId: places.photoMediaId })
     .from(places)
     .where(inArray(places.guideId, guideIds))
     .orderBy(places.position, places.createdAt);
-  const counts = new Map<string, { n: number; cats: Set<string>; cities: string[] }>();
+  const counts = new Map<string, { n: number; cats: Set<string>; cities: string[]; photos: string[] }>();
   for (const p of placeRows) {
-    const e = counts.get(p.guideId) ?? { n: 0, cats: new Set<string>(), cities: [] };
+    const e = counts.get(p.guideId) ?? { n: 0, cats: new Set<string>(), cities: [], photos: [] };
     e.n++;
     e.cats.add(p.category);
     e.cities.push(p.city);
+    // First few place photos, for a mosaic cover when the guide has no cover of its own (16 Oct 2026).
+    const ph = p.photoMediaId ? `/api/media/${p.photoMediaId}` : p.photoUrl;
+    if (ph && e.photos.length < 3) e.photos.push(ph);
     counts.set(p.guideId, e);
   }
   return rows.map((g) => ({
-    guide: g,
+    guide: { ...g, mosaic: counts.get(g.id)?.photos ?? [] },
     owner: ownerMap.get(g.ownerId) ?? { id: g.ownerId, username: "unknown", displayName: "Unknown", bio: null, avatarMediaId: null, accountType: "personal", profileVisibility: "public" },
     placeCount: counts.get(g.id)?.n ?? 0,
     categories: [...(counts.get(g.id)?.cats ?? [])],

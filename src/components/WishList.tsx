@@ -154,8 +154,8 @@ export function WishList({ wishes, own, ownerName, ownerUsername, signedIn }: { 
   return (
     <section id="wishes" className="rounded-[22px] border border-line bg-paper px-4 py-4 scroll-mt-20">
       <div className="flex items-baseline justify-between gap-3">
-        <h2 className="font-display text-[22px] leading-none inline-flex items-center gap-2"><SparkleIcon size={17} className="text-terracotta" /> Wish list</h2>
-        <Link href="/wishes" className="shrink-0 text-[12.5px] font-medium text-terracotta">Everyone&apos;s wishes →</Link>
+        <h2 className="font-display text-[22px] leading-none inline-flex items-center gap-2"><SparkleIcon size={17} className="text-terracotta" /> Asking for spots</h2>
+        <Link href="/wishes" className="shrink-0 text-[12.5px] font-medium text-terracotta">Who else is asking →</Link>
       </div>
       <p className="mt-1.5 text-[12.5px] text-ink-muted leading-snug">
         {own
@@ -243,11 +243,36 @@ export function WishForCityButton({ city }: { city: string }) {
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
-  if (done) return <span className="inline-flex items-center gap-1 text-[13px] font-medium text-sage"><CheckIcon size={14} /> On your wish list</span>;
+  if (done) return <span className="inline-flex items-center gap-1 text-[13px] font-medium text-sage"><CheckIcon size={14} /> Asking for spots</span>;
   return (
     <span className="inline-flex flex-col items-center gap-1">
       <Button size="sm" disabled={pending} onClick={() => start(async () => { const r = await addWish(city); if (r.ok) setDone(true); else setError(r.error); })}>
-        {pending ? <Spinner /> : <><SparkleIcon size={14} /> Add {city} to my wish list</>}
+        {pending ? <Spinner /> : <><SparkleIcon size={14} /> Ask friends for {city} spots</>}
+      </Button>
+      {error && <span className="text-[11.5px] text-danger">{error}</span>}
+    </span>
+  );
+}
+
+/**
+ * "Ask for spots" on a city page (16 Oct 2026): one tap puts the city on your list so friends who
+ * know it can send their spots; then you can also ask someone directly.
+ */
+export function AskForSpots({ city, country, asked: initiallyAsked }: { city: string; country?: string; asked: boolean }) {
+  const [asked, setAsked] = useState(initiallyAsked);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  if (asked)
+    return (
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[13px]">
+        <span className="inline-flex items-center gap-1 font-medium text-sage"><CheckIcon size={14} /> Asking for {city} spots</span>
+        <AskForGuideButton city={{ city, country: country ?? "" }} label="Ask someone directly" variant="ghost" size="sm" />
+      </div>
+    );
+  return (
+    <span className="inline-flex flex-col gap-1">
+      <Button size="sm" variant="outline" disabled={pending} onClick={() => start(async () => { const r = await addWish(city); if (r.ok) setAsked(true); else setError(r.error); })}>
+        {pending ? <Spinner /> : <><SparkleIcon size={14} /> Ask friends for {city} spots</>}
       </Button>
       {error && <span className="text-[11.5px] text-danger">{error}</span>}
     </span>

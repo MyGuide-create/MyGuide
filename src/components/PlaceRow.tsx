@@ -85,7 +85,7 @@ export function PlaceRow({
               <SaveButton placeId={place.id} initial={!!saved} signedIn={!!currentUser} className="relative z-10 shrink-0" />
             ))}
         </div>
-        <div className="mt-0.5 text-[11.5px] text-ink-muted flex items-center gap-1 truncate">
+        <div className="mt-0.5 text-[12.5px] text-ink-muted flex items-center gap-1 truncate">
           {!grouped && <span className="rounded-full bg-cream-deep px-1.5 py-[1px] text-[10.5px] font-medium text-ink-muted shrink-0">{place.category}</span>}
           {rating && <GoogleRatingInline rating={rating} className={cx("shrink-0", !grouped && "ml-0.5")} />}
           {branchCount > 0 ? (
