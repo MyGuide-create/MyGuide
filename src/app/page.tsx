@@ -5,7 +5,7 @@ import { AppShell, Wordmark } from "@/components/AppShell";
 import { GoingSomewhere } from "@/components/GoingSomewhere";
 import { GuideCover } from "@/components/GuideCover";
 import { PlaceTile } from "@/components/PlaceTile";
-import { CityImage, CityTileImage } from "@/components/CityImage";
+import { CityTileImage } from "@/components/CityImage";
 import { CitiesExplorer, type MapCity } from "@/components/CitiesExplorer";
 import { findCity } from "@/lib/places/cities";
 import { SearchIcon } from "@/components/Icons";
@@ -26,7 +26,7 @@ import { capRuns } from "@/lib/fill";
 import { HomeScreenNudge } from "@/components/HomeScreenNudge";
 import { pushPublicKey } from "@/lib/push";
 import { userVisits } from "@/lib/db/schema";
-import { nearestFirst, nearestKnownCity, viewerLocation } from "@/lib/nearby";
+import { nearestFirst, viewerLocation } from "@/lib/nearby";
 import { FollowPill } from "@/components/FollowPill";
 import { ClapBar } from "@/components/ClapBar";
 import { loadClaps } from "@/lib/claps";
@@ -44,12 +44,8 @@ const FEED_DAYS = 45;
 const FEED_TARGET = 15;
 /** Below this many friends' posts, "More on MyGuide" fills in. */
 const FEED_FILL_BELOW = 6;
-/** City tiles before "Explore more cities": friends' cities first, then the most active on MyGuide. */
-const CITY_TILES = 8;
-/** "Your cities": all of them, up to this many. */
-const MAX_OWN_TILES = 14;
-/** "Cities your friends know": up to this many, then "All cities". */
-const FRIEND_TILES = 12;
+/** Explore's one row of cities: up to this many, then "All cities". */
+const CITY_TILES = 12;
 
 /**
  * Home, places first: Going somewhere? → your trip → your friends' cities (then popular ones) → new
@@ -69,33 +65,21 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
     user ? loadRecommendations({ viewerId: user.id, ownerIds: followingIds }) : Promise.resolve([]),
     user ? listFeed({ viewerId: user.id, scope: "following", limit: 40 }) : Promise.resolve([] as GuideCard[]),
   ]);
-  // Two rows (13 Oct 2026): your cities, then cities your friends know that you don't (topped up
-  // with the most active cities on MyGuide). In each, the city you're in or nearest goes first,
-  // then most spots. Where only you have places, the city page lists everyone's spots with yours,
-  // so the tile counts the same (everyone's ∪ yours).
+  // One row of cities (16 Oct 2026): Explore is for discovering. Every city with spots you can see
+  // (friends', yours, then the most active on MyGuide), the one you're in first, then most spots.
+  // Your own cities live in My spots. Counts are everyone's spots, as the city page shows them.
   const here = await viewerLocation();
   // Opened MyGuide from its home-screen icon at least once: they have it, so no reminder card.
   const hasIcon = user ? (await (await getDb()).select({ d: userVisits.day }).from(userVisits).where(and(eq(userVisits.userId, user.id), eq(userVisits.standalone, true))).limit(1)).length > 0 : true;
-  const known = (user ? await friendCities(user.id, recs, { withOwn: true }) : []).map((c) =>
-    c.friends.length ? c : { ...c, spots: Math.max(c.spots, byCity.get(cityKey(c.city))?.spots ?? 0) },
-  );
-  const [mineRow, friendsRow] = await Promise.all([
-    nearestFirst(known.filter((c) => c.mine > 0), here),
-    nearestFirst(known.filter((c) => c.mine === 0 && c.friends.length > 0), here),
-  ]);
-  const myCities = mineRow.items.slice(0, MAX_OWN_TILES);
-  const friendsCities = friendsRow.items.slice(0, FRIEND_TILES);
+  const known = (user ? await friendCities(user.id, recs, { withOwn: true }) : []).map((c) => ({
+    ...c,
+    spots: Math.max(c.spots, byCity.get(cityKey(c.city))?.spots ?? 0),
+  }));
   const knownKeys = new Set(known.map((c) => cityKey(c.city)));
-  const popularRow = await nearestFirst(moreCities.filter((t) => !knownKeys.has(cityKey(t.city))), here);
-  const popular = popularRow.items;
-  // Few friends' cities (or none): the most active cities on MyGuide fill the row up to CITY_TILES.
-  const popularTiles = popular.slice(0, Math.max(0, CITY_TILES - friendsCities.length));
-  const moreToExplore = popular.length - popularTiles.length;
-  // Each row's nearest city leads it, labelled "Near you".
-  const nearKeys = new Set([mineRow.nearKey, friendsRow.nearKey, popularTiles.length ? popularRow.nearKey : null].filter(Boolean) as string[]);
-  const cities = [...myCities, ...friendsCities];
-  // New here (no places yet): "Your Dubai — add your go-to spots", for the city they're in.
-  const startCity = user && myCities.length === 0 ? nearestKnownCity(here) : null;
+  const popular = moreCities.filter((t) => !knownKeys.has(cityKey(t.city))).map((t) => ({ ...t, friends: [] as PublicUser[], mine: 0, more: true }));
+  const row = await nearestFirst([...known.map((c) => ({ ...c, guides: 0, more: false })), ...popular], here);
+  const cities = row.items.slice(0, CITY_TILES);
+  const moreToExplore = row.items.length - cities.length;
   // Following few people: a row of people to follow.
   // Who to follow (15 Oct 2026): one ranking (src/lib/suggest.ts) for the spotlight card and the row.
   const suggestions = user ? await suggestPeople(user.id, { limit: 13, extraCities: trip ? [trip.trip.city] : [] }) : [];
@@ -113,8 +97,8 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
     people = (await peopleToFollow(user.id, 12)).hits.map((h) => ({ user: h.user, line: "New on MyGuide", followsYou: h.followsViewer }));
   const fewFollows = followingIds.length < 3;
   const photos = await cityPhotosFor(
-    [...(trip ? [trip.trip.city] : []), ...(startCity ? [startCity.city] : []), ...cities.map((c) => c.city), ...popularTiles.map((t) => t.city)],
-    new Map([...(startCity ? [startCity] : []), ...cities, ...popularTiles].filter((c) => c.country).map((c) => [cityPhotoKey(c.city), c.country])),
+    [...(trip ? [trip.trip.city] : []), ...cities.map((c) => c.city)],
+    new Map(cities.filter((c) => c.country).map((c) => [cityPhotoKey(c.city), c.country])),
   );
   const photoFor = (city: string) => photos.get(cityPhotoKey(city));
   // The cities map (16 Oct 2026): yours, your friends', then the most active elsewhere on MyGuide.
@@ -122,7 +106,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   // One dot per real city: names that resolve to the same place (aliases, spellings) are merged.
   const onMap = new Map<string, MapCity>();
   const me = user ? toPublicUser(user) : null;
-  for (const c of [...known, ...popular.map((t) => ({ ...t, friends: [] as PublicUser[], mine: 0, more: true }))]) {
+  for (const c of [...known, ...popular]) {
     const at = findCity(c.city);
     if (!at) continue;
     const k = `${at.city}|${at.country}`.toLowerCase();
@@ -227,66 +211,30 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
         {sp.deleted === "1" && <p className="mx-4 mt-3 rounded-2xl bg-sage-tint px-4 py-3 text-[13px]">Your account has been deleted. Thanks for trying MyGuide.</p>}
 
 
-        {user && myCities.length === 0 && (
-          <CityRow title="Your cities" sub="The spots you'd send a friend to.">
-            <StartTile
-              href="/record"
-              photo={startCity ? photoFor(startCity.city) : undefined}
-              title={startCity ? `Your ${startCity.city}` : "Your city"}
-              line="Add your go-to spots: where you eat, drink, work out, unwind"
-              cta="Add your first spot"
-            />
-            <AddCityTile first />
-          </CityRow>
-        )}
-        {(mapCities.length > 0 || myCities.length > 0) && (
+        {mapCities.length > 0 && (
           <CitiesExplorer
             cities={mapCities}
             tiles={
-              <>
-                {myCities.length > 0 && (
-                  <CityRow title="Your cities" all>
-                    {myCities.map((c) => (
-                      <CityTile key={c.city} href={cityHref(c)} city={c.city} photo={photoFor(c.city)} near={nearKeys.has(cityKey(c.city))} spots={c.spots}>
-                        <Faces users={user ? [toPublicUser(user), ...c.friends] : c.friends} ring="ring-cream" />
-                      </CityTile>
-                    ))}
-                    <AddCityTile />
-                  </CityRow>
-                )}
-                {(friendsCities.length > 0 || popularTiles.length > 0) && (
-                  <CityRow title={friendsCities.length ? "Cities your friends know" : "Popular on MyGuide"} all={!myCities.length}>
-                    {friendsCities.map((c) => (
-                      <CityTile small key={c.city} href={cityHref(c)} city={c.city} photo={photoFor(c.city)} near={nearKeys.has(cityKey(c.city))} spots={c.spots}>
-                        <Faces users={c.friends} ring="ring-cream" />
-                      </CityTile>
-                    ))}
-                    {friendsCities.length > 0 && popularTiles.length > 0 && (
-                      <span className="shrink-0 w-[40px] h-[100px] flex items-center justify-center">
-                        <span className="[writing-mode:vertical-rl] rotate-180 text-[11.5px] font-semibold uppercase tracking-[0.1em] text-ink-muted">Popular on MyGuide</span>
-                      </span>
+              <div className="flex gap-3 overflow-x-auto no-scrollbar px-5">
+                {cities.map((c) => (
+                  <CityTile key={c.city} href={cityHref(c)} city={c.city} photo={photoFor(c.city)} near={row.nearKey === cityKey(c.city)} spots={c.spots} guides={c.guides}>
+                    <Faces users={c.mine > 0 && me ? [me, ...c.friends.filter((f) => f.id !== me.id)] : c.friends} ring="ring-cream" />
+                  </CityTile>
+                ))}
+                <Link href="/cities" className="shrink-0 w-[140px] h-[150px] rounded-2xl border-[1.5px] border-dashed border-cream-line flex flex-col items-center justify-center gap-1.5 text-center px-3">
+                  <span className="font-semibold text-[14px]">All cities</span>
+                  <span className="text-[12px] text-ink-muted">
+                    {moreToExplore > 0 ? (
+                      <>
+                        {row.items.slice(cities.length, cities.length + 3).map((t) => t.city).join(", ")}
+                        {moreToExplore > 3 ? ` +${moreToExplore - 3}` : ""}
+                      </>
+                    ) : (
+                      "Every city on MyGuide"
                     )}
-                    {popularTiles.map((t) => (
-                      <CityTile small key={t.city} href={cityHref(t)} city={t.city} photo={photoFor(t.city)} near={nearKeys.has(cityKey(t.city))} spots={t.spots} guides={t.guides} />
-                    ))}
-                    <Link href="/cities" className="shrink-0 w-[112px] h-[100px] rounded-2xl border-[1.5px] border-dashed border-cream-line flex flex-col items-center justify-center gap-1.5 text-center px-3">
-                      <span className="font-semibold text-[14px]">All cities</span>
-                      <span className="text-[12px] text-ink-muted">
-                        {moreToExplore > 0 ? (
-                          <>
-                            {popular.slice(popularTiles.length, popularTiles.length + 3).map((t) => t.city).join(", ")}
-                            {moreToExplore > 3 ? ` +${moreToExplore - 3}` : ""}
-                          </>
-                        ) : (
-                          "Every city on MyGuide"
-                        )}
-                      </span>
-                    </Link>
-                  </CityRow>
-                )}
-
-                {/* One follow suggestion at a time (16 Oct 2026): the row while you follow few people, else the spotlight. */}
-              </>
+                  </span>
+                </Link>
+              </div>
             }
           />
         )}
@@ -356,24 +304,6 @@ function feedKey(f: FeedEntry): string {
 }
 
 /** A row of city tiles that scrolls sideways, with "All cities" in the header when `all`. */
-function CityRow({ title, sub, all, children }: { title: string; sub?: string; all?: boolean; children: React.ReactNode }) {
-  return (
-    <section className="flex flex-col gap-2">
-      <div className="px-5 flex items-end justify-between gap-3">
-        <div className="min-w-0">
-          <h3 className="text-[15px] font-semibold">{title}</h3>
-          {sub && <p className="text-[12.5px] text-ink-muted">{sub}</p>}
-        </div>
-        {all && (
-          <Link href="/cities" className="shrink-0 text-[13px] font-medium text-terracotta-deep">
-            All cities →
-          </Link>
-        )}
-      </div>
-      <div className="flex gap-3 overflow-x-auto no-scrollbar px-5">{children}</div>
-    </section>
-  );
-}
 
 /** One city: picture, who knows it (children), and how many spots. */
 /** `small`: friends' and popular cities (16 Oct 2026); your own cities stay bigger. */
@@ -505,31 +435,4 @@ function FeedCard({ f, savedIds, signedIn, followable = false, viewerId, claps, 
   );
 }
 
-/** New here: the first tile of "Your cities" — the city you're in, waiting for your spots. */
-function StartTile({ href, photo, title, line, cta }: { href: string; photo?: CityPhoto; title: string; line: string; cta: string }) {
-  return (
-    <Link href={href} className="shrink-0 w-[220px] flex flex-col gap-2">
-      <span className="relative block">
-        <CityImage photo={photo} className="h-[140px] w-full rounded-2xl opacity-60" />
-        <span aria-hidden className="absolute inset-0 rounded-2xl bg-gradient-to-t from-black/60 to-black/10" />
-        <span className="absolute left-3 right-3 bottom-3 flex flex-col gap-1.5 text-white">
-          <span className="font-display text-[22px] leading-tight drop-shadow-[0_1px_4px_rgb(0_0_0/0.45)]">{title}</span>
-          <span className="text-[12px] leading-snug text-white/90">{line}</span>
-          <span className="self-start mt-0.5 inline-flex items-center gap-1 rounded-full bg-paper text-ink px-3 py-1 text-[12.5px] font-semibold">+ {cta}</span>
-        </span>
-      </span>
-    </Link>
-  );
-}
 
-/** The last tile of "Your cities": add spots in another city you know — even one helps friends going there. */
-function AddCityTile({ first = false }: { first?: boolean }) {
-  return (
-    <Link href="/record" className="shrink-0 w-[140px] flex flex-col gap-1.5">
-      <span className="h-[150px] w-full rounded-2xl border-2 border-dashed border-cream-line bg-paper/60 flex flex-col items-center justify-center gap-1.5 px-2.5 text-center hover:border-terracotta-soft">
-        <span className="w-8 h-8 rounded-full bg-terracotta-tint text-terracotta flex items-center justify-center text-[19px] leading-none">+</span>
-        <span className="text-[13px] font-semibold leading-tight">{first ? "A city you know" : "Another city you know"}</span>
-      </span>
-    </Link>
-  );
-}
