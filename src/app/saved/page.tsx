@@ -4,7 +4,7 @@ import { tidyCity } from "@/lib/places/cityName";
 import { PlaceTile } from "@/components/PlaceTile";
 import { SaveButton } from "@/components/SaveButton";
 import { EmptyState, LinkButton } from "@/components/ui";
-import { requireUser, toPublicUser } from "@/lib/auth";
+import { requireUser } from "@/lib/auth";
 import { listSavedGuides, listSavedPlaces } from "@/lib/guides";
 import { GuideCard } from "@/components/GuideCard";
 import { cx } from "@/components/ui";
@@ -36,7 +36,7 @@ export default async function SavedPage({ searchParams }: { searchParams: Promis
   }
   return (
     <AppShell>
-      <TopBar back={`/u/${user.username}`} title="Saved" avatarUser={toPublicUser(user)} />
+      <TopBar back="/my-places?tab=saved" title="Saved" />
       <div className="px-5 pt-3 flex gap-5 border-b border-line/70">
         {tabLink("places", "Places", saved.length)}
         {tabLink("guides", "Guides", guides.length)}

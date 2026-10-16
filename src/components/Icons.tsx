@@ -16,6 +16,9 @@ const base = (size = 24, p: P) => ({
 export const HomeIcon = ({ size, ...p }: P) => (
   <svg {...base(size, p)}><path d="M3 10.5L12 3l9 7.5" /><path d="M5 9.5V21h14V9.5" /></svg>
 );
+export const CompassIcon = ({ size, ...p }: P) => (
+  <svg {...base(size, p)}><circle cx="12" cy="12" r="9" /><path d="m15.5 8.5-2 5-5 2 2-5z" /></svg>
+);
 export const SearchIcon = ({ size, ...p }: P) => (
   <svg {...base(size, p)}><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
 );

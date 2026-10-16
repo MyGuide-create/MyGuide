@@ -5,8 +5,9 @@ import { and, eq, inArray } from "drizzle-orm";
 import { AppShell, Wordmark } from "@/components/AppShell";
 import { GoingSomewhere } from "@/components/GoingSomewhere";
 import { GuideCover } from "@/components/GuideCover";
-import { AskForGuideButton } from "@/components/AskForGuide";
 import { PlaceTile } from "@/components/PlaceTile";
+import { CityImage, CityTileImage } from "@/components/CityImage";
+import { SearchIcon } from "@/components/Icons";
 import { SaveButton } from "@/components/SaveButton";
 import { SendSpotsButton } from "@/components/SendSpotsButton";
 import { Avatar, LinkButton, cx } from "@/components/ui";
@@ -40,6 +41,8 @@ const first = (u: { displayName: string }) => u.displayName.split(" ")[0];
 const FEED_DAYS = 45;
 /** Home feed: about this many items, friends' first, the rest from everyone ("New on MyGuide"). */
 const FEED_TARGET = 15;
+/** Below this many friends' posts, "More on MyGuide" fills in. */
+const FEED_FILL_BELOW = 6;
 /** City tiles before "Explore more cities": friends' cities first, then the most active on MyGuide. */
 const CITY_TILES = 8;
 /** "Your cities": all of them, up to this many. */
@@ -119,7 +122,8 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   // New from friends: their spots, spots several friends now share, and newly published guides.
   // Then "New on MyGuide": everyone else's, filling up to FEED_TARGET (all of it when you follow nobody).
   const feed = capRuns(homeFeed(recs, followingGuides, FEED_DAYS), feedOwner).slice(0, FEED_TARGET);
-  const fillCount = feed.length >= FEED_TARGET ? 0 : Math.max(FEED_TARGET - feed.length, 4);
+  // Everyone's posts only fill in while friends' are thin (16 Oct 2026), so Explore stays short.
+  const fillCount = feed.length >= FEED_FILL_BELOW ? 0 : Math.max(FEED_TARGET - feed.length, 4);
   const everyone = fillCount ? await everyoneFeed(user?.id, new Set([...(user ? [user.id] : []), ...followingIds]), { days: 30, limit: fillCount }) : [];
   const feedPlaceIds = [...feed, ...everyone].flatMap((f) => (f.kind === "spots" ? f.recs.slice(0, 8).map((r) => r.place.id) : []));
   const savedIds = new Set<string>();
@@ -164,7 +168,6 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
     </section>
   );
 
-  const signupNext = (next: string, why?: string) => `/signup?next=${encodeURIComponent(next)}${why ? `&why=${why}` : ""}`;
 
   const tripWhen = !trip
     ? ""
@@ -187,7 +190,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
         <div className="flex items-center justify-between">
           <Wordmark />
           {user ? (
-            <Link href="/me" aria-label="Your profile"><Avatar user={user} size={34} /></Link>
+            <Link href="/search" aria-label="Search people, places and cities" className="w-10 h-10 -mr-2 rounded-full flex items-center justify-center text-ink hover:bg-cream-deep/60"><SearchIcon size={22} /></Link>
           ) : (
             <span className="flex items-center gap-3">
               <Link href="/login" className="text-[14px] font-medium text-ink-muted hover:text-ink">Log in</Link>
@@ -195,11 +198,13 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
             </span>
           )}
         </div>
-        <h1 className="mt-5 font-display text-[34px] leading-[1.05]">
-          {user ? `Going somewhere, ${first(user)}?` : "Going somewhere?"}
-        </h1>
-        {!user && <p className="mt-1.5 text-[14.5px] text-ink-muted">The spots your friends love, in every city they know.</p>}
-        <div className="mt-4">
+        {!user && (
+          <>
+            <h1 className="mt-5 font-display text-[34px] leading-[1.05]">Going somewhere?</h1>
+            <p className="mt-1.5 text-[14.5px] text-ink-muted">The spots your friends love, in every city they know.</p>
+          </>
+        )}
+        <div className={user ? "mt-3" : "mt-4"}>
           <GoingSomewhere />
         </div>
       </header>
@@ -288,29 +293,26 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
           </CityRow>
         )}
 
-        {spotlight && <SpotlightCard s={spotlight} reason={reasonLine(spotlight)} preview={previewSpotlight} />}
+        {/* One follow suggestion at a time (16 Oct 2026): the row while you follow few people, else the spotlight. */}
+        {spotlight && (!fewFollows || !peopleRow || previewSpotlight) && <SpotlightCard s={spotlight} reason={reasonLine(spotlight)} preview={previewSpotlight} />}
         {feed.length > 0 && (
           <section className="px-4 pt-8 flex flex-col gap-3">
             <h2 className="px-1 font-display text-[22px]">New from friends</h2>
             {feed.map((f) => <FeedCard key={feedKey(f)} f={f} savedIds={savedIds} signedIn={!!user} viewerId={user?.id} claps={clapsFor(f)} ownKeys={ownKeys} />)}
           </section>
         )}
-        {!fewFollows && peopleRow}
         {everyone.length > 0 && (
           <section className="px-4 pt-8 flex flex-col gap-3">
             <div className="px-1">
-              <h2 className="font-display text-[22px]">New on MyGuide</h2>
+              <h2 className="font-display text-[22px]">More on MyGuide</h2>
               <p className="text-[13px] text-ink-muted">{feed.length ? "More from people you don\u2019t follow yet." : "What people are recommending right now. Follow anyone whose taste you like."}</p>
             </div>
             {everyone.map((f) => <FeedCard key={feedKey(f)} f={f} savedIds={savedIds} signedIn={!!user} viewerId={user?.id} claps={clapsFor(f)} ownKeys={ownKeys} followable />)}
           </section>
         )}
 
-        <section className="px-4 pt-8 flex flex-col gap-3">
-          <div className="flex items-baseline justify-between px-1">
-            <h2 className="font-display text-[22px]">{help || wanted.list.some((w) => w.known.length > 0) ? "Friends heading somewhere" : "Where people are going"}</h2>
-            <Link href="/wishes" className="text-[14px] font-medium text-terracotta-deep">See all</Link>
-          </div>
+        {help && (
+          <section className="px-4 pt-8 flex flex-col gap-3">
           {help && (
             <div className="rounded-[20px] bg-ink text-cream p-4 flex flex-col gap-3">
               <span className="flex items-center gap-2.5">
@@ -341,58 +343,9 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
               </div>
             </div>
           )}
-          {wanted.list.length > 0 && (
-            <ul className="flex flex-col">
-              {wanted.list.map((w, i) => {
-                const lead = w.known[0] ?? w.others[0];
-                const extra = w.others.length - 1;
-                const friend = w.known.length > 0;
-                // Label where friends' wishes end and other people's begin.
-                const startsOthers = !friend && (i === 0 ? !!help : wanted.list[i - 1].known.length > 0);
-                return (
-                  <li key={w.group.city} className="flex flex-col">
-                    {startsOthers && <span className="pt-3 pb-1 px-1 text-[11.5px] font-semibold uppercase tracking-[0.08em] text-ink-muted">Others on MyGuide</span>}
-                  <span className="flex items-center gap-3 py-2.5 border-b border-line/80">
-                    <Link href={`/u/${lead.user.username}`} className="shrink-0"><Avatar user={lead.user} size={40} /></Link>
-                    <span className="flex-1 min-w-0">
-                      <span className="flex items-center gap-2 min-w-0">
-                        <span className="font-semibold text-[15px] truncate">
-                          {first(lead.user)}
-                          {extra > 0 ? ` +${extra}` : ""} · {w.group.city}
-                        </span>
-                        {!friend && user && <FollowPill userId={lead.user.id} signedIn next="/" />}
-                      </span>
-                      <span className="block text-[12.5px] text-ink-muted">
-                        {w.viewerSpots > 0 ? `Wants spots · you recommend ${w.viewerSpots} there` : cityOf.get(cityKey(w.group.city)) ? "Wants spots · your friends have some" : friend ? "Wants spots · nobody you follow has been yet" : "Wants spots"}
-                      </span>
-                    </span>
-                    {w.viewerSpots > 0 ? (
-                      <SendSpotsButton wishIds={w.others.map((p) => p.wish.id)} label="Send spots" />
-                    ) : (
-                      user && (
-                        <AskForGuideButton
-                          variant="outline"
-                          size="sm"
-                          forWish={{ id: lead.wish.id, city: lead.wish.city, country: lead.wish.country, userId: lead.user.id, name: lead.user.displayName }}
-                          label="Pass it on"
-                        />
-                      )
-                    )}
-                  </span>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-          {!help && wanted.list.length === 0 && <p className="px-1 text-[14px] text-ink-muted">No one&apos;s asked for spots yet.</p>}
-          <Link href={user ? `/u/${user.username}#wishes` : signupNext("/wishes")} className="self-start px-1 py-2 text-[14px] font-semibold text-ink">
-            + Going somewhere? Ask friends for spots
-          </Link>
-        </section>
+          </section>
+        )}
 
-        <p className="mt-8 text-center text-[12px] text-ink-faint">
-          Something broken or an idea? <Link href="/feedback?from=/" className="text-terracotta font-medium">Tell us</Link>
-        </p>
       </main>
     </AppShell>
   );
@@ -402,18 +355,6 @@ function feedKey(f: FeedEntry): string {
   if (f.kind === "guide") return `g:${f.card.guide.id}`;
   if (f.kind === "overlap") return `o:${f.spot.key}`;
   return `s:${f.user.id}:${f.city}:${f.at.getTime()}`;
-}
-
-/**
- * A city's picture: its iconic photo (Unsplash, see lib/cityPhotos), else a warm tile. Never a
- * guide cover or place photo, which can be anything (a plate of steak for Dubai).
- */
-function CityImage({ photo, className }: { photo?: CityPhoto; className?: string }) {
-  if (photo?.url) {
-    // eslint-disable-next-line @next/next/no-img-element
-    return <img src={photo.url} alt="" className={cx("shrink-0 object-cover bg-cream-deep", className)} loading="lazy" />;
-  }
-  return <span className={cx("shrink-0 block bg-gradient-to-br from-terracotta-soft to-terracotta", className)} />;
 }
 
 /** A row of city tiles that scrolls sideways, with "All cities" in the header when `all`. */
@@ -449,17 +390,6 @@ function CityTile({ href, city, photo, near, spots, guides, children }: { href: 
         {spots || !guides ? `${spots} spot${spots === 1 ? "" : "s"}` : `${guides} guide${guides === 1 ? "" : "s"}`}
       </span>
     </Link>
-  );
-}
-
-/** A city tile's picture with the name over a dark fade. */
-function CityTileImage({ photo, city }: { photo?: CityPhoto; city: string }) {
-  return (
-    <span className="relative block">
-      <CityImage photo={photo} className="h-[170px] w-full rounded-2xl" />
-      <span aria-hidden className="absolute inset-x-0 bottom-0 h-20 rounded-b-2xl bg-gradient-to-t from-black/50 to-transparent" />
-      <span className="absolute left-3 bottom-2.5 right-2 font-display text-[20px] leading-tight text-white drop-shadow-[0_1px_4px_rgb(0_0_0/0.45)] truncate">{city}</span>
-    </span>
   );
 }
 

@@ -10,7 +10,7 @@ export function GoingSomewhere({ basePath = "/city" }: { basePath?: string } = {
   return (
     <CityPicker
       big
-      placeholder="Search a city, e.g. Tashkent"
+      placeholder="Where are you going?"
       onPick={(c) => go({ name: c.city, ...(c.country ? { country: c.country } : {}), ...(Number.isFinite(c.lat) ? { lat: String(c.lat), lng: String(c.lng) } : {}) })}
       onFreeText={(text) => go({ name: text })}
     />

@@ -100,8 +100,8 @@ export function SaveButton({
           <BookmarkIcon size={16} filled className="text-terracotta-soft shrink-0" />
           {toast === "first" ? (
             <span>
-              Saved. Find your saved spots any time under <b>You → Saved</b>, or filter a city page by them.{" "}
-              <Link href="/saved" className="underline underline-offset-2 font-medium">Open</Link>
+              Saved. Find it any time under <b>My spots → Saved</b>.{" "}
+              <Link href="/my-places?tab=saved" className="underline underline-offset-2 font-medium">Open</Link>
             </span>
           ) : (
             <span>Saved</span>
