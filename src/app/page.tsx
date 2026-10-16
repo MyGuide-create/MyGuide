@@ -119,23 +119,28 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   const photoFor = (city: string) => photos.get(cityPhotoKey(city));
   // The cities map (16 Oct 2026): yours, your friends', then the most active elsewhere on MyGuide.
   const mapCities: MapCity[] = [];
-  const onMap = new Set<string>();
+  // One dot per real city: names that resolve to the same place (aliases, spellings) are merged.
+  const onMap = new Map<string, MapCity>();
   const me = user ? toPublicUser(user) : null;
   for (const c of [...known, ...popular.map((t) => ({ ...t, friends: [] as PublicUser[], mine: 0, more: true }))]) {
-    const k = cityKey(c.city);
     const at = findCity(c.city);
-    if (onMap.has(k) || !at) continue;
-    onMap.add(k);
-    mapCities.push({
-      city: c.city,
-      href: cityHref(c),
-      lat: at.lat,
-      lng: at.lng,
-      spots: c.spots,
-      mine: c.mine > 0,
-      friends: c.friends.filter((f) => f.id !== me?.id),
-      more: "more" in c && !c.friends.length && !c.mine,
-    });
+    if (!at) continue;
+    const k = `${at.city}|${at.country}`.toLowerCase();
+    const friends = c.friends.filter((f) => f.id !== me?.id);
+    const isMore = "more" in c && !c.friends.length && !c.mine;
+    const prev = onMap.get(k);
+    if (prev) {
+      // Already there from a better list (yours/friends'): add this name's spots and people.
+      if (isMore) continue;
+      prev.spots += c.spots;
+      prev.mine = prev.mine || c.mine > 0;
+      for (const f of friends) if (!prev.friends.some((x) => x.id === f.id)) prev.friends.push(f);
+      prev.more = false;
+      continue;
+    }
+    const entry: MapCity = { city: c.city, href: cityHref(c), lat: at.lat, lng: at.lng, spots: c.spots, mine: c.mine > 0, friends, more: isMore };
+    onMap.set(k, entry);
+    mapCities.push(entry);
   }
 
   // New from friends: their spots, spots several friends now share, and newly published guides.

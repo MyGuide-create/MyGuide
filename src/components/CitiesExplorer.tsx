@@ -24,6 +24,10 @@ type Box = { x: number; y: number; w: number; h: number };
 type Cluster = { key: string; x: number; y: number; members: MapCity[] };
 
 const MAP_H = 230;
+/** Dots closer than this (px) merge into a group. */
+const MERGE_PX = 50;
+/** Closest zoom: about 5 degrees of longitude across the map. */
+const MIN_W = 5;
 /** Map units: x = lng + 180, y = 76 − lat (the dots file uses the same). */
 const ux = (c: { lng: number }) => c.lng + 180;
 const uy = (c: { lat: number }) => 76 - c.lat;
@@ -105,6 +109,8 @@ function WorldMap({ cities }: { cities: MapCity[] }) {
   vbRef.current = vb;
   const [settled, setSettled] = useState(true);
   const [sel, setSel] = useState<MapCity | null>(null);
+  /** A group that cannot be pulled apart on the map: shown as a list under it. */
+  const [group, setGroup] = useState<MapCity[] | null>(null);
   const anim = useRef<number | null>(null);
 
   const proj = useCallback((c: { x: number; y: number }, b: Box) => [((c.x - b.x) / b.w) * width, ((c.y - b.y) / b.h) * MAP_H] as const, [width]);
@@ -114,7 +120,7 @@ function WorldMap({ cities }: { cities: MapCity[] }) {
     let groups = cities.map((c) => ({ m: [c], x: ux(c), y: uy(c) }));
     for (;;) {
       let best: [number, number] | null = null;
-      let bd = 50;
+      let bd = MERGE_PX;
       for (let i = 0; i < groups.length; i++)
         for (let j = i + 1; j < groups.length; j++) {
           const [ax, ay] = proj(groups[i], vb);
@@ -152,18 +158,30 @@ function WorldMap({ cities }: { cities: MapCity[] }) {
     };
     anim.current = requestAnimationFrame(step);
   };
+  /**
+   * Tap a group: zoom in just enough to show its cities (no fixed floor, so nested groups keep
+   * getting closer). When they can't be pulled apart (same spot, or already zoomed right in),
+   * list them instead of zooming to the same view again (16 Oct 2026).
+   */
   const zoomTo = (members: MapCity[]) => {
     setSel(null);
+    setGroup(null);
     const xs = members.map(ux);
     const ys = members.map(uy);
     const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
-    let w = Math.max(x1 - x0, 26) * 1.45;
-    let h = (w * MAP_H) / width;
-    const hh = Math.max(y1 - y0, 8) * 1.7;
-    if (hh > h) {
-      h = hh;
-      w = (h * width) / MAP_H;
+    // Closest pair, in map units: the view must be at most this wide for them to sit apart.
+    let minD = Infinity;
+    for (let i = 0; i < members.length; i++)
+      for (let j = i + 1; j < members.length; j++) minD = Math.min(minD, Math.hypot(xs[i] - xs[j], ys[i] - ys[j]));
+    const needW = (minD * width) / (MERGE_PX * 1.15);
+    const fitW = Math.max(x1 - x0, ((y1 - y0) * width) / MAP_H) * 1.6;
+    const w = Math.max(fitW, MIN_W);
+    const cur = vbRef.current;
+    if (needW < MIN_W || w > cur.w * 0.85) {
+      setGroup(members);
+      return;
     }
+    const h = (w * MAP_H) / width;
     tween({ x: (x0 + x1) / 2 - w / 2, y: (y0 + y1) / 2 - h / 2, w, h });
   };
   const zoomed = vb.w < world.w * 0.9;
@@ -187,11 +205,16 @@ function WorldMap({ cities }: { cities: MapCity[] }) {
   };
   const onUp = () => {
     if (drag.current?.moved) setSettled(true);
-    else if (drag.current) setSel(null);
+    else if (drag.current) {
+      setSel(null);
+      setGroup(null);
+    }
     drag.current = null;
   };
 
   const dotR = 0.9 * Math.pow(vb.w / 300, 0.55);
+  // The dot grid is coarse (about 2° apart): fade it when zoomed right in, where it would only show a few big blobs.
+  const landOpacity = Math.max(0.12, Math.min(1, (vb.w - 6) / 40));
   return (
     <div className="flex flex-col gap-2.5">
       <div
@@ -203,7 +226,7 @@ function WorldMap({ cities }: { cities: MapCity[] }) {
         onPointerUp={onUp}
         onPointerLeave={onUp}
       >
-        <svg viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`} preserveAspectRatio="none" className="absolute inset-0 w-full h-full" aria-hidden style={{ ["--r" as string]: `${dotR}px` }}>
+        <svg viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`} preserveAspectRatio="none" className="absolute inset-0 w-full h-full" aria-hidden style={{ ["--r" as string]: `${dotR}px`, opacity: landOpacity }}>
           <Land />
         </svg>
         {cities.map((c) => {
@@ -220,6 +243,7 @@ function WorldMap({ cities }: { cities: MapCity[] }) {
                 aria-label={`${c.city}, ${c.spots} spots`}
                 onClick={(e) => {
                   e.stopPropagation();
+                  setGroup(null);
                   setSel(c);
                 }}
                 className={cx(
@@ -263,6 +287,7 @@ function WorldMap({ cities }: { cities: MapCity[] }) {
             onClick={(e) => {
               e.stopPropagation();
               setSel(null);
+              setGroup(null);
               tween(world);
             }}
             className="absolute left-2.5 top-2.5 inline-flex items-center gap-0.5 rounded-full border border-line bg-paper pl-1.5 pr-3 py-1 text-[12px] font-medium"
@@ -277,6 +302,32 @@ function WorldMap({ cities }: { cities: MapCity[] }) {
         </span>
         )}
       </div>
+      {group && !sel && (
+        <div className="rounded-[20px] border border-line bg-paper p-3 flex flex-col gap-1 fade-up" role="region" aria-label="Cities here">
+          <div className="flex items-center justify-between px-1">
+            <span className="text-[15px] font-semibold">{group.length} cities here</span>
+            <button type="button" aria-label="Close" onClick={() => setGroup(null)} className="w-8 h-8 -mr-1 rounded-full flex items-center justify-center text-ink-muted">
+              <XIcon size={16} />
+            </button>
+          </div>
+          <ul className="flex flex-col divide-y divide-line">
+            {[...group].sort((a, b) => b.spots - a.spots).map((c) => (
+              <li key={c.city}>
+                <Link href={c.href} className="flex items-center gap-3 px-1 py-2.5">
+                  <span className={cx("w-3 h-3 rounded-full shrink-0", c.mine ? "bg-terracotta" : c.more ? "bg-ink-faint/70" : "bg-white border-2 border-terracotta")} />
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-[14.5px] font-semibold truncate">{c.city}</span>
+                    <span className="block text-[12.5px] text-ink-muted truncate">
+                      {[c.friends.length ? `${c.friends.length} friend${c.friends.length === 1 ? "" : "s"}` : "", c.mine ? "you" : "", `${c.spots} spot${c.spots === 1 ? "" : "s"}`].filter(Boolean).join(" · ")}
+                    </span>
+                  </span>
+                  <span aria-hidden className="text-ink-faint">›</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {sel && (
         <div className="rounded-[20px] border border-line bg-paper p-3 flex flex-col gap-3 fade-up" role="region" aria-label={`${sel.city} preview`}>
           <div className="flex items-start gap-3">
