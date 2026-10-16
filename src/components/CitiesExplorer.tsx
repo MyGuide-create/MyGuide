@@ -186,13 +186,59 @@ function WorldMap({ cities }: { cities: MapCity[] }) {
   };
   const zoomed = vb.w < world.w * 0.9;
 
-  // Drag to pan.
+  // Drag to pan, pinch to zoom (two fingers), and trackpad / mouse-wheel zoom (16 Oct 2026).
   const drag = useRef<{ x: number; y: number; vb: Box; moved: boolean } | null>(null);
+  const pts = useRef(new Map<number, { x: number; y: number }>());
+  const pinch = useRef<{ d0: number; vb: Box; ax: number; ay: number } | null>(null);
+  /** A pinch just ended: the lifting finger isn't a tap. */
+  const pinched = useRef(false);
+  const clampW = (w: number) => Math.min(world.w, Math.max(MIN_W, w));
+  const local = (e: { clientX: number; clientY: number }) => {
+    const r = boxRef.current?.getBoundingClientRect();
+    return { x: e.clientX - (r?.left ?? 0), y: e.clientY - (r?.top ?? 0) };
+  };
+  /** Zoom `base` by `scale`, keeping map point (ax, ay) under screen point (mx, my). */
+  const zoomAt = (base: Box, scale: number, ax: number, ay: number, mx: number, my: number): Box => {
+    const w = clampW(base.w * scale);
+    const h = (w * MAP_H) / width;
+    return { x: ax - (mx / width) * w, y: ay - (my / MAP_H) * h, w, h };
+  };
+  const startPinch = () => {
+    const [p1, p2] = [...pts.current.values()];
+    const mx = (p1.x + p2.x) / 2;
+    const my = (p1.y + p2.y) / 2;
+    const v = { ...vbRef.current };
+    if (anim.current) cancelAnimationFrame(anim.current);
+    pinch.current = { d0: Math.max(1, Math.hypot(p1.x - p2.x, p1.y - p2.y)), vb: v, ax: v.x + (mx / width) * v.w, ay: v.y + (my / MAP_H) * v.h };
+    drag.current = null;
+    setSettled(false);
+  };
   const onDown = (e: React.PointerEvent) => {
+    pts.current.set(e.pointerId, local(e));
+    if (pts.current.size === 2) {
+      // Keep both fingers' events on the map while pinching (taps on dots still work with one finger).
+      for (const id of pts.current.keys()) {
+        try {
+          boxRef.current?.setPointerCapture(id);
+        } catch {
+          /* pointer already gone */
+        }
+      }
+      startPinch();
+      return;
+    }
     if ((e.target as HTMLElement).closest("button,a")) return;
     drag.current = { x: e.clientX, y: e.clientY, vb: { ...vbRef.current }, moved: false };
   };
   const onMove = (e: React.PointerEvent) => {
+    if (pts.current.has(e.pointerId)) pts.current.set(e.pointerId, local(e));
+    const pc = pinch.current;
+    if (pc && pts.current.size >= 2) {
+      const [p1, p2] = [...pts.current.values()];
+      const d = Math.max(1, Math.hypot(p1.x - p2.x, p1.y - p2.y));
+      setVb(zoomAt(pc.vb, pc.d0 / d, pc.ax, pc.ay, (p1.x + p2.x) / 2, (p1.y + p2.y) / 2));
+      return;
+    }
     const d = drag.current;
     if (!d) return;
     const dx = e.clientX - d.x;
@@ -203,7 +249,22 @@ function WorldMap({ cities }: { cities: MapCity[] }) {
     }
     if (d.moved) setVb({ ...d.vb, x: d.vb.x - (dx / width) * d.vb.w, y: d.vb.y - (dy / MAP_H) * d.vb.h });
   };
-  const onUp = () => {
+  const onUp = (e: React.PointerEvent) => {
+    pts.current.delete(e.pointerId);
+    if (pinch.current) {
+      if (pts.current.size < 2) {
+        pinch.current = null;
+        pinched.current = true;
+        setSettled(true);
+      }
+      return;
+    }
+    if (pinched.current) {
+      // The last finger of a pinch lifting: not a tap.
+      if (pts.current.size === 0) pinched.current = false;
+      drag.current = null;
+      return;
+    }
     if (drag.current?.moved) setSettled(true);
     else if (drag.current) {
       setSel(null);
@@ -211,6 +272,30 @@ function WorldMap({ cities }: { cities: MapCity[] }) {
     }
     drag.current = null;
   };
+  // Trackpad pinch and mouse wheel (desktop). Non-passive so the page doesn't scroll instead.
+  const wheelEnd = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    const el = boxRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      if (anim.current) cancelAnimationFrame(anim.current);
+      const r = el.getBoundingClientRect();
+      const mx = e.clientX - r.left;
+      const my = e.clientY - r.top;
+      const v = vbRef.current;
+      // ctrlKey = a trackpad pinch: its deltas are small, so it gets a stronger factor.
+      const scale = Math.exp(e.deltaY * (e.ctrlKey ? 0.01 : 0.0015));
+      setSettled(false);
+      setVb(zoomAt(v, scale, v.x + (mx / width) * v.w, v.y + (my / MAP_H) * v.h, mx, my));
+      if (wheelEnd.current) clearTimeout(wheelEnd.current);
+      wheelEnd.current = setTimeout(() => setSettled(true), 180);
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+    // zoomAt only depends on width/world, both in deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [width, world]);
 
   const dotR = 0.9 * Math.pow(vb.w / 300, 0.55);
   // The dot grid is coarse (about 2° apart): fade it when zoomed right in, where it would only show a few big blobs.
@@ -225,6 +310,7 @@ function WorldMap({ cities }: { cities: MapCity[] }) {
         onPointerMove={onMove}
         onPointerUp={onUp}
         onPointerLeave={onUp}
+        onPointerCancel={onUp}
       >
         <svg viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`} preserveAspectRatio="none" className="absolute inset-0 w-full h-full" aria-hidden style={{ ["--r" as string]: `${dotR}px`, opacity: landOpacity }}>
           <Land />
