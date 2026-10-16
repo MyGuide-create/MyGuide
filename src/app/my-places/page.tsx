@@ -11,6 +11,9 @@ import { orderedCategories } from "@/lib/places/order";
 import { EmptyState, LinkButton, cx } from "@/components/ui";
 import { requireUser } from "@/lib/auth";
 import { getDb } from "@/lib/db";
+import { placeReactions, users } from "@/lib/db/schema";
+import { and, eq, inArray } from "drizzle-orm";
+import { spotKey } from "@/lib/citySpots";
 import { loadMyPlaces, NUDGE_MIN, unguidedByCity, type MyPlace } from "@/lib/myPlaces";
 import { placeArea } from "@/lib/places/neighbourhood";
 import { cityPhotoKey, cityPhotosFor } from "@/lib/cityPhotos";
@@ -94,7 +97,20 @@ export default async function MyPlacesPage({ searchParams }: { searchParams: Pro
     const focusCity = pick.city;
     const trip = pick.trip;
     const cityRows = trip ? [] : (groups.get(focusCity) ?? []);
-    const savedHere = trip ? saved.filter((sv) => savedCity(sv).toLowerCase() === focusCity.toLowerCase()) : [];
+    // Friends' spots you saved here (16 Oct 2026), minus any that are already yours.
+    const ownKeys = new Set(cityRows.map((r) => spotKey(r.place)));
+    const savedHere = focusCity ? saved.filter((sv) => savedCity(sv).toLowerCase() === focusCity.toLowerCase() && !ownKeys.has(spotKey(sv.place))) : [];
+    const db = await getDb();
+    const savedOwners = new Map(
+      savedHere.length
+        ? (await db.select({ id: users.id, name: users.displayName }).from(users).where(inArray(users.id, [...new Set(savedHere.map((sv) => sv.guide.ownerId))]))).map((u) => [u.id, u.name.split(" ")[0]])
+        : [],
+    );
+    const beenIds = new Set(
+      savedHere.length
+        ? (await db.select({ id: placeReactions.placeId }).from(placeReactions).where(and(eq(placeReactions.userId, user.id), eq(placeReactions.kind, "been"), inArray(placeReactions.placeId, savedHere.map((sv) => sv.place.id))))).map((r) => r.id)
+        : [],
+    );
     const cityShared = cityRows.filter((p) => p.recommended).length;
     const youreHere = trip ? !!hereCity && hereCity.city.toLowerCase() === focusCity.toLowerCase() : isHere(focusCity);
     // The city row: this one first, then yours by most spots, then Saved and Other.
@@ -144,6 +160,7 @@ export default async function MyPlacesPage({ searchParams }: { searchParams: Pro
       recommended: false,
       shared: false,
       inStash: false,
+      saved: { from: savedOwners.get(guide.ownerId) ?? "", been: beenIds.has(place.id) },
     }));
     const cityLink = `/city?${new URLSearchParams({ name: focusCity }).toString()}`;
     return (
@@ -183,7 +200,7 @@ export default async function MyPlacesPage({ searchParams }: { searchParams: Pro
             )}
           </div>
           <p className="px-5 mt-1 text-[13px] text-ink-muted">
-            {trip ? "No spots of yours here yet" : `${cityRows.length} spot${cityRows.length === 1 ? "" : "s"}${cityShared ? ` · ${cityShared} recommended` : ""}`}
+            {trip ? "No spots of yours here yet" : `${cityRows.length} spot${cityRows.length === 1 ? "" : "s"}${cityShared ? ` · ${cityShared} recommended` : ""}${savedSpots.length ? ` · ${savedSpots.length} saved` : ""}`}
           </p>
           {Number.isFinite(imported) && <div className="px-5 mt-3">{importBanner}</div>}
           {!trip && (
@@ -227,7 +244,7 @@ export default async function MyPlacesPage({ searchParams }: { searchParams: Pro
           ) : (
             <>
               {focusCity && (unguided.get(focusCity)?.length ?? 0) >= NUDGE_MIN && <GuideNudge city={focusCity} count={unguided.get(focusCity)!.length} />}
-              <MySpotsCity city={focusCity} spots={spotsOf(cityRows)} categories={orderedCategories(cityRows.map((r) => r.place))} autoNear={youreHere} remember />
+              <MySpotsCity city={focusCity} spots={[...spotsOf(cityRows), ...savedSpots]} categories={orderedCategories([...cityRows.map((r) => r.place), ...savedSpots])} autoNear={youreHere} remember />
             </>
           )}
         </main>

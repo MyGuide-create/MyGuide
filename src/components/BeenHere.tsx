@@ -25,6 +25,7 @@ export function BeenHere({
   signedIn,
   youHaveIt,
   variant = "chip",
+  refreshOnDone = false,
 }: {
   placeId: string;
   placeName: string;
@@ -36,6 +37,8 @@ export function BeenHere({
   youHaveIt: boolean;
   /** "chip": "Been here?" on a place page. "icon": a small ✓ on a city page row (14 Oct 2026). */
   variant?: "chip" | "icon";
+  /** Reload the page once it's yours (My spots: the saved row moves into your own spots). */
+  refreshOnDone?: boolean;
 }) {
   const path = usePathname();
   const router = useRouter();
@@ -99,7 +102,7 @@ export function BeenHere({
   /** Close the sheet; on a city page row, refresh once it's yours so the row shows ✓ Yours. */
   const close = () => {
     setOpen(false);
-    if (done && variant === "icon") router.refresh();
+    if (done && (variant === "icon" || refreshOnDone)) router.refresh();
   };
 
   const vouch = async () => {

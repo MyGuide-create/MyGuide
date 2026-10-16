@@ -4,7 +4,8 @@ import { and, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getCurrentUser } from "../auth";
 import { getDb } from "../db";
-import { follows, guides, placeReactions, places, savedGuides, savedPlaces, users } from "../db/schema";
+import { follows, guides, notifications, placeReactions, places, savedGuides, savedPlaces, users } from "../db/schema";
+import { newId } from "../utils";
 
 /** "You've saved 3 of Sami's spots. Follow Sami?" — after a save, when you don't follow them yet. */
 export interface FollowNudge {
@@ -20,8 +21,11 @@ export async function toggleSavedPlace(placeId: string): Promise<{ saved: boolea
   const db = await getDb();
   const where = and(eq(savedPlaces.userId, user.id), eq(savedPlaces.placeId, placeId));
   const existing = await db.query.savedPlaces.findFirst({ where });
+  // "Shaz saved Orfali Bros" in the owner's Activity (16 Oct 2026); unsaving takes it back.
+  const savedNote = and(eq(notifications.type, "spot_saved"), eq(notifications.actorId, user.id), eq(notifications.placeId, placeId));
   if (existing) {
     await db.delete(savedPlaces).where(where);
+    await db.delete(notifications).where(savedNote);
   } else {
     await db.insert(savedPlaces).values({ userId: user.id, placeId, createdAt: new Date() }).onConflictDoNothing();
   }
@@ -37,6 +41,9 @@ export async function toggleSavedPlace(placeId: string): Promise<{ saved: boolea
     .limit(1);
   const o = owner[0];
   if (!o || o.id === user.id) return { saved: true, signedIn: true };
+  const guideOf = await db.select({ id: places.guideId }).from(places).where(eq(places.id, placeId)).limit(1);
+  if (!(await db.query.notifications.findFirst({ where: savedNote })))
+    await db.insert(notifications).values({ id: newId(), userId: o.id, type: "spot_saved", actorId: user.id, guideId: guideOf[0]?.id ?? null, placeId, createdAt: new Date() });
   const already = await db.query.follows.findFirst({ where: and(eq(follows.followerId, user.id), eq(follows.followingId, o.id)) });
   if (already) return { saved: true, signedIn: true };
   const [{ n }] = await db

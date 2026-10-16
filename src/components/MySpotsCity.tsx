@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { GuideMap } from "./GuideMap";
-import { CheckIcon, ChevronDown, LocateIcon } from "./Icons";
+import { BookmarkIcon, CheckIcon, ChevronDown, LocateIcon } from "./Icons";
+import { BeenHere } from "./BeenHere";
 import { PlaceTile } from "./PlaceTile";
 import { RecommendToggle } from "./RecommendToggle";
 import { cx } from "./ui";
@@ -29,12 +30,16 @@ export interface MySpot {
   shared: boolean;
   /** In your My spots list (so Recommend can be switched here). */
   inStash: boolean;
+  /** Someone else's spot you saved (16 Oct 2026): who it's from, and whether you've marked it been. */
+  saved?: { from: string; been: boolean };
 }
 
 type Here = { lat: number; lng: number };
 
 /** The city you last opened in My spots, so it opens there next time when we can't tell where you are. */
 export const LAST_CITY_COOKIE = "mg_last_city";
+/** The "Saved" chip: spots of other people's you bookmarked here. */
+const SAVED = "__saved";
 /** Set when you turn Near me off, so it stays off. */
 const NEAR_OFF = "mg_near_off";
 
@@ -131,7 +136,7 @@ export function MySpotsCity({
   }, [autoNear]);
 
   const shown = useMemo(() => {
-    const list = cat ? spots.filter((s) => s.category === cat) : spots;
+    const list = cat === SAVED ? spots.filter((s) => s.saved) : cat ? spots.filter((s) => s.category === cat) : spots;
     if (!near || !here) return list.map((s) => ({ s, d: null as number | null }));
     return list
       .map((s) => ({ s, d: s.lat != null && s.lng != null ? metres(here, { lat: s.lat, lng: s.lng }) : null }))
@@ -142,6 +147,10 @@ export function MySpotsCity({
   const pinned = shown.filter(({ s }) => s.lat != null && s.lng != null);
   const grouped = !cat && !near;
   const count = (c: string) => spots.filter((s) => s.category === c).length;
+  const savedSpots = spots.filter((s) => s.saved);
+  const ownSpots = spots.filter((s) => !s.saved);
+  // Grouped by category: your spots, with saved ones in their own group at the end (just saved ones on a trip).
+  const base = ownSpots.length ? ownSpots : spots;
 
   return (
     <>
@@ -158,9 +167,9 @@ export function MySpotsCity({
           >
             <LocateIcon size={15} /> {locating ? "Finding you…" : "Near me"}
           </button>
-          {categories.length > 1 && <span aria-hidden className="shrink-0 w-px h-5 bg-line" />}
-          {categories.length > 1 &&
-            [null, ...categories].map((c) => (
+          {(categories.length > 1 || savedSpots.length > 0) && <span aria-hidden className="shrink-0 w-px h-5 bg-line" />}
+          {(categories.length > 1 || savedSpots.length > 0) &&
+            [null, ...(savedSpots.length && ownSpots.length ? [SAVED] : []), ...(categories.length > 1 ? categories : [])].map((c) => (
               <button
                 key={c ?? "all"}
                 type="button"
@@ -171,8 +180,9 @@ export function MySpotsCity({
                   cat === c ? "bg-ink text-cream border-ink font-semibold" : "bg-paper border-line text-ink font-medium",
                 )}
               >
-                {c ?? "All"}
-                {c && <span className={cx("ml-1.5 text-[12px]", cat === c ? "text-cream/70" : "text-ink-faint")}>{count(c)}</span>}
+                {c === SAVED && <BookmarkIcon size={12} className="inline -mt-0.5 mr-1" />}
+                {c === SAVED ? "Saved" : (c ?? "All")}
+                {c && <span className={cx("ml-1.5 text-[12px]", cat === c ? "text-cream/70" : "text-ink-faint")}>{c === SAVED ? savedSpots.length : count(c)}</span>}
               </button>
             ))}
         </div>
@@ -204,13 +214,13 @@ export function MySpotsCity({
       )}
 
       {grouped ? (
-        categories.map((c) => {
-          const inCat = spots.filter((s) => s.category === c);
+        [...categories.filter((c) => base.some((s) => s.category === c)), ...(savedSpots.length && ownSpots.length ? [SAVED] : [])].map((c) => {
+          const inCat = c === SAVED ? savedSpots : base.filter((s) => s.category === c);
           return (
             <details key={c || "_none"} open className="group/cat">
               <summary className="list-none [&::-webkit-details-marker]:hidden cursor-pointer select-none px-1 flex items-center gap-2 min-h-[32px] group-open/cat:mb-2">
                 <h2 className="flex items-baseline gap-2 min-w-0">
-                  <span className="font-display text-[19px] truncate">{c || "Other"}</span>
+                  <span className="font-display text-[19px] truncate">{c === SAVED ? "Saved from friends" : c || "Other"}</span>
                   <span className="text-[12px] text-ink-faint">{inCat.length}</span>
                 </h2>
                 <ChevronDown size={17} aria-hidden className="shrink-0 text-ink-muted transition-transform -rotate-90 group-open/cat:rotate-0" />
@@ -226,7 +236,7 @@ export function MySpotsCity({
       ) : (
         <section className="flex flex-col gap-2">
           <p className="px-1 text-[12.5px] text-ink-muted">
-            {shown.length} {cat ?? "spot"}
+            {shown.length} {cat === SAVED ? "saved" : (cat ?? "spot")}
             {shown.length === 1 || cat ? "" : "s"}
             {near ? " · nearest first" : ""}
           </p>
@@ -258,9 +268,18 @@ function Row({ s, city, d, showCat }: { s: MySpot; city: string; d: number | nul
           )}
           {s.words ? <span className="block text-[12px] text-ink italic truncate">“{s.words}”</span> : <span className="block text-[11.5px] text-ink-faint">{s.added}</span>}
           {s.guides.length > 0 && <span className="block text-[11.5px] text-sage truncate">In {s.guides.join(", ")}</span>}
+          {s.saved && (
+            <span className="block text-[11.5px] text-terracotta-deep truncate">
+              <BookmarkIcon size={11} filled className="inline -mt-0.5 mr-1" />
+              Saved{s.saved.from ? ` from ${s.saved.from}` : ""}
+            </span>
+          )}
         </span>
       </Link>
-      {s.recommended && !s.shared ? (
+      {s.saved ? (
+        // Been? Recommend it and it becomes one of your spots; or just mark it been.
+        <BeenHere placeId={s.id} placeName={s.name} ownerFirst={s.saved.from} initial={s.saved.been} count={0} signedIn youHaveIt={false} refreshOnDone />
+      ) : s.recommended && !s.shared ? (
         // Public through a published guide: recommended already, nothing to switch here.
         <span title="In a public guide" className="shrink-0 inline-flex items-center gap-1 rounded-full px-2.5 py-1.5 text-[11.5px] font-semibold border bg-sage-tint border-sage-soft text-ink">
           <CheckIcon size={12} /> Recommended

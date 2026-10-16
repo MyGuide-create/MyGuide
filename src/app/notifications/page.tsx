@@ -2,7 +2,7 @@ import Link from "next/link";
 import { and, desc, eq, inArray, notInArray } from "drizzle-orm";
 import { AppShell, TopBar } from "@/components/AppShell";
 import { GuideCard } from "@/components/GuideCard";
-import { ChatIcon, ForkIcon, LockIcon, PinIcon, PlusIcon, ShareIcon, SparkleIcon, UserIcon } from "@/components/Icons";
+import { BookmarkIcon, ChatIcon, ForkIcon, LockIcon, PinIcon, PlusIcon, ShareIcon, SparkleIcon, UserIcon } from "@/components/Icons";
 import { Avatar, Button, EmptyState, LinkButton } from "@/components/ui";
 import { respondToFollowRequest } from "@/lib/actions/social";
 import { requireUser, toPublicUser } from "@/lib/auth";
@@ -131,6 +131,11 @@ export default async function NotificationsPage() {
                       {n.note ? <span className="block text-[13px] italic text-ink/85">“{n.note}”</span> : null}
                     </>
                   )}
+                  {n.type === "spot_saved" && (
+                    <>
+                      {who} saved {n.placeId && placeMap.get(n.placeId) ? <span className="font-medium">{placeMap.get(n.placeId)!.name}</span> : "your spot"}
+                    </>
+                  )}
                   {n.type === "clap" && (
                     <>
                       {who} 👏 {rawGuide ? <>your guide <span className="font-display text-[16px]">“{rawGuide.title}”</span></> : <>your {n.city ? <b className="font-semibold">{n.city}</b> : null} spot{n.count === 1 ? "" : "s"}</>}
@@ -221,6 +226,7 @@ export default async function NotificationsPage() {
                     {n.type === "place_comment" && <ChatIcon size={12} />}
                     {n.type === "guide_published" && <PlusIcon size={12} />}
                     {n.type === "places_added" && <PinIcon size={12} />}
+                    {n.type === "spot_saved" && <BookmarkIcon size={12} />}
                     {n.type === "guide_used" && <ForkIcon size={12} />}
                     {n.type === "spots_sent" && <PinIcon size={12} />}
                     {(n.type === "wish_granted" || n.type === "guide_request" || n.type === "request_declined" || n.type === "request_passed" || n.type === "request_passed_done") && <SparkleIcon size={12} />}
@@ -228,6 +234,9 @@ export default async function NotificationsPage() {
                     {timeAgo(n.createdAt)}
                   </span>
                   {n.type === "wish_granted" && rawGuide && <Link href={`/g/${rawGuide.slug}`} className="font-medium text-terracotta">Open your guide →</Link>}
+                  {n.type === "spot_saved" && rawGuide && n.placeId && (
+                    <Link href={`/g/${rawGuide.slug}/p/${n.placeId}`} className="font-medium text-terracotta">See the place →</Link>
+                  )}
                   {n.type === "vouched" && rawGuide && n.placeId && (
                     <Link href={`/g/${rawGuide.slug}/p/${n.placeId}`} className="font-medium text-terracotta">See the place →</Link>
                   )}
