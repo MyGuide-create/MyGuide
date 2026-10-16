@@ -19,7 +19,7 @@ export function SaveButton({
   placeId: string;
   initial: boolean;
   signedIn: boolean;
-  variant?: "icon" | "pill";
+  variant?: "icon" | "pill" | "bar";
   className?: string;
 }) {
   const [saved, setSaved] = useState(initial);
@@ -47,15 +47,17 @@ export function SaveButton({
   const path = usePathname();
   const label = saved ? "Saved" : "Save";
   const base =
-    variant === "pill"
+    variant === "bar"
+      ? cx("flex-1 inline-flex items-center justify-center gap-2 rounded-full h-12 text-[15px] font-semibold", saved ? "bg-terracotta-tint text-terracotta-deep border border-terracotta-soft" : "bg-terracotta text-white")
+      : variant === "pill"
       ? cx("inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12.5px] font-medium", saved ? "border-terracotta bg-terracotta-tint text-terracotta-deep" : "border-line text-ink")
       : cx("w-9 h-9 -m-1.5 flex items-center justify-center rounded-full", saved ? "text-terracotta" : "text-ink-faint hover:text-terracotta");
 
   if (!signedIn) {
     return (
       <Link href={`/signup?why=save&next=${encodeURIComponent(path)}`} aria-label="Save" className={cx(base, className)}>
-        <BookmarkIcon size={variant === "pill" ? 15 : 19} />
-        {variant === "pill" && label}
+        <BookmarkIcon size={variant === "icon" ? 19 : 16} />
+        {variant !== "icon" && label}
       </Link>
     );
   }
@@ -91,8 +93,8 @@ export function SaveButton({
   return (
     <>
     <button type="button" onClick={toggle} aria-pressed={saved} aria-label={saved ? "Remove from Saved" : "Save"} className={cx(base, className)}>
-      <BookmarkIcon size={variant === "pill" ? 15 : 19} filled={saved} />
-      {variant === "pill" && label}
+      <BookmarkIcon size={variant === "icon" ? 19 : 16} filled={saved} />
+      {variant !== "icon" && label}
     </button>
     {toast && (
       <div role="status" className="fixed inset-x-0 bottom-24 z-50 flex justify-center px-4 pointer-events-none">

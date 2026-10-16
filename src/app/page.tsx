@@ -7,6 +7,8 @@ import { GoingSomewhere } from "@/components/GoingSomewhere";
 import { GuideCover } from "@/components/GuideCover";
 import { PlaceTile } from "@/components/PlaceTile";
 import { CityImage, CityTileImage } from "@/components/CityImage";
+import { CitiesExplorer, type MapCity } from "@/components/CitiesExplorer";
+import { findCity } from "@/lib/places/cities";
 import { SearchIcon } from "@/components/Icons";
 import { SaveButton } from "@/components/SaveButton";
 import { SendSpotsButton } from "@/components/SendSpotsButton";
@@ -117,6 +119,26 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   );
   const photoFor = (city: string) => photos.get(cityPhotoKey(city));
   const cityOf = new Map(known.map((c) => [cityKey(c.city), c]));
+  // The cities map (16 Oct 2026): yours, your friends', then the most active elsewhere on MyGuide.
+  const mapCities: MapCity[] = [];
+  const onMap = new Set<string>();
+  const me = user ? toPublicUser(user) : null;
+  for (const c of [...known, ...popular.map((t) => ({ ...t, friends: [] as PublicUser[], mine: 0, more: true }))]) {
+    const k = cityKey(c.city);
+    const at = findCity(c.city);
+    if (onMap.has(k) || !at) continue;
+    onMap.add(k);
+    mapCities.push({
+      city: c.city,
+      href: cityHref(c),
+      lat: at.lat,
+      lng: at.lng,
+      spots: c.spots,
+      mine: c.mine > 0,
+      friends: c.friends.filter((f) => f.id !== me?.id),
+      more: "more" in c && !c.friends.length && !c.mine,
+    });
+  }
   const tripCity = trip ? cityOf.get(cityKey(trip.trip.city)) : undefined;
 
   // New from friends: their spots, spots several friends now share, and newly published guides.
@@ -249,51 +271,61 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
             <AddCityTile first />
           </CityRow>
         )}
-        {myCities.length > 0 && (
-          <CityRow title="Your cities" all>
-            {myCities.map((c) => (
-              <CityTile key={c.city} href={cityHref(c)} city={c.city} photo={photoFor(c.city)} near={nearKeys.has(cityKey(c.city))} spots={c.spots}>
-                <Faces users={user ? [toPublicUser(user), ...c.friends] : c.friends} ring="ring-cream" />
-                <span>{c.friends.length ? `you + ${c.friends.length}` : "you"}</span>
-              </CityTile>
-            ))}
-            <AddCityTile />
-          </CityRow>
+        {(mapCities.length > 0 || myCities.length > 0) && (
+          <CitiesExplorer
+            cities={mapCities}
+            tiles={
+              <>
+                {myCities.length > 0 && (
+                  <CityRow title="Your cities" all>
+                    {myCities.map((c) => (
+                      <CityTile key={c.city} href={cityHref(c)} city={c.city} photo={photoFor(c.city)} near={nearKeys.has(cityKey(c.city))} spots={c.spots}>
+                        <Faces users={user ? [toPublicUser(user), ...c.friends] : c.friends} ring="ring-cream" />
+                        <span>{c.friends.length ? `you + ${c.friends.length}` : "you"}</span>
+                      </CityTile>
+                    ))}
+                    <AddCityTile />
+                  </CityRow>
+                )}
+                {(friendsCities.length > 0 || popularTiles.length > 0) && (
+                  <CityRow title={friendsCities.length ? "Cities your friends know" : "Popular on MyGuide"} sub={friendsCities.length ? "Where people you follow have spots." : undefined} all={!myCities.length}>
+                    {friendsCities.map((c) => (
+                      <CityTile key={c.city} href={cityHref(c)} city={c.city} photo={photoFor(c.city)} near={nearKeys.has(cityKey(c.city))} spots={c.spots}>
+                        <Faces users={c.friends} ring="ring-cream" />
+                        <span className="truncate">{c.friends.length === 1 ? first(c.friends[0]) : `${c.friends.length} friends`}</span>
+                      </CityTile>
+                    ))}
+                    {friendsCities.length > 0 && popularTiles.length > 0 && (
+                      <span className="shrink-0 w-[64px] h-[170px] flex items-center justify-center">
+                        <span className="[writing-mode:vertical-rl] rotate-180 text-[11.5px] font-semibold uppercase tracking-[0.1em] text-ink-muted">Popular on MyGuide</span>
+                      </span>
+                    )}
+                    {popularTiles.map((t) => (
+                      <CityTile key={t.city} href={cityHref(t)} city={t.city} photo={photoFor(t.city)} near={nearKeys.has(cityKey(t.city))} spots={t.spots} guides={t.guides} />
+                    ))}
+                    <Link href="/cities" className="shrink-0 w-[150px] h-[170px] rounded-2xl border-[1.5px] border-dashed border-cream-line flex flex-col items-center justify-center gap-1.5 text-center px-3">
+                      <span className="font-semibold text-[14px]">All cities</span>
+                      <span className="text-[12px] text-ink-muted">
+                        {moreToExplore > 0 ? (
+                          <>
+                            {popular.slice(popularTiles.length, popularTiles.length + 3).map((t) => t.city).join(", ")}
+                            {moreToExplore > 3 ? ` +${moreToExplore - 3}` : ""}
+                          </>
+                        ) : (
+                          "Every city on MyGuide"
+                        )}
+                      </span>
+                    </Link>
+                  </CityRow>
+                )}
+
+                {/* One follow suggestion at a time (16 Oct 2026): the row while you follow few people, else the spotlight. */}
+              </>
+            }
+          />
         )}
         {fewFollows && peopleRow}
-        {(friendsCities.length > 0 || popularTiles.length > 0) && (
-          <CityRow title={friendsCities.length ? "Cities your friends know" : "Popular on MyGuide"} sub={friendsCities.length ? "Where people you follow have spots." : undefined} all={!myCities.length}>
-            {friendsCities.map((c) => (
-              <CityTile key={c.city} href={cityHref(c)} city={c.city} photo={photoFor(c.city)} near={nearKeys.has(cityKey(c.city))} spots={c.spots}>
-                <Faces users={c.friends} ring="ring-cream" />
-                <span className="truncate">{c.friends.length === 1 ? first(c.friends[0]) : `${c.friends.length} friends`}</span>
-              </CityTile>
-            ))}
-            {friendsCities.length > 0 && popularTiles.length > 0 && (
-              <span className="shrink-0 w-[64px] h-[170px] flex items-center justify-center">
-                <span className="[writing-mode:vertical-rl] rotate-180 text-[11.5px] font-semibold uppercase tracking-[0.1em] text-ink-muted">Popular on MyGuide</span>
-              </span>
-            )}
-            {popularTiles.map((t) => (
-              <CityTile key={t.city} href={cityHref(t)} city={t.city} photo={photoFor(t.city)} near={nearKeys.has(cityKey(t.city))} spots={t.spots} guides={t.guides} />
-            ))}
-            <Link href="/cities" className="shrink-0 w-[150px] h-[170px] rounded-2xl border-[1.5px] border-dashed border-cream-line flex flex-col items-center justify-center gap-1.5 text-center px-3">
-              <span className="font-semibold text-[14px]">All cities</span>
-              <span className="text-[12px] text-ink-muted">
-                {moreToExplore > 0 ? (
-                  <>
-                    {popular.slice(popularTiles.length, popularTiles.length + 3).map((t) => t.city).join(", ")}
-                    {moreToExplore > 3 ? ` +${moreToExplore - 3}` : ""}
-                  </>
-                ) : (
-                  "Every city on MyGuide"
-                )}
-              </span>
-            </Link>
-          </CityRow>
-        )}
 
-        {/* One follow suggestion at a time (16 Oct 2026): the row while you follow few people, else the spotlight. */}
         {spotlight && (!fewFollows || !peopleRow || previewSpotlight) && <SpotlightCard s={spotlight} reason={reasonLine(spotlight)} preview={previewSpotlight} />}
         {feed.length > 0 && (
           <section className="px-4 pt-8 flex flex-col gap-3">

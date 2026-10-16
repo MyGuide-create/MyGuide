@@ -12,7 +12,7 @@ import { GuideMap } from "@/components/GuideMap";
 import { PlaceTile } from "@/components/PlaceTile";
 import { TipsEditor } from "@/components/TipsEditor";
 import { TrackView } from "@/components/Tracking";
-import { AlertIcon, CalendarIcon, CheckIcon, ChevronLeft, ChevronRight, GlobeIcon, InstagramIcon, PinIcon, SparkleIcon, WhatsAppIcon } from "@/components/Icons";
+import { AlertIcon, CalendarIcon, CheckIcon, GlobeIcon, InstagramIcon, PinIcon, SparkleIcon, WhatsAppIcon } from "@/components/Icons";
 import { HoursSummary } from "@/components/HoursSummary";
 import { SaveButton } from "@/components/SaveButton";
 import { orderPlaces } from "@/lib/places/order";
@@ -23,7 +23,8 @@ import { getDb } from "@/lib/db";
 import { places } from "@/lib/db/schema";
 import { and, eq } from "drizzle-orm";
 import { canViewGuide, getGuideBySlug, getGuideDetail } from "@/lib/guides";
-import { canViewSharedPlace } from "@/lib/citySpots";
+import { canViewSharedPlace, citySpots, spotKey } from "@/lib/citySpots";
+import { Avatar } from "@/components/ui";
 import { isStash, myPlacesHref } from "@/lib/stash";
 import { canonicalCity } from "@/lib/places/cities";
 import { RecommendToggle } from "@/components/RecommendToggle";
@@ -118,8 +119,6 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
   const mapsHref = mapsUrl(place);
   const ordered = orderPlaces(detail.places);
   const pos = ordered.findIndex((p) => p.id === place.id);
-  const prev = pos > 0 ? ordered[pos - 1] : null;
-  const next = pos >= 0 && pos < ordered.length - 1 ? ordered[pos + 1] : null;
   const keyQuery = key ? `?key=${key}` : "";
   const placeHref = (id: string) => `/g/${slug}/p/${id}${keyQuery}`;
   const canReuse = !detail.viewerCanEdit && isReusable(guide);
@@ -128,12 +127,19 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
   const mine = user && !detail.viewerCanEdit ? await ownCopyOf(user.id, place) : null;
   // Where "← Back" (and Remove) goes: My spots for a My spots spot, else the guide.
   const backHref = stashPlace ? myPlacesHref(place.city ? canonicalCity(place.city) : "") : `/g/${slug}${keyQuery}`;
+  // One page per spot (16 Oct 2026): everyone who recommends this spot, their words stacked.
+  const spotCity = tidyCity(place.city || guide.city);
+  const spot = spotCity
+    ? (await citySpots({ city: spotCity, viewerId: user?.id ?? null, withOwn: !!user })).find((s) => s.recommenders.some((r) => r.placeId === place.id) || s.key === spotKey(place))
+    : undefined;
+  const recommenders = (spot?.recommenders ?? []).filter((r) => !r.isPrivate);
+  const recNames = recommenders.map((r) => (r.user.id === user?.id ? "you" : r.user.displayName.split(" ")[0]));
   const noteAuthor = place.noteAuthorId && place.noteAuthorId !== detail.owner.id ? detail.noteAuthors[place.noteAuthorId] : null;
 
   return (
     <AppShell>
       <TrackView type="place_view" guideId={place.guideId} placeId={place.id} />
-      <TopBar back={`/g/${slug}${key ? `?key=${key}` : ""}`} title={place.name} avatarUser={user ? toPublicUser(user) : null} />
+      <TopBar back={`/g/${slug}${key ? `?key=${key}` : ""}`} title={null} />
 
       {gallery.length > 0 ? (
         <div>
@@ -162,7 +168,6 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
           </div>
           <div className="mt-2 flex items-start gap-3">
             <h1 className="flex-1 font-display text-[28px] leading-[1.05]">{place.name}</h1>
-            {!detail.viewerCanEdit && !mine && <SaveButton placeId={place.id} initial={detail.savedPlaceIds.includes(place.id)} signedIn={!!user} variant="pill" className="mt-1 shrink-0" />}
           </div>
           {stashPlace && detail.viewerCanEdit && (
             <div className="mt-2"><RecommendToggle placeIds={[place.id]} shared={!!place.sharedAt} city={place.city} /></div>
@@ -174,9 +179,7 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
                 ? detail.viewerCanEdit
                   ? ""
                   : `Recommended by ${detail.owner.displayName.split(" ")[0]}`
-                : pos >= 0
-                  ? `Place ${pos + 1} of ${ordered.length} in ${detail.guide.title}`
-                  : `In ${detail.guide.title}`,
+                : "",
               `${stashPlace && detail.viewerCanEdit && !place.sharedAt ? "Added" : "Shared"} ${sharedLabel(freshOf(place))}`,
             ]
               .filter(Boolean)
@@ -270,6 +273,33 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
           )}
         </div>
 
+        {!detail.viewerCanEdit && recommenders.length > 0 && (
+          <section className="flex flex-col gap-2.5">
+            <h2 className="text-[15px] font-semibold">
+              Recommended by {recNames.length <= 2 ? recNames.join(" and ") : `${recNames.slice(0, -1).join(", ")} and ${recNames.at(-1)}`}
+            </h2>
+            {recommenders.map((r) => (
+              <div key={r.placeId} className="flex gap-3 rounded-2xl border border-line bg-paper p-3">
+                <Link href={`/u/${r.user.username}`} className="shrink-0"><Avatar user={r.user} size={34} /></Link>
+                <div className="flex-1 min-w-0">
+                  {r.tip ? <p className="text-[14px] leading-relaxed italic">&ldquo;{r.tip}&rdquo;</p> : <p className="text-[13.5px] text-ink-muted">Recommends it.</p>}
+                  <p className="mt-1 text-[12px] text-ink-muted">
+                    <Link href={`/u/${r.user.username}`} className="font-semibold text-ink">{r.user.id === user?.id ? "You" : r.user.displayName.split(" ")[0]}</Link>
+                    {" · "}
+                    {sharedLabel(r.freshAt)}
+                    {r.placeId !== place.id && r.guideTitle && (
+                      <>
+                        {" · "}
+                        <Link href={`/g/${r.guideSlug}/p/${r.placeId}`} className="hover:text-terracotta">their notes</Link>
+                      </>
+                    )}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </section>
+        )}
+
         {place.reserveUrl && (
           <a
             href={place.reserveUrl}
@@ -282,10 +312,13 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
           </a>
         )}
 
+        {(detail.viewerCanEdit || hours.length > 0 || !!place.phone || !!place.website || !!place.instagram || !!place.whatsapp) && (
         <div className="flex flex-col gap-2.5 rounded-2xl border border-line bg-paper p-4">
-          <a href={mapsHref} target="_blank" rel="noreferrer" {...trackAttrs("tap_directions", place.guideId, place.id)} className="flex items-center gap-2.5 text-[13.5px] font-medium hover:text-terracotta">
-            <PinIcon size={17} className="text-terracotta shrink-0" /> Open in Google Maps
-          </a>
+          {detail.viewerCanEdit && (
+            <a href={mapsHref} target="_blank" rel="noreferrer" {...trackAttrs("tap_directions", place.guideId, place.id)} className="flex items-center gap-2.5 text-[13.5px] font-medium hover:text-terracotta">
+              <PinIcon size={17} className="text-terracotta shrink-0" /> Open in Google Maps
+            </a>
+          )}
           {(hours.length > 0 || place.phone) && (
             <div className="flex items-start justify-between gap-3">
               {hours.length > 0 ? (
@@ -323,6 +356,7 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
             </div>
           )}
         </div>
+        )}
 
         {place.lat != null && place.lng != null && (
           <GuideMap
@@ -347,9 +381,9 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
 
         {detail.viewerCanEdit ? (
           <DescriptionEditor guideId={guide.id} placeId={place.id} initial={place.note} author={noteAuthor?.username ?? null} credited={!!detail.credited[place.id]?.length} />
-        ) : place.note && (
+        ) : place.note && recommenders.length === 0 && (
           <div>
-            <p className="text-[12px] font-medium uppercase tracking-[0.08em] text-ink-muted mb-1.5">Description - What Makes It Special</p>
+            <p className="text-[13px] font-semibold text-ink-muted mb-1.5">Why go</p>
             <p className="text-[14px] italic leading-relaxed whitespace-pre-line">
               {place.note}
               {noteAuthor && <span className="not-italic text-[11.5px] text-ink-faint"> — @{noteAuthor.username}</span>}
@@ -364,7 +398,7 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
         ) : (
           tips.length > 0 && (
             <div className="rounded-2xl bg-terracotta-tint px-4 py-3.5">
-              <p className="text-[11.5px] font-semibold text-terracotta-deep inline-flex items-center gap-1.5 mb-1.5"><SparkleIcon size={13} /> Expert tip{tips.length === 1 ? "" : "s"}</p>
+              <p className="text-[11.5px] font-semibold text-terracotta-deep inline-flex items-center gap-1.5 mb-1.5"><SparkleIcon size={13} /> More tips from {detail.owner.displayName.split(" ")[0]}</p>
               <ul className="flex flex-col gap-1.5">
                 {tips.map((t) => (
                   <li key={t.id} className="text-[13.5px] leading-relaxed flex gap-2">
@@ -379,37 +413,36 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
 
 
         <div>
-          <p className="text-[12px] font-medium uppercase tracking-[0.08em] text-ink-muted mb-2">Comments</p>
+          <p className="text-[13px] font-semibold text-ink-muted mb-2">Comments</p>
           <PlaceComments placeId={place.id} initial={detail.placeComments[place.id] ?? []} currentUser={user ? toPublicUser(user) : null} />
         </div>
 
-        {(prev || next) && (
-          <nav aria-label="More places in this guide" className="grid grid-cols-2 gap-2.5">
-            {prev ? (
-              <Link href={placeHref(prev.id)} className="rounded-2xl border border-line bg-paper px-3 py-2.5 hover:border-terracotta-soft">
-                <span className="flex items-center gap-1 text-[11px] text-ink-faint"><ChevronLeft size={13} /> Previous</span>
-                <span className="block mt-0.5 text-[13px] font-medium truncate">{prev.name}</span>
-              </Link>
-            ) : (
-              <span />
-            )}
-            {next ? (
-              <Link href={placeHref(next.id)} className="rounded-2xl border border-line bg-paper px-3 py-2.5 text-right hover:border-terracotta-soft">
-                <span className="flex items-center justify-end gap-1 text-[11px] text-ink-faint">Next <ChevronRight size={13} /></span>
-                <span className="block mt-0.5 text-[13px] font-medium truncate">{next.name}</span>
-              </Link>
-            ) : (
-              <span />
-            )}
-          </nav>
-        )}
-
-        {stashPlace && !detail.viewerCanEdit ? (
-          <Link href={`/u/${detail.owner.username}`} className="text-[12.5px] text-ink-muted hover:text-terracotta">← {detail.owner.displayName}</Link>
-        ) : (
-          <Link href={backHref} className="text-[12.5px] text-ink-muted hover:text-terracotta">← Back to {stashPlace ? "My spots" : detail.guide.title}</Link>
+        {!detail.viewerCanEdit && !stashPlace && (
+          <Link href={`/g/${slug}${keyQuery}`} className="text-[12.5px] text-ink-muted hover:text-terracotta">In {detail.guide.title}</Link>
         )}
       </div>
+      {!detail.viewerCanEdit && (
+        <>
+          <div aria-hidden className="h-20" />
+          {/* Save and Directions at your thumb (16 Oct 2026), just above the tab bar. */}
+          <div className="fixed inset-x-0 z-30 flex justify-center pointer-events-none" style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 70px)" }}>
+            <div className="pointer-events-auto w-full max-w-[480px] px-3">
+              <div className="flex gap-2 rounded-[22px] border border-line bg-paper/95 backdrop-blur p-2 shadow-lg">
+                {!mine && <SaveButton placeId={place.id} initial={detail.savedPlaceIds.includes(place.id)} signedIn={!!user} variant="bar" />}
+                <a
+                  href={mapsHref}
+                  target="_blank"
+                  rel="noreferrer"
+                  {...trackAttrs("tap_directions", place.guideId, place.id)}
+                  className="flex-1 inline-flex items-center justify-center gap-2 rounded-full h-12 border border-line bg-paper text-[15px] font-semibold"
+                >
+                  <PinIcon size={16} className="text-terracotta" /> Directions
+                </a>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </AppShell>
   );
 }

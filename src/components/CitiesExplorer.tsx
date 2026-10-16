@@ -1,0 +1,344 @@
+"use client";
+
+import Link from "next/link";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import type { PublicUser } from "@/lib/auth";
+import { ChevronLeft, XIcon } from "./Icons";
+import { Avatar, cx } from "./ui";
+
+export interface MapCity {
+  city: string;
+  href: string;
+  lat: number;
+  lng: number;
+  spots: number;
+  /** You have places here. */
+  mine: boolean;
+  /** People you follow with spots here. */
+  friends: PublicUser[];
+  /** Not yours or your friends': everyone else's on MyGuide. */
+  more?: boolean;
+}
+
+type Box = { x: number; y: number; w: number; h: number };
+type Cluster = { key: string; x: number; y: number; members: MapCity[] };
+
+const MAP_H = 230;
+/** Map units: x = lng + 180, y = 76 − lat (the dots file uses the same). */
+const ux = (c: { lng: number }) => c.lng + 180;
+const uy = (c: { lat: number }) => 76 - c.lat;
+const ease = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+const STORE = "mg_cities_view";
+
+/**
+ * Explore's cities (16 Oct 2026): a world map with a dot per city (solid = yours, ringed =
+ * friends', small = elsewhere on MyGuide) and the old two rows of tiles as the second view.
+ * Nearby dots group into a count; tap a group to zoom, a dot for a preview card, Open for the city.
+ */
+export function CitiesExplorer({ cities, tiles }: { cities: MapCity[]; tiles: ReactNode }) {
+  const [view, setView] = useState<"map" | "tiles">("map");
+  useEffect(() => {
+    try {
+      if (localStorage.getItem(STORE) === "tiles") queueMicrotask(() => setView("tiles"));
+    } catch {
+      /* storage blocked: map */
+    }
+  }, []);
+  const pick = (v: "map" | "tiles") => {
+    setView(v);
+    try {
+      localStorage.setItem(STORE, v);
+    } catch {
+      /* fine */
+    }
+  };
+  return (
+    <section className="pt-6 flex flex-col gap-3">
+      <div className="px-5 flex items-center justify-between gap-3">
+        <h2 className="font-display text-[22px]">Cities</h2>
+        <div role="tablist" aria-label="Cities view" className="flex rounded-full bg-cream-deep/70 p-[3px]">
+          {(["map", "tiles"] as const).map((v) => (
+            <button
+              key={v}
+              type="button"
+              role="tab"
+              aria-selected={view === v}
+              onClick={() => pick(v)}
+              className={cx("px-3.5 py-1.5 rounded-full text-[13px]", view === v ? "bg-paper font-semibold shadow-sm" : "text-ink-muted")}
+            >
+              {v === "map" ? "Map" : "Tiles"}
+            </button>
+          ))}
+        </div>
+      </div>
+      {view === "map" ? (
+        <div className="px-4">
+          <WorldMap cities={cities} />
+        </div>
+      ) : (
+        <div className="flex flex-col">{tiles}</div>
+      )}
+    </section>
+  );
+}
+
+function WorldMap({ cities }: { cities: MapCity[] }) {
+  const boxRef = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(358);
+  const [vb, setVb] = useState<Box>({ x: 35, y: -18, w: 300, h: (300 * MAP_H) / 358 });
+  useLayoutEffect(() => {
+    const el = boxRef.current;
+    if (!el) return;
+    // A new width resets the view to the whole world, at that width's proportions.
+    const fit = () => {
+      const w = el.clientWidth || 358;
+      setWidth(w);
+      setVb({ x: 35, y: -18, w: 300, h: (300 * MAP_H) / w });
+    };
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    fit();
+    return () => ro.disconnect();
+  }, []);
+  const world = useMemo<Box>(() => ({ x: 35, y: -18, w: 300, h: (300 * MAP_H) / width }), [width]);
+  const vbRef = useRef(vb);
+  vbRef.current = vb;
+  const [settled, setSettled] = useState(true);
+  const [sel, setSel] = useState<MapCity | null>(null);
+  const anim = useRef<number | null>(null);
+
+  const proj = useCallback((c: { x: number; y: number }, b: Box) => [((c.x - b.x) / b.w) * width, ((c.y - b.y) / b.h) * MAP_H] as const, [width]);
+
+  // Group dots closer than ~50 px into one bubble, for the box we're settled on.
+  const clusters = useMemo<Cluster[]>(() => {
+    let groups = cities.map((c) => ({ m: [c], x: ux(c), y: uy(c) }));
+    for (;;) {
+      let best: [number, number] | null = null;
+      let bd = 50;
+      for (let i = 0; i < groups.length; i++)
+        for (let j = i + 1; j < groups.length; j++) {
+          const [ax, ay] = proj(groups[i], vb);
+          const [bx, by] = proj(groups[j], vb);
+          const d = Math.hypot(ax - bx, ay - by);
+          if (d < bd) {
+            bd = d;
+            best = [i, j];
+          }
+        }
+      if (!best) break;
+      const [a, b] = best;
+      const m = [...groups[a].m, ...groups[b].m];
+      const merged = { m, x: m.reduce((s, c) => s + ux(c), 0) / m.length, y: m.reduce((s, c) => s + uy(c), 0) / m.length };
+      groups = groups.filter((_, k) => k !== a && k !== b).concat(merged);
+    }
+    return groups.filter((g) => g.m.length > 1).map((g) => ({ key: g.m.map((c) => c.city).sort().join("|"), x: g.x, y: g.y, members: g.m }));
+    // Re-group only once the map stops moving.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cities, settled, width]);
+  const clustered = useMemo(() => new Set(clusters.flatMap((k) => k.members.map((c) => c.city))), [clusters]);
+
+  const tween = (to: Box) => {
+    if (anim.current) cancelAnimationFrame(anim.current);
+    const from = { ...vbRef.current };
+    const t0 = performance.now();
+    const ms = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 1 : 700;
+    setSettled(false);
+    const step = (now: number) => {
+      const t = Math.min(1, (now - t0) / ms);
+      const k = ease(t);
+      setVb({ x: from.x + (to.x - from.x) * k, y: from.y + (to.y - from.y) * k, w: from.w + (to.w - from.w) * k, h: from.h + (to.h - from.h) * k });
+      if (t < 1) anim.current = requestAnimationFrame(step);
+      else setSettled(true);
+    };
+    anim.current = requestAnimationFrame(step);
+  };
+  const zoomTo = (members: MapCity[]) => {
+    setSel(null);
+    const xs = members.map(ux);
+    const ys = members.map(uy);
+    const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+    let w = Math.max(x1 - x0, 26) * 1.45;
+    let h = (w * MAP_H) / width;
+    const hh = Math.max(y1 - y0, 8) * 1.7;
+    if (hh > h) {
+      h = hh;
+      w = (h * width) / MAP_H;
+    }
+    tween({ x: (x0 + x1) / 2 - w / 2, y: (y0 + y1) / 2 - h / 2, w, h });
+  };
+  const zoomed = vb.w < world.w * 0.9;
+
+  // Drag to pan.
+  const drag = useRef<{ x: number; y: number; vb: Box; moved: boolean } | null>(null);
+  const onDown = (e: React.PointerEvent) => {
+    if ((e.target as HTMLElement).closest("button,a")) return;
+    drag.current = { x: e.clientX, y: e.clientY, vb: { ...vbRef.current }, moved: false };
+  };
+  const onMove = (e: React.PointerEvent) => {
+    const d = drag.current;
+    if (!d) return;
+    const dx = e.clientX - d.x;
+    const dy = e.clientY - d.y;
+    if (Math.abs(dx) + Math.abs(dy) > 5) {
+      if (!d.moved) setSettled(false);
+      d.moved = true;
+    }
+    if (d.moved) setVb({ ...d.vb, x: d.vb.x - (dx / width) * d.vb.w, y: d.vb.y - (dy / MAP_H) * d.vb.h });
+  };
+  const onUp = () => {
+    if (drag.current?.moved) setSettled(true);
+    else if (drag.current) setSel(null);
+    drag.current = null;
+  };
+
+  const dotR = 0.9 * Math.pow(vb.w / 300, 0.55);
+  return (
+    <div className="flex flex-col gap-2.5">
+      <div
+        ref={boxRef}
+        className="relative rounded-[20px] overflow-hidden border border-line bg-[#f7efe5] touch-none select-none"
+        style={{ height: MAP_H }}
+        onPointerDown={onDown}
+        onPointerMove={onMove}
+        onPointerUp={onUp}
+        onPointerLeave={onUp}
+      >
+        <svg viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`} preserveAspectRatio="none" className="absolute inset-0 w-full h-full" aria-hidden style={{ ["--r" as string]: `${dotR}px` }}>
+          <Land />
+        </svg>
+        {cities.map((c) => {
+          const [x, y] = proj({ x: ux(c), y: uy(c) }, vb);
+          const hidden = settled && clustered.has(c.city);
+          const out = x < -24 || x > width + 24 || y < -24 || y > MAP_H + 24;
+          if (out) return null;
+          const size = c.more ? 9 : 12 + Math.min(10, Math.round(c.spots * 0.6));
+          const on = sel?.city === c.city;
+          return (
+            <span key={c.city}>
+              <button
+                type="button"
+                aria-label={`${c.city}, ${c.spots} spots`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSel(c);
+                }}
+                className={cx(
+                  "absolute -translate-x-1/2 -translate-y-1/2 rounded-full transition-[opacity,transform] duration-300",
+                  c.mine ? "bg-terracotta border-[2.5px] border-white" : c.more ? "bg-ink-faint/70 border-2 border-white" : "bg-white border-[3px] border-terracotta",
+                  hidden ? "opacity-0 pointer-events-none" : "opacity-100",
+                  on && "scale-[1.45] ring-[6px] ring-terracotta/20",
+                )}
+                style={{ left: x, top: y, width: size, height: size, boxShadow: "0 1px 3px rgb(60 30 10 / 0.3)" }}
+              />
+              {(zoomed || on) && !hidden && (
+                <span className="absolute -translate-x-1/2 pointer-events-none text-[10.5px] font-semibold whitespace-nowrap [text-shadow:0_0_3px_#f7efe5,0_0_3px_#f7efe5,0_0_3px_#f7efe5]" style={{ left: x, top: y + size / 2 + 3 }}>
+                  {c.city}
+                </span>
+              )}
+            </span>
+          );
+        })}
+        {settled &&
+          clusters.map((k) => {
+            const [x, y] = proj(k, vb);
+            return (
+              <button
+                key={k.key}
+                type="button"
+                aria-label={`${k.members.length} cities: ${k.members.map((c) => c.city).join(", ")}. Zoom in`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  zoomTo(k.members);
+                }}
+                className="absolute -translate-x-1/2 -translate-y-1/2 min-w-[34px] h-[34px] px-2.5 rounded-full bg-ink text-cream border-[2.5px] border-white text-[13px] font-semibold flex items-center justify-center shadow-md"
+                style={{ left: x, top: y }}
+              >
+                {k.members.length}
+              </button>
+            );
+          })}
+        {zoomed && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setSel(null);
+              tween(world);
+            }}
+            className="absolute left-2.5 top-2.5 inline-flex items-center gap-0.5 rounded-full border border-line bg-paper pl-1.5 pr-3 py-1 text-[12px] font-medium"
+          >
+            <ChevronLeft size={15} /> World
+          </button>
+        )}
+        {cities.some((c) => !c.more) && (
+        <span className="absolute right-2.5 bottom-2 flex gap-2.5 rounded-full bg-paper/85 px-2.5 py-1 text-[10.5px] text-ink-muted">
+          <span className="inline-flex items-center gap-1"><i className="w-2.5 h-2.5 rounded-full bg-terracotta" /> Yours</span>
+          <span className="inline-flex items-center gap-1"><i className="w-2.5 h-2.5 rounded-full bg-white border-2 border-terracotta" /> Friends&apos;</span>
+        </span>
+        )}
+      </div>
+      {sel && (
+        <div className="rounded-[20px] border border-line bg-paper p-3 flex flex-col gap-3 fade-up" role="region" aria-label={`${sel.city} preview`}>
+          <div className="flex items-start gap-3">
+            <div className="flex-1 min-w-0">
+              <div className="text-[18px] font-semibold leading-tight">{sel.city}</div>
+              <div className="mt-1 flex items-center gap-2 text-[13px] text-ink-muted">
+                {sel.friends.length > 0 && (
+                  <span className="flex">
+                    {sel.friends.slice(0, 3).map((u, i) => (
+                      <Avatar key={u.id} user={u} size={22} className={cx("ring-2 ring-paper", i > 0 && "-ml-1.5")} />
+                    ))}
+                  </span>
+                )}
+                <span>
+                  {[
+                    sel.friends.length ? `${sel.friends.length} friend${sel.friends.length === 1 ? "" : "s"}` : "",
+                    sel.mine ? "you" : "",
+                    `${sel.spots} spot${sel.spots === 1 ? "" : "s"}`,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </span>
+              </div>
+            </div>
+            <button type="button" aria-label="Close preview" onClick={() => setSel(null)} className="w-8 h-8 -mr-1 -mt-1 rounded-full flex items-center justify-center text-ink-muted">
+              <XIcon size={16} />
+            </button>
+          </div>
+          <Link href={sel.href} className="h-11 rounded-full bg-terracotta text-white text-[14.5px] font-semibold flex items-center justify-center">
+            Open {sel.city}
+          </Link>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** The land as dots, loaded once (public/world-dots.json, ~36 KB). */
+const Land = memo(function Land() {
+  const [dots, setDots] = useState<[number, number][] | null>(cache);
+  useEffect(() => {
+    if (cache) return;
+    let live = true;
+    fetch("/world-dots.json")
+      .then((res) => res.json())
+      .then((d: [number, number][]) => {
+        cache = d;
+        if (live) setDots(d);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, []);
+  if (!dots) return null;
+  return (
+    // Dots keep their size while zooming via the CSS `r` (set on the <svg>); the attribute is the fallback.
+    <g fill="#cdb497" className="[&>circle]:[r:var(--r)]">
+      {dots.map(([x, y], i) => (
+        <circle key={i} cx={x} cy={y} r={0.9} />
+      ))}
+    </g>
+  );
+});
+let cache: [number, number][] | null = null;
