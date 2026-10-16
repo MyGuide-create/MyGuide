@@ -1,10 +1,9 @@
-import { sharedLabel } from "@/lib/fresh";
 import { suggestPeople } from "@/lib/suggest";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { AppShell, TopBar } from "@/components/AppShell";
 import { GuideCover } from "@/components/GuideCover";
-import { BookmarkIcon, ChevronDown, LockIcon, MapIcon, PlusIcon, SparkleIcon } from "@/components/Icons";
+import { BookmarkIcon, ChevronDown, LockIcon, MapIcon, SparkleIcon } from "@/components/Icons";
 import { findCity, metroOfDistrict } from "@/lib/places/cities";
 import { placeArea } from "@/lib/places/neighbourhood";
 import { redirect } from "next/navigation";
@@ -26,7 +25,6 @@ import { getDb } from "@/lib/db";
 import { placeReactions, savedPlaces } from "@/lib/db/schema";
 import { and, eq } from "drizzle-orm";
 import { SaveButton } from "@/components/SaveButton";
-import { BeenHere } from "@/components/BeenHere";
 
 export const dynamic = "force-dynamic";
 
@@ -164,14 +162,12 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
     return `/city?${new URLSearchParams(q).toString()}`;
   };
   const sortHref = (s: "saved" | "new") => cityHref({ sort: s === "new" ? "new" : "" });
-  const pickHref = `/pick?${new URLSearchParams({ city, ...(picked ? { friend: picked.username } : {}) }).toString()}`;
   // Places first: "Add your spots" opens Add a place (it lands in My places, recommended or not).
   const addSpotsHref = user ? "/record" : "/signup?next=/record&why=record";
   const hasAny = all.length > 0 || spots.length > 0;
   const wishFirst = wish?.others[0]?.wish.id;
   const wishNames = wish ? wish.others.map((p) => p.user.displayName.split(" ")[0]) : [];
   const wishWho = wishNames.length === 1 ? wishNames[0] : "them";
-  const tripHref = user ? `/trips?city=${encodeURIComponent(city)}` : `/signup?next=${encodeURIComponent(`/trips?city=${city}`)}`;
   const signupAsk = `/signup?next=${encodeURIComponent(`/city?${new URLSearchParams(base).toString()}`)}`;
   const askCity = { city, country, lat: lat ? Number(lat) : null, lng: lng ? Number(lng) : null };
 
@@ -189,14 +185,6 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
               friendCount ? `${friendCount} friend${friendCount === 1 ? "" : "s"}` : "",
             ].filter(Boolean).join(" · ")}
           </p>
-        )}
-        {city && (
-          <div className="mt-4 flex gap-2.5">
-            <LinkButton href={addSpotsHref} className="flex-1">
-              <PlusIcon size={15} /> Add your spots
-            </LinkButton>
-            <LinkButton href={tripHref} variant="outline" className="flex-1">Plan a trip</LinkButton>
-          </div>
         )}
       </header>
 
@@ -238,7 +226,7 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
                 <span className="w-12 h-12 rounded-full bg-cream-deep text-ink text-[13px] font-semibold flex items-center justify-center">All</span>
               </FriendChip>
               {wantSpots.length > 0 && (
-                <FriendChip href={cityHref({ friend: "", list: wantActive ? "" : "want", cat: "" })} active={wantActive} label="Want to go" count={wantSpots.length} wide>
+                <FriendChip href={cityHref({ friend: "", list: wantActive ? "" : "want", cat: "" })} active={wantActive} label="Saved" count={wantSpots.length} wide>
                   <span className="w-12 h-12 rounded-full bg-terracotta-tint text-terracotta flex items-center justify-center"><BookmarkIcon size={20} filled /></span>
                 </FriendChip>
               )}
@@ -377,18 +365,6 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
                 <h2 className="font-display text-[22px]">{isMe ? `My ${city}` : picked ? `${first(picked)}\u2019s ${city}` : fromFriends ? "Most recommended" : "Most recommended on MyGuide"}</h2>
                 <span className="text-[13px] text-ink-muted">{shownSpots.length} spot{shownSpots.length === 1 ? "" : "s"}</span>
               </div>
-              {shownSpots.length > 0 && (
-                <Link
-                  href={user ? pickHref : `/signup?why=fork&next=${encodeURIComponent(pickHref)}`}
-                  className="flex items-center justify-between gap-3 rounded-2xl bg-ink text-cream px-4 py-3"
-                >
-                  <span className="min-w-0">
-                    <span className="block font-semibold text-[14.5px]">Make your own {city} guide</span>
-                    <span className="block text-[12px] text-cream-deep">Tick the spots you want and keep them in a guide</span>
-                  </span>
-                  <span aria-hidden className="text-[20px]">›</span>
-                </Link>
-              )}
               {!fromFriends && (
                 <p className="px-1 -mt-1 text-[13px] text-ink-muted">Nobody you follow has added {city} spots yet, so here&apos;s what MyGuide travellers recommend{ownSpots ? ", with yours" : ""}.</p>
               )}
@@ -426,7 +402,7 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
           </section>
         )}
 
-        {all.length > 0 && (
+        {all.length > 0 && friendGuides.length === 0 && (
           <section className="px-4 pt-8 flex flex-col gap-2.5">
             <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-1">
               <h2 className="font-display text-[22px]">{spots.length ? `Every ${city} guide` : `All ${city} guides`}</h2>
@@ -449,7 +425,7 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
           </section>
         )}
 
-        {city && hasAny && (
+        {city && hasAny && (!ownSpots || wish) && (
           <div className="px-4 pt-8">
             <div className="rounded-[20px] bg-sage-tint p-4 flex flex-col gap-2.5">
               <p className="font-display text-[20px]">Know {city} well?</p>
@@ -605,14 +581,14 @@ function SpotRow({
   // Someone else's copy to bookmark / mark: the one you saved, else the lead's.
   const theirs = spot.recommenders.filter((r) => r.user.id !== viewerId);
   const target = theirs.find((r) => marks?.want.has(r.placeId)) ?? (lead.user.id !== viewerId ? lead : theirs[0]);
-  const showMarks = !!marks && !!target;
+  const showMarks = !!marks && !!target && !yours;
   return (
     <div className="relative">
     <Link href={`/g/${lead.guideSlug}/p/${lead.placeId}`} className="flex gap-3 rounded-2xl border border-line/80 bg-paper p-3 hover:border-terracotta-soft">
       <PlaceTile place={p} size={68} />
       <span className="flex-1 min-w-0 flex flex-col gap-1">
-        <span className={cx("font-semibold text-[15px] leading-snug", (yours || showMarks) && "pr-16")}>{p.name}</span>
-        {subline && <span className={cx("text-[12.5px] text-ink-muted truncate", (yours || showMarks) && "pr-16")}>{subline}</span>}
+        <span className={cx("font-semibold text-[15px] leading-snug", showMarks && "pr-10")}>{p.name}</span>
+        {subline && <span className={cx("text-[12.5px] text-ink-muted truncate", showMarks && "pr-10")}>{subline}</span>}
         {lead.tip && (
           <span className="text-[13px] leading-snug text-ink/85 line-clamp-2">
             &ldquo;{lead.tip}&rdquo; <span className="text-ink-muted">{nm(lead.user, viewerId)}</span>
@@ -627,31 +603,16 @@ function SpotRow({
           <span className={cx("text-[12.5px] font-semibold inline-flex items-center gap-1", many ? "text-sage" : "text-ink-muted")}>
             {onlyMinePrivate && <LockIcon size={12} />}
             {recommendLabel(spot, picked, fromFriends, viewerId)}
-            <span className="font-normal text-ink-faint whitespace-nowrap">· {sharedLabel(lead.freshAt)}</span>
           </span>
           {follow && <span className="w-[72px] shrink-0 ml-auto" aria-hidden />}
         </span>
       </span>
     </Link>
     {follow && <FollowPill userId={lead.user.id} signedIn={signedIn} next={next} className="absolute right-3 bottom-3" />}
-    {yours ? (
-      <span className="absolute right-3 top-3 rounded-full bg-sage-tint px-2 py-0.5 text-[11px] font-semibold text-sage" title="One of your spots">✓ Yours</span>
-    ) : (
-      showMarks && (
-        <span className="absolute right-3.5 top-3.5 flex items-center gap-3.5">
-          <SaveButton placeId={target.placeId} initial={spot.recommenders.some((r) => marks.want.has(r.placeId))} signedIn={signedIn} />
-          <BeenHere
-            variant="icon"
-            placeId={target.placeId}
-            placeName={p.name}
-            ownerFirst={target.user.displayName.split(" ")[0]}
-            initial={spot.recommenders.some((r) => marks.been.has(r.placeId))}
-            count={0}
-            signedIn={signedIn}
-            youHaveIt={false}
-          />
-        </span>
-      )
+    {showMarks && (
+      <span className="absolute right-3.5 top-3.5">
+        <SaveButton placeId={target.placeId} initial={spot.recommenders.some((r) => marks.want.has(r.placeId))} signedIn={signedIn} />
+      </span>
     )}
     </div>
   );

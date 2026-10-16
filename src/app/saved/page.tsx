@@ -12,7 +12,7 @@ import { placeArea } from "@/lib/places/neighbourhood";
 import { loadMyPlaces } from "@/lib/myPlaces";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Want to go" };
+export const metadata = { title: "Saved" };
 
 export default async function SavedPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const sp = await searchParams;
@@ -36,7 +36,7 @@ export default async function SavedPage({ searchParams }: { searchParams: Promis
   }
   return (
     <AppShell>
-      <TopBar back={`/u/${user.username}`} title="Want to go" avatarUser={toPublicUser(user)} />
+      <TopBar back={`/u/${user.username}`} title="Saved" avatarUser={toPublicUser(user)} />
       <div className="px-5 pt-3 flex gap-5 border-b border-line/70">
         {tabLink("places", "Places", saved.length)}
         {tabLink("guides", "Guides", guides.length)}
@@ -55,7 +55,7 @@ export default async function SavedPage({ searchParams }: { searchParams: Promis
           <Link href="/my-places" className="flex items-center justify-between gap-3 rounded-2xl border border-line/80 bg-paper px-4 py-3 hover:border-terracotta-soft">
             <span className="min-w-0">
               <span className="block font-semibold text-[15px]">My places</span>
-              <span className="block text-[12.5px] text-ink-muted">{myCount} place{myCount === 1 ? "" : "s"} you&apos;ve added · Want to go below is the spots of other people&apos;s you bookmarked</span>
+              <span className="block text-[12.5px] text-ink-muted">{myCount} place{myCount === 1 ? "" : "s"} you&apos;ve added · Saved below is other people&apos;s spots you saved</span>
             </span>
             <span aria-hidden className="text-[20px] text-terracotta">›</span>
           </Link>
@@ -63,7 +63,7 @@ export default async function SavedPage({ searchParams }: { searchParams: Promis
         {saved.length === 0 ? (
           <EmptyState
             title="Nothing on your list yet"
-            body="Tap Want to go on a friend’s spot to keep it here — your own shortlist for the trip. Been? Tap Been here on the spot and recommend it."
+            body="Tap Save on a friend’s spot to keep it here — your own shortlist for the trip. Been and loved it? Tap Recommend on the spot."
             action={<LinkButton href="/" size="sm">Browse guides</LinkButton>}
           />
         ) : (

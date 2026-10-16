@@ -92,7 +92,9 @@ export default async function ProfilePage({ params, searchParams }: PageProps<"/
         <div className="mt-4">
           {own ? (
             <div className="flex gap-2">
-              <LinkButton href="/saved" size="sm" variant="outline"><BookmarkIcon size={14} /> Want to go</LinkButton>
+              <LinkButton href="/saved" size="sm" variant="outline"><BookmarkIcon size={14} /> Saved</LinkButton>
+              <LinkButton href="/trips" size="sm" variant="outline">Trips</LinkButton>
+              <LinkButton href="/stats" size="sm" variant="outline">Stats</LinkButton>
             </div>
           ) : (
             !hiddenFromMe && (

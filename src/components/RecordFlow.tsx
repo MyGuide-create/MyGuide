@@ -478,16 +478,16 @@ export function RecordFlow({
           ) : (
             /* Into My places, asking whether to recommend it (shows on the city page, no guide needed). Guides come after. */
             <div className="px-5 pt-5">
-              <p className="text-[13.5px] font-semibold">Save it to My places</p>
+              <p className="text-[13.5px] font-semibold">Add it to My places</p>
               <p className="mt-0.5 text-[12px] leading-snug text-ink-muted">
                 Recommend it and it shows on the {placeCity || "city"} page for friends. You can change this later, and put it in a guide whenever you like.
               </p>
               <div className="mt-3 flex flex-col gap-2">
                 <Button className="w-full" size="lg" disabled={saving} onClick={() => save(true)}>
-                  {saving ? <Spinner /> : "Save & recommend"}
+                  {saving ? <Spinner /> : "Recommend"}
                 </Button>
                 <Button className="w-full" variant="outline" disabled={saving} onClick={() => save(false)}>
-                  Just save it for me
+                  Save for me only
                 </Button>
               </div>
             </div>

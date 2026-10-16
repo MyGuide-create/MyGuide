@@ -55,6 +55,16 @@ function ProviderButtons({ providers, mode, next }: { providers: Array<"google" 
 
 export function AuthForm({ mode, next, why, providers = [], notice }: { mode: "login" | "signup"; next?: string; why?: AuthReason | null; providers?: Array<"google" | "apple">; notice?: string | null }) {
   const [forgot, setForgot] = useState(false);
+  // Username suggested from the name until the person edits it themselves (16 Oct 2026).
+  const [username, setUsername] = useState("");
+  const [usernameTouched, setUsernameTouched] = useState(false);
+  const suggest = (name: string) =>
+    name
+      .normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "")
+      .slice(0, 20);
   const [state, action, pending] = useActionState<AuthState, FormData>(mode === "login" ? logIn : signUp, {});
   return (
     <form action={action} className="flex flex-col gap-4">
@@ -65,13 +75,13 @@ export function AuthForm({ mode, next, why, providers = [], notice }: { mode: "l
         <>
           <div>
             <Label>Your name<Req /></Label>
-            <Input name="displayName" autoComplete="name" required />
+            <Input name="displayName" autoComplete="name" required onChange={(e) => { if (!usernameTouched) setUsername(suggest(e.target.value)); }} />
           </div>
           <div>
             <Label>Username<Req /></Label>
             <div className="relative">
               <span className="absolute left-4 top-1/2 -translate-y-1/2 text-ink-faint">@</span>
-              <Input name="username" autoComplete="username" required className="pl-8" pattern="[A-Za-z0-9_.]{3,24}" title="3–24 letters, numbers, dots or underscores" />
+              <Input name="username" autoComplete="username" required className="pl-8" value={username} onChange={(e) => { setUsernameTouched(true); setUsername(e.target.value); }} pattern="[A-Za-z0-9_.]{3,24}" title="3–24 letters, numbers, dots or underscores" />
             </div>
           </div>
         </>
@@ -95,12 +105,6 @@ export function AuthForm({ mode, next, why, providers = [], notice }: { mode: "l
           </p>
         )}
       </div>
-      {mode === "signup" && (
-        <div>
-          <Label>Confirm password<Req /></Label>
-          <PasswordInput name="confirmPassword" autoComplete="new-password" required minLength={8} />
-        </div>
-      )}
       {state.error && <p className="text-[13px] text-danger bg-danger-tint rounded-xl px-3 py-2">{state.error}</p>}
       {mode === "signup" && (
         <p className="text-[11.5px] text-ink-faint leading-relaxed">

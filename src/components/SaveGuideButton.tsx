@@ -7,7 +7,7 @@ import { toggleSavedGuide } from "@/lib/actions/saved";
 import { BookmarkIcon } from "./Icons";
 import { cx } from "./ui";
 
-/** Bookmark for saving a whole guide to Want to go. "round" sits in the guide's action row; "icon" sits on cards. */
+/** Bookmark for saving a whole guide to Saved. "round" sits in the guide's action row; "icon" sits on cards. */
 export function SaveGuideButton({ guideId, initial, signedIn, variant = "round", className }: { guideId: string; initial: boolean; signedIn: boolean; variant?: "round" | "icon"; className?: string }) {
   const [saved, setSaved] = useState(initial);
   const [toast, setToast] = useState(false);
@@ -37,7 +37,7 @@ export function SaveGuideButton({ guideId, initial, signedIn, variant = "round",
       <button
         type="button"
         aria-pressed={saved}
-        aria-label={saved ? "Remove guide from Want to go" : "Save this guide"}
+        aria-label={saved ? "Remove guide from Saved" : "Save this guide"}
         className={cx(cls, className)}
         onClick={(e) => {
           e.preventDefault();
@@ -61,7 +61,7 @@ export function SaveGuideButton({ guideId, initial, signedIn, variant = "round",
           <div className="pointer-events-auto max-w-[440px] flex items-center gap-2.5 rounded-2xl bg-ink text-cream px-4 py-3 shadow-lg text-[13px] leading-snug">
             <BookmarkIcon size={16} filled className="text-terracotta-soft shrink-0" />
             <span>
-              Guide saved to Want to go. <Link href="/saved?tab=guides" className="underline underline-offset-2 font-medium">Open</Link>
+              Guide saved. <Link href="/saved?tab=guides" className="underline underline-offset-2 font-medium">Open</Link>
             </span>
           </div>
         </div>

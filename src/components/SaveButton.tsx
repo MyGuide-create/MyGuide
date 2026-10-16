@@ -8,7 +8,7 @@ import { toggleFollow } from "@/lib/actions/social";
 import { BookmarkIcon } from "./Icons";
 import { cx } from "./ui";
 
-/** Bookmark: put a place on your "Want to go" list (your shortlist of other people's spots). */
+/** Bookmark: Save a place to your Saved list (your private shortlist of other people's spots). */
 export function SaveButton({
   placeId,
   initial,
@@ -45,7 +45,7 @@ export function SaveButton({
     return () => clearTimeout(t);
   }, [nudge, followed]);
   const path = usePathname();
-  const label = "Want to go";
+  const label = saved ? "Saved" : "Save";
   const base =
     variant === "pill"
       ? cx("inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12.5px] font-medium", saved ? "border-terracotta bg-terracotta-tint text-terracotta-deep" : "border-line text-ink")
@@ -53,7 +53,7 @@ export function SaveButton({
 
   if (!signedIn) {
     return (
-      <Link href={`/signup?why=save&next=${encodeURIComponent(path)}`} aria-label="Add to Want to go" className={cx(base, className)}>
+      <Link href={`/signup?why=save&next=${encodeURIComponent(path)}`} aria-label="Save" className={cx(base, className)}>
         <BookmarkIcon size={variant === "pill" ? 15 : 19} />
         {variant === "pill" && label}
       </Link>
@@ -90,7 +90,7 @@ export function SaveButton({
   };
   return (
     <>
-    <button type="button" onClick={toggle} aria-pressed={saved} aria-label={saved ? "Remove from Want to go" : "Add to Want to go"} className={cx(base, className)}>
+    <button type="button" onClick={toggle} aria-pressed={saved} aria-label={saved ? "Remove from Saved" : "Save"} className={cx(base, className)}>
       <BookmarkIcon size={variant === "pill" ? 15 : 19} filled={saved} />
       {variant === "pill" && label}
     </button>
@@ -100,11 +100,11 @@ export function SaveButton({
           <BookmarkIcon size={16} filled className="text-terracotta-soft shrink-0" />
           {toast === "first" ? (
             <span>
-              Added to Want to go. Find your list any time under <b>You → Want to go</b>, or filter a city page by it.{" "}
+              Saved. Find your saved spots any time under <b>You → Saved</b>, or filter a city page by them.{" "}
               <Link href="/saved" className="underline underline-offset-2 font-medium">Open</Link>
             </span>
           ) : (
-            <span>Added to Want to go</span>
+            <span>Saved</span>
           )}
         </div>
       </div>

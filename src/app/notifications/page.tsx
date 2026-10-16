@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, notInArray } from "drizzle-orm";
 import { AppShell, TopBar } from "@/components/AppShell";
 import { GuideCard } from "@/components/GuideCard";
 import { ChatIcon, ForkIcon, LockIcon, PinIcon, PlusIcon, ShareIcon, SparkleIcon, UserIcon } from "@/components/Icons";
@@ -9,7 +9,7 @@ import { requireUser, toPublicUser } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 import { follows, guideRequests, guides, notifications, places, users } from "@/lib/db/schema";
 import { pendingAsksFor } from "@/lib/requests";
-import { listSharedWithUser } from "@/lib/guides";
+import { FEED_NOTIFICATION_TYPES, listSharedWithUser } from "@/lib/guides";
 import { timeAgo } from "@/lib/utils";
 import { PushToggle } from "@/components/PushToggle";
 import { FollowButton } from "@/components/FollowButton";
@@ -24,7 +24,7 @@ const ASK_PIN_DAYS = 21;
 export default async function NotificationsPage() {
   const user = await requireUser("/notifications");
   const db = await getDb();
-  const rows = await db.select().from(notifications).where(eq(notifications.userId, user.id)).orderBy(desc(notifications.createdAt)).limit(60);
+  const rows = await db.select().from(notifications).where(and(eq(notifications.userId, user.id), notInArray(notifications.type, [...FEED_NOTIFICATION_TYPES]))).orderBy(desc(notifications.createdAt)).limit(60);
   const actorIds = [...new Set(rows.map((r) => r.actorId).filter((x): x is string => !!x))];
   const guideIds = [...new Set(rows.map((r) => r.guideId).filter((x): x is string => !!x))];
   const placeIds = [...new Set(rows.map((r) => r.placeId).filter((x): x is string => !!x))];
@@ -89,7 +89,7 @@ export default async function NotificationsPage() {
           </section>
         )}
         {rows.length === 0 && (
-          <EmptyState title="Nothing here yet" body="New guides and places from people you follow, guides shared with you, and new followers all land here." action={<LinkButton href="/" size="sm" variant="outline">Browse the feed</LinkButton>} />
+          <EmptyState title="Nothing here yet" body="When someone follows you, saves or recommends your spots, claps, comments, shares a guide with you or asks you for spots, it shows up here. New spots from friends are on Home." action={<LinkButton href="/" size="sm" variant="outline">Go to Home</LinkButton>} />
         )}
         {rows.filter((n) => !(n.type === "user_joined" && n.actorId && hidden.has(n.actorId))).map((n) => {
           const actor = n.actorId ? actorMap.get(n.actorId) : undefined;

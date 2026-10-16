@@ -558,7 +558,7 @@ function FeedCard({ f, savedIds, signedIn, followable = false, viewerId, claps, 
               </Link>
               {viewerId !== f.user.id &&
                 (yours(r.place) ? (
-                  <span className="absolute top-1.5 right-1.5 rounded-full bg-sage text-white text-[11px] font-semibold px-2 py-0.5 shadow-sm" title="One of your spots">✓ Yours</span>
+                  <span className="absolute top-1.5 right-1.5 rounded-full bg-sage text-white text-[11px] font-semibold px-2 py-0.5 shadow-sm" title="One of your spots">Your spot</span>
                 ) : (
                   <span className="absolute top-1.5 right-1.5 rounded-full bg-paper/90 backdrop-blur shadow-sm">
                     <SaveButton placeId={r.place.id} initial={savedIds.has(r.place.id)} signedIn={signedIn} className="m-0!" />

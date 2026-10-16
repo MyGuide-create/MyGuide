@@ -1,16 +1,13 @@
 import Link from "next/link";
-import { mapsUrl } from "@/lib/places/pins";
 import type { Place, PlaceTip } from "@/lib/db/schema";
 import type { PublicUser } from "@/lib/auth";
 import type { PlaceCommentView } from "@/lib/guides";
 import { AudioClip } from "./AudioClip";
 import { CreditedNotes } from "./CreditedNotes";
 import type { CreditedNote } from "@/lib/reuse";
-import { AlertIcon, CalendarIcon, ChatIcon, PinIcon, SparkleIcon } from "./Icons";
-import { HoursSummary } from "./HoursSummary";
+import { AlertIcon, CalendarIcon, ChatIcon, SparkleIcon } from "./Icons";
 import { SaveButton } from "./SaveButton";
 import { placeArea } from "@/lib/places/neighbourhood";
-import { placeTimeZone } from "@/lib/places/hours";
 import { PlaceTile } from "./PlaceTile";
 import { trackAttrs } from "@/lib/track";
 import { namesSentence } from "@/lib/utils";
@@ -37,7 +34,10 @@ export function PlaceRow({
   branchCount = 0,
   rating,
   credited,
+  grouped = false,
 }: {
+  /** Under a category heading: no category pill on the row. */
+  grouped?: boolean;
   /** The original creator's note and tips, when this place was copied from their guide. */
   credited?: CreditedNote[];
   /** Google's rating for this place, when loaded. */
@@ -61,7 +61,6 @@ export function PlaceRow({
   social?: { been: number; loved: number; favourites: number };
   friends?: PublicUser[];
 }) {
-  const hours = place.hoursJson ? (JSON.parse(place.hoursJson) as string[]) : [];
   const carried = noteAuthor && noteAuthor.id !== ownerId;
   const detailHref = `/g/${guideSlug}/p/${place.id}${shareKey ? `?key=${shareKey}` : ""}`;
   const commentCount = comments?.length ?? 0;
@@ -69,30 +68,30 @@ export function PlaceRow({
   const tipCount = tips?.length ?? 0;
   const extras = tipCount;
   return (
-    <div id={`place-${place.id}`} className="flex gap-3 items-start scroll-mt-20">
-      <Link href={detailHref}><PlaceTile place={place} className="mt-0.5" /></Link>
+    <div id={`place-${place.id}`} className="relative flex gap-3 items-start scroll-mt-20">
+      {/* The whole row opens the place (16 Oct 2026); buttons and links sit above this layer. */}
+      <Link href={detailHref} aria-label={place.name} className="absolute inset-0 rounded-xl" />
+      <PlaceTile place={place} className="mt-0.5" />
       <div className="flex-1 min-w-0">
         <div className="flex items-start gap-2">
           <div className="flex-1 min-w-0 flex items-baseline gap-2">
             {index !== undefined && <span className="text-[11px] text-ink-faint font-medium tabular-nums">{String(index + 1).padStart(2, "0")}</span>}
-            <Link href={detailHref} className="min-w-0">
-              <h3 className="font-semibold text-[15px] leading-snug hover:text-terracotta">{place.name}</h3>
-            </Link>
+            <h3 className="min-w-0 font-semibold text-[15px] leading-snug">{place.name}</h3>
           </div>
           {currentUser?.id !== ownerId &&
             (yours ? (
-              <span className="shrink-0 rounded-full bg-sage-tint px-2 py-0.5 text-[11px] font-semibold text-sage" title="One of your spots">✓ Yours</span>
+              <span className="relative z-10 shrink-0 rounded-full bg-sage-tint px-2 py-0.5 text-[11px] font-semibold text-sage" title="One of your spots">Your spot</span>
             ) : (
-              <SaveButton placeId={place.id} initial={!!saved} signedIn={!!currentUser} className="shrink-0" />
+              <SaveButton placeId={place.id} initial={!!saved} signedIn={!!currentUser} className="relative z-10 shrink-0" />
             ))}
         </div>
         <div className="mt-0.5 text-[11.5px] text-ink-muted flex items-center gap-1 truncate">
-          <span className="rounded-full bg-cream-deep px-1.5 py-[1px] text-[10.5px] font-medium text-ink-muted shrink-0">{place.category}</span>
-          {rating && <GoogleRatingInline rating={rating} className="shrink-0 ml-0.5" />}
+          {!grouped && <span className="rounded-full bg-cream-deep px-1.5 py-[1px] text-[10.5px] font-medium text-ink-muted shrink-0">{place.category}</span>}
+          {rating && <GoogleRatingInline rating={rating} className={cx("shrink-0", !grouped && "ml-0.5")} />}
           {branchCount > 0 ? (
-            <span className="truncate text-terracotta-deep font-medium">· {branchCount + 1} locations</span>
+            <span className="truncate text-terracotta-deep font-medium">{grouped && !rating ? "" : "· "}{branchCount + 1} locations</span>
           ) : (
-            (area || place.address) && <span className="truncate" title={place.address}>· {area || place.address}</span>
+            (area || place.address) && <span className="truncate" title={place.address}>{grouped && !rating ? "" : "· "}{area || place.address}</span>
           )}
         </div>
         {place.note && (
@@ -108,7 +107,7 @@ export function PlaceRow({
           <p className="mt-1 text-[11.5px] text-ink-faint">{[social.loved ? `${social.loved} loved it` : null, social.been ? `${social.been} been` : null].filter(Boolean).join(" · ")}</p>
         ) : null}
         {tipCount > 0 && (
-          <Link href={detailHref} className="mt-1.5 flex items-start gap-1.5 rounded-xl bg-terracotta-tint/70 px-2.5 py-1.5 text-[12px] leading-snug hover:bg-terracotta-tint">
+          <Link href={detailHref} className="relative z-10 mt-1.5 flex items-start gap-1.5 rounded-xl bg-terracotta-tint/70 px-2.5 py-1.5 text-[12px] leading-snug hover:bg-terracotta-tint">
             <SparkleIcon size={12} className="text-terracotta mt-[2px] shrink-0" />
             <span className="min-w-0">
               <span className="line-clamp-2">{tips![0].body}</span>
@@ -116,20 +115,9 @@ export function PlaceRow({
             </span>
           </Link>
         )}
-        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+        {(place.noteClipMediaId || place.reserveUrl || commentCount > 0) && (
+        <div className="relative z-10 mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
           {place.noteClipMediaId && <AudioClip mediaId={place.noteClipMediaId} label={carried ? `@${noteAuthor!.username}'s voice note` : "Voice note"} />}
-          {expanded && hours.length > 0 && <HoursSummary hours={hours} tz={placeTimeZone(place.country, place.lng)} />}
-          {expanded && place.lat && place.lng && (
-            <a
-              className="text-[11px] text-ink-muted inline-flex items-center gap-1 hover:text-terracotta"
-              href={mapsUrl(place)}
-              target="_blank"
-              rel="noreferrer"
-              {...trackAttrs("tap_directions", place.guideId, place.id)}
-            >
-              <PinIcon size={12} /> Open in Maps
-            </a>
-          )}
           {place.reserveUrl && (
             <a
               className="text-[11px] font-medium text-terracotta inline-flex items-center gap-1 hover:underline"
@@ -141,10 +129,13 @@ export function PlaceRow({
               <CalendarIcon size={12} /> Reserve
             </a>
           )}
-          <Link href={detailHref} className="text-[11px] text-ink-muted inline-flex items-center gap-1 hover:text-terracotta">
-            <ChatIcon size={12} /> {commentCount > 0 ? `${commentCount} comment${commentCount === 1 ? "" : "s"}` : "Details"}
-          </Link>
+          {commentCount > 0 && (
+            <Link href={detailHref} className="text-[11px] text-ink-muted inline-flex items-center gap-1 hover:text-terracotta">
+              <ChatIcon size={12} /> {commentCount} comment{commentCount === 1 ? "" : "s"}
+            </Link>
+          )}
         </div>
+        )}
         {flagged && (
           <div className="mt-2 inline-flex items-center gap-1.5 rounded-xl bg-ochre-soft/70 px-2.5 py-1.5 text-[11.5px] text-ink">
             <AlertIcon size={13} />

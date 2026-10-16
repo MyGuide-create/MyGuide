@@ -57,7 +57,7 @@ export function BeenHere({
   const label = (
     <>
       <CheckIcon size={14} />
-      {been ? "Been here" : "Been here?"}
+      {been ? (youHaveIt || done ? "Recommended" : "Been here") : "Recommend"}
       {n > 0 && <span className="tabular-nums text-ink-muted font-normal">{n}</span>}
     </>
   );
@@ -73,7 +73,7 @@ export function BeenHere({
   );
   if (!signedIn)
     return (
-      <Link href={`/signup?why=save&next=${encodeURIComponent(path)}`} className={variant === "icon" ? iconCls : cls} aria-label="Been here?">
+      <Link href={`/signup?why=save&next=${encodeURIComponent(path)}`} className={variant === "icon" ? iconCls : cls} aria-label="Recommend">
         {variant === "icon" ? iconBody : label}
       </Link>
     );
@@ -119,7 +119,7 @@ export function BeenHere({
   return (
     <>
       {variant === "icon" ? (
-        <button type="button" aria-pressed={been} aria-label={been ? "Been here (tap to undo)" : "Been here?"} title="Been here?" className={iconCls} onClick={tap}>
+        <button type="button" aria-pressed={been} aria-label={been ? "Recommended (tap to undo)" : "Recommend"} title="Recommend" className={iconCls} onClick={tap}>
           {iconBody}
         </button>
       ) : (
@@ -135,13 +135,13 @@ export function BeenHere({
       </div>
       )}
       {open && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center" role="dialog" aria-modal="true" aria-label="Would you recommend it?">
+        <div className="fixed inset-0 z-50 flex items-end justify-center" role="dialog" aria-modal="true" aria-label="Recommend it?">
           <button type="button" aria-label="Close" onClick={close} className="absolute inset-0 bg-ink/40" />
           <div className="relative w-full max-w-[480px] rounded-t-[28px] bg-cream px-5 pt-3 pb-8 safe-bottom max-h-[85dvh] overflow-y-auto fade-up">
             <div className="mx-auto w-10 h-1.5 rounded-full bg-line mb-3" />
             <div className="flex items-start justify-between gap-3 mb-1">
               <h2 className="font-display text-[24px] leading-tight">
-                {step === "done" ? "It's one of your spots now" : step === "words" ? "In your own words" : `You've been to ${placeName}!`}
+                {step === "done" ? "It's one of your spots now" : step === "words" ? "In your own words" : `Recommend ${placeName}?`}
               </h2>
               <button type="button" aria-label="Close" onClick={close} className="w-9 h-9 -mr-2 shrink-0 flex items-center justify-center rounded-full text-ink-muted">
                 <XIcon size={18} />
@@ -150,9 +150,9 @@ export function BeenHere({
 
             {step === "ask" && (
               <>
-                <p className="text-[14px] text-ink-muted leading-relaxed">Would you recommend it? It becomes one of your spots too, and friends see you both recommend it.</p>
+                <p className="text-[14px] text-ink-muted leading-relaxed">Been and loved it? It becomes one of your spots too, and friends see you both recommend it.</p>
                 <div className="mt-4 flex flex-col gap-2.5">
-                  <Button size="lg" onClick={() => setStep("words")}>Yes, I recommend it</Button>
+                  <Button size="lg" onClick={() => setStep("words")}>Yes, recommend it</Button>
                   <Button
                     size="lg"
                     variant="outline"
@@ -161,7 +161,7 @@ export function BeenHere({
                       beenNotForMe(placeId).catch(() => {});
                     }}
                   >
-                    Not really
+                    I&apos;ve been, but no
                   </Button>
                 </div>
               </>

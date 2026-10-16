@@ -224,7 +224,7 @@ async function StatsTab() {
             <Tile label="Places" value={s.places} />
             <Tile label="Public guides" value={s.publicGuides} />
             <Tile label="Follows" value={s.follows} />
-            <Tile label="Want to go" value={s.favourites} hint={`${s.savedGuides} whole guides saved`} />
+            <Tile label="Saves" value={s.favourites} hint={`${s.savedGuides} whole guides saved`} />
           </div>
         </section>
 

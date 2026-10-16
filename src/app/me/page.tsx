@@ -9,7 +9,6 @@ import { requireUser } from "@/lib/auth";
 import { getFollowStats, listFollowRequests, listFollowing } from "@/lib/guides";
 import { hasAnthropicKey } from "@/lib/ai";
 import { hasGoogleKey } from "@/lib/places";
-import { BookmarkIcon, ChatIcon, ListIcon, MapIcon, PinIcon, SparkleIcon } from "@/components/Icons";
 import { DeleteAccountForm } from "@/components/DeleteAccountForm";
 import { ChangePasswordForm } from "@/components/ChangePasswordForm";
 import { signUpInfo } from "@/lib/oauthUsers";
@@ -23,7 +22,7 @@ import { eq } from "drizzle-orm";
 import { toPublicUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "You" };
+export const metadata = { title: "Settings" };
 
 export default async function MePage() {
   const user = await requireUser("/me");
@@ -36,22 +35,12 @@ export default async function MePage() {
   const hasPassword = (await signUpInfo([user])).get(user.id)?.method === "email";
   return (
     <AppShell>
-      <TopBar title="You" right={<Link href={`/u/${user.username}`} className="text-[13px] font-medium text-terracotta px-2">View profile</Link>} />
+      <TopBar back={`/u/${user.username}`} title="Settings" />
       <div className="px-5 pt-4 pb-8 flex flex-col gap-8">
         <div>
           <div className="text-[12.5px] text-ink-muted">@{user.username} · {user.email}</div>
           <div className="mt-1 text-[12.5px] text-ink-muted"><Link href={`/u/${user.username}/followers`} className="hover:underline">{stats.followers} {stats.followers === 1 ? "follower" : "followers"}</Link> · <Link href={`/u/${user.username}/following`} className="hover:underline">{stats.following} following</Link></div>
         </div>
-        <nav className="grid grid-cols-2 gap-2 text-[13px] font-medium">
-          <Link href="/my-places" className="inline-flex items-center gap-2 rounded-2xl border border-line bg-paper px-3.5 py-3 hover:border-terracotta-soft"><PinIcon size={16} className="text-terracotta" /> My places</Link>
-          <Link href="/saved" className="inline-flex items-center gap-2 rounded-2xl border border-line bg-paper px-3.5 py-3 hover:border-terracotta-soft"><BookmarkIcon size={16} className="text-terracotta" /> Want to go</Link>
-          <Link href="/trips" className="inline-flex items-center gap-2 rounded-2xl border border-line bg-paper px-3.5 py-3 hover:border-terracotta-soft"><MapIcon size={16} className="text-terracotta" /> Trips</Link>
-          <Link href="/stats" className="inline-flex items-center gap-2 rounded-2xl border border-line bg-paper px-3.5 py-3 hover:border-terracotta-soft"><ListIcon size={16} className="text-terracotta" /> Guide stats</Link>
-          <Link href="/feedback?from=/me" className="inline-flex items-center gap-2 rounded-2xl border border-line bg-paper px-3.5 py-3 hover:border-terracotta-soft"><ChatIcon size={16} className="text-terracotta" /> Send feedback</Link>
-          <Link href={`/u/${user.username}#wishes`} className="inline-flex items-center gap-2 rounded-2xl border border-line bg-paper px-3.5 py-3 hover:border-terracotta-soft"><SparkleIcon size={16} className="text-terracotta" /> My wish list</Link>
-          <Link href="/welcome?tour=1" className="col-span-2 inline-flex items-center gap-2 rounded-2xl border border-line bg-paper px-3.5 py-3 hover:border-terracotta-soft"><SparkleIcon size={16} className="text-terracotta" /> How MyGuide works</Link>
-          {admin && <Link href="/admin" className="col-span-2 rounded-2xl border border-terracotta-soft bg-terracotta-tint/50 px-3.5 py-3">Admin · pilot stats &amp; users</Link>}
-        </nav>
 
         <PushToggle publicKey={pushPublicKey()} />
 
@@ -126,6 +115,15 @@ export default async function MePage() {
             </ul>
           </section>
         )}
+
+        <section>
+          <h2 className="font-display text-[22px] mb-3">Help</h2>
+          <ul className="flex flex-col rounded-2xl border border-line bg-paper divide-y divide-line text-[14px]">
+            <li><Link href="/welcome?tour=1" className="flex items-center justify-between px-4 py-3">How MyGuide works <span aria-hidden className="text-ink-faint">›</span></Link></li>
+            <li><Link href="/feedback?from=/me" className="flex items-center justify-between px-4 py-3">Send feedback <span aria-hidden className="text-ink-faint">›</span></Link></li>
+            {admin && <li><Link href="/admin" className="flex items-center justify-between px-4 py-3">Admin · pilot stats &amp; users <span aria-hidden className="text-ink-faint">›</span></Link></li>}
+          </ul>
+        </section>
 
         <form action={logOut}>
           <Button type="submit" variant="ghost" className="border border-line w-full">Log out</Button>

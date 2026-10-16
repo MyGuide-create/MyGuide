@@ -143,10 +143,10 @@ export function GuideView({ detail, viewerId, viewer, shareUrl, shareKey, yours 
           {!detail.viewerCanEdit && <SaveGuideButton guideId={guide.id} initial={detail.viewerSavedGuide} signedIn={!!viewerId} />}
           <Button size="sm" variant="secondary" onClick={() => setSharing(true)} className="flex-1"><ShareIcon size={15} /> Share</Button>
           {detail.viewerCanFork && (
-            <LinkButton href={`/pick?${new URLSearchParams({ guide: guide.slug, ...(shareKey ? { key: shareKey } : {}) }).toString()}`} size="sm" variant="outline" className="flex-1 whitespace-nowrap"><PlusIcon size={15} /> Pick places</LinkButton>
+            <LinkButton href={`/pick?${new URLSearchParams({ guide: guide.slug, ...(shareKey ? { key: shareKey } : {}) }).toString()}`} size="sm" variant="outline" className="flex-1 whitespace-nowrap"><PlusIcon size={15} /> Save spots</LinkButton>
           )}
           {!viewerId && (
-            <LinkButton href={`/signup?why=fork&next=${encodeURIComponent(`/pick?${new URLSearchParams({ guide: guide.slug, ...(shareKey ? { key: shareKey } : {}) }).toString()}`)}`} size="sm" variant="outline" className="flex-1 whitespace-nowrap"><PlusIcon size={15} /> Pick places</LinkButton>
+            <LinkButton href={`/signup?why=fork&next=${encodeURIComponent(`/pick?${new URLSearchParams({ guide: guide.slug, ...(shareKey ? { key: shareKey } : {}) }).toString()}`)}`} size="sm" variant="outline" className="flex-1 whitespace-nowrap"><PlusIcon size={15} /> Save spots</LinkButton>
           )}
           <div className="flex rounded-full border border-line p-0.5">
             <button type="button" aria-label="List view" onClick={() => setMode("list")} className={cx("w-9 h-8 rounded-full flex items-center justify-center", mode === "list" ? "bg-ink text-cream" : "text-ink-muted")}><ListIcon size={17} /></button>
@@ -220,7 +220,7 @@ export function GuideView({ detail, viewerId, viewer, shareUrl, shareKey, yours 
                 </h2>
               )}
               {g.places.map((p) => (
-                <PlaceRow key={p.id} place={p} index={numberOf.get(p.id)} ownerId={guide.ownerId} guideSlug={guide.slug} noteAuthor={p.noteAuthorId ? noteAuthors[p.noteAuthorId] : null} flagged={flags[p.id]} comments={detail.placeComments[p.id] ?? []} currentUser={viewer} tips={detail.placeTips[p.id]} saved={saved.has(p.id)} yours={yoursSet.has(p.id)} shareKey={shareKey} social={detail.placeSocial[p.id]} friends={detail.friendsWhoLike[p.id]} branchCount={detail.placeLocations[p.id]?.length ?? 0} rating={ratings[p.id]} credited={detail.credited[p.id]} expanded />
+                <PlaceRow key={p.id} place={p} index={numberOf.get(p.id)} ownerId={guide.ownerId} guideSlug={guide.slug} noteAuthor={p.noteAuthorId ? noteAuthors[p.noteAuthorId] : null} flagged={flags[p.id]} comments={detail.placeComments[p.id] ?? []} currentUser={viewer} tips={detail.placeTips[p.id]} saved={saved.has(p.id)} yours={yoursSet.has(p.id)} shareKey={shareKey} social={detail.placeSocial[p.id]} friends={detail.friendsWhoLike[p.id]} branchCount={detail.placeLocations[p.id]?.length ?? 0} rating={ratings[p.id]} credited={detail.credited[p.id]} grouped={showHeadings} expanded />
               ))}
             </section>
           ))}

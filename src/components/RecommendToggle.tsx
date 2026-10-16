@@ -60,14 +60,14 @@ export function RecommendToggle({
         disabled={pending}
         onClick={() => flip(!shared)}
         aria-pressed={shared}
-        aria-label={shared ? "Recommended. Tap to make it private" : "Private. Tap to recommend it"}
+        aria-label={shared ? "Recommended. Tap to keep it just for you" : "Saved just for you. Tap to recommend it"}
         className={cx(
           "shrink-0 inline-flex items-center gap-1 rounded-full px-2.5 py-1.5 text-[11.5px] font-semibold border",
           shared ? "bg-sage-tint border-sage-soft text-ink" : "bg-paper border-line text-ink-muted",
         )}
       >
         {shared ? <CheckIcon size={12} /> : <LockIcon size={12} />}
-        {shared ? "Recommended" : "Private"}
+        {shared ? "Recommended" : "Recommend"}
       </button>
     );
   }

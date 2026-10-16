@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNotNull, like, or, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, like, notInArray, or, sql, type SQL } from "drizzle-orm";
 import { creditedNotesFor, type CreditedNote } from "./reuse";
 import { getDb } from "./db";
 import { follows, guideCollaborators, guideShares, guides, placeComments, placeLocations, placePhotos, placeReactions, placeTips, places, savedGuides, savedPlaces, users, type Guide, type Place, type PlaceComment, type PlacePhoto, type PlaceLocation, type PlaceTip, type User } from "./db/schema";
@@ -630,13 +630,16 @@ export async function suggestedCreators(viewerId?: string | null, limit = 6): Pr
     .map((r) => ({ ...toPublicUser(r.u), guideCount: Number(r.n) }));
 }
 
+/** Friends' new guides and places: these belong to the Home feed, not Activity (16 Oct 2026). */
+export const FEED_NOTIFICATION_TYPES = ["guide_published", "places_added"] as const;
+
 export async function unreadNotificationCount(userId: string): Promise<number> {
   const db = await getDb();
   const { notifications } = await import("./db/schema");
   const [row] = await db
     .select({ n: sql<number>`count(*)` })
     .from(notifications)
-    .where(and(eq(notifications.userId, userId), sql`${notifications.readAt} is null`));
+    .where(and(eq(notifications.userId, userId), sql`${notifications.readAt} is null`, notInArray(notifications.type, [...FEED_NOTIFICATION_TYPES])));
   return Number(row?.n ?? 0);
 }
 

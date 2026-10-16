@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { Suspense, type ReactNode } from "react";
 import type { PublicUser } from "@/lib/auth";
 import { getCurrentUser } from "@/lib/auth";
@@ -9,7 +8,7 @@ import { BackButton, NavTrail } from "./BackButton";
 import { VisitPing } from "./VisitPing";
 import { BottomNav } from "./BottomNav";
 import { ChevronLeft } from "./Icons";
-import { Avatar, cx } from "./ui";
+import { cx } from "./ui";
 
 /**
  * Phone-first shell: content is capped at ~480px and centred on larger
@@ -44,13 +43,12 @@ export function TopBar({
   back,
   right,
   transparent,
-  avatarUser,
 }: {
   title?: ReactNode;
   back?: string;
   right?: ReactNode;
   transparent?: boolean;
-  /** Shown top-right, linking to the user's profile, when `right` isn't already occupied. */
+  /** Kept for callers; no longer shown (16 Oct 2026). */
   avatarUser?: PublicUser | null;
 }) {
   return (
@@ -76,11 +74,8 @@ export function TopBar({
       <div className="flex-1 min-w-0">
         {typeof title === "string" ? <h1 className="font-display text-[22px] leading-none truncate">{title}</h1> : title}
       </div>
-      {right ?? (avatarUser ? (
-        <Link href={`/u/${avatarUser.username}`} aria-label="Your profile">
-          <Avatar user={avatarUser} size={32} />
-        </Link>
-      ) : null)}
+      {/* No avatar top-right (16 Oct 2026): the You tab already goes to your profile, and this corner is for the page's own action. */}
+      {right ?? null}
     </div>
   );
 }

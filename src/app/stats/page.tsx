@@ -24,7 +24,7 @@ export default async function StatsPage() {
             <div className="grid grid-cols-3 gap-2">
               <Tile label="Views" value={total("views")} />
               <Tile label="Readers" value={total("viewers")} />
-              <Tile label="Want to go" value={total("favourites")} />
+              <Tile label="Saves" value={total("favourites")} />
               <Tile label="Taps out" value={total("taps")} hint="Directions, call, website, booking" />
               <Tile label="Copies" value={total("copies")} hint="People who used your guide" />
               <Tile label="Guide saves" value={total("guideSaves")} hint="People who saved a whole guide" />

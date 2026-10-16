@@ -72,7 +72,7 @@ export default async function MyPlacesPage({ searchParams }: { searchParams: Pro
         {Number.isFinite(imported) && !focusShown && <div className="mt-3">{importBanner}</div>}
         {n > 0 && (
           <p className="mt-3 text-[12.5px] leading-snug text-ink-muted">
-            {sharedCount ? `${sharedCount} recommended. ` : ""}Tap <span className="font-semibold text-ink">Private</span> to recommend a place. Recommended places show on their city&apos;s page for friends, no guide needed.
+            {sharedCount ? `${sharedCount} recommended. ` : ""}Tap <span className="font-semibold text-ink">Recommend</span> on a place to share it. Recommended places show on their city&apos;s page for friends, no guide needed.
           </p>
         )}
         {n > 0 && (

@@ -129,7 +129,7 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
         )}
 
         {plan.favourites.length > 0 && (
-          <Section title="On your Want to go list" count={plan.favourites.length}>
+          <Section title="Saved" count={plan.favourites.length}>
             <ul className="flex flex-col gap-2">
               {plan.favourites.map(({ place, guide }) => (
                 <PlaceLine key={place.id} href={`/g/${guide.slug}/p/${place.id}`} place={place} sub={`from ${guide.title}`} />

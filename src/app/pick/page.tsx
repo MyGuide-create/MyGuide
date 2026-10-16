@@ -13,7 +13,7 @@ import { placeArea } from "@/lib/places/neighbourhood";
 import { isReusable } from "@/lib/reuse";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Pick places" };
+export const metadata = { title: "Save spots" };
 
 type SP = Record<string, string | string[] | undefined>;
 const one = (v: string | string[] | undefined) => (typeof v === "string" ? v.trim() : "");
@@ -34,7 +34,7 @@ export default async function PickPage({ searchParams }: { searchParams: Promise
   const user = await requireUser(next);
   const mine = (await listGuidesByOwner(user.id, user.id)).map((g) => ({ id: g.guide.id, title: g.guide.title, city: g.guide.city, placeCount: g.placeCount }));
 
-  let heading = "Pick places";
+  let heading = "Save spots";
   let intro = "";
   let city = cityParam;
   let groups: PickGroup[] = [];
@@ -98,12 +98,12 @@ export default async function PickPage({ searchParams }: { searchParams: Promise
 
   return (
     <AppShell nav={false}>
-      <TopBar back={back} title="Pick places" avatarUser={toPublicUser(user)} />
+      <TopBar back={back} title="Save spots" avatarUser={toPublicUser(user)} />
       {blocked ? (
         <div className="px-4 pt-6"><EmptyState title="Can't pick from this one" body={blocked} action={<LinkButton href={back} size="sm">Back</LinkButton>} /></div>
       ) : groups.every((g) => g.items.length === 0) ? (
         <div className="px-4 pt-6">
-          <EmptyState title="Nothing to pick yet" body={cityParam ? `No spots in ${cityParam} yet.` : "Open a city or a guide and tap Pick places."} action={<LinkButton href={back} size="sm">Back</LinkButton>} />
+          <EmptyState title="Nothing to pick yet" body={cityParam ? `No spots in ${cityParam} yet.` : "Open a city or a guide and tap Save spots."} action={<LinkButton href={back} size="sm">Back</LinkButton>} />
         </div>
       ) : (
         <PickPlaces title={heading} intro={intro} groups={groups} guides={mine} city={city} preselectAll={preselectAll} />
