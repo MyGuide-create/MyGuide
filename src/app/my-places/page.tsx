@@ -1,13 +1,11 @@
 import Link from "next/link";
 import { AppShell, TopBar } from "@/components/AppShell";
 import { GuideNudge } from "@/components/GuideNudge";
-import { BookmarkIcon, CheckIcon, ChevronDown, EditIcon, PlusIcon } from "@/components/Icons";
+import { BookmarkIcon, EditIcon, PlusIcon } from "@/components/Icons";
 import { CityTileImage } from "@/components/CityImage";
 import { GuideCover } from "@/components/GuideCover";
-import { PlaceTile } from "@/components/PlaceTile";
-import { GuideMap } from "@/components/GuideMap";
+import { MySpotsCity } from "@/components/MySpotsCity";
 import { orderedCategories } from "@/lib/places/order";
-import { RecommendToggle } from "@/components/RecommendToggle";
 import { EmptyState, LinkButton, cx } from "@/components/ui";
 import { requireUser } from "@/lib/auth";
 import { getDb } from "@/lib/db";
@@ -113,90 +111,31 @@ export default async function MyPlacesPage({ searchParams }: { searchParams: Pro
               }
             />
           ) : (
-            (() => {
-              const city = focusCity;
-              const rows = cityRows;
-              const privateIds = rows.filter((p) => p.inStash && !p.recommended).map((p) => p.place.id);
-              const loose = unguided.get(city)?.length ?? 0;
-              const pinned = rows.filter((it) => it.place.lat != null && it.place.lng != null);
-              // Grouped by category (16 Oct 2026), in the usual order (food first…), newest list order within.
-              const cats = orderedCategories(rows.map((r) => r.place));
-              return (
-                <>
-                  {Number.isFinite(imported) && focusShown && importBanner}
-                  {pinned.length > 0 && (
-                    <GuideMap
-                      height={240}
-                      locate={false}
-                      places={pinned.slice(0, 200).map((it) => ({
-                        id: it.place.id,
-                        name: it.place.name,
-                        lat: it.place.lat,
-                        lng: it.place.lng,
-                        category: it.place.category,
-                        href: it.href,
-                        photoUrl: it.place.photoUrl,
-                        photoMediaId: it.place.photoMediaId,
-                        subtitle: [it.place.category, placeArea(it.place)].filter(Boolean).join(" · "),
-                      }))}
-                    />
-                  )}
-                  {city && loose >= NUDGE_MIN && <GuideNudge city={city} count={loose} />}
-                  {city && privateIds.length > 1 && (
-                    <div className="-mb-3 flex justify-end px-1">
-                      <RecommendToggle variant="all" placeIds={privateIds} shared={false} city={city} />
-                    </div>
-                  )}
-                  {cats.map((cat) => {
-                    const inCat = rows.filter((r) => r.place.category === cat);
-                    return (
-                      <details key={cat || "_none"} open className="group/cat">
-                        <summary className="list-none [&::-webkit-details-marker]:hidden cursor-pointer select-none px-1 flex items-center gap-2 min-h-[32px] group-open/cat:mb-2">
-                          <h2 className="flex items-baseline gap-2 min-w-0">
-                            <span className="font-display text-[19px] truncate">{cat || "Other"}</span>
-                            <span className="text-[12px] text-ink-faint">{inCat.length}</span>
-                          </h2>
-                          <ChevronDown size={17} aria-hidden className="shrink-0 text-ink-muted transition-transform -rotate-90 group-open/cat:rotate-0" />
-                        </summary>
-                        <ul className="flex flex-col gap-2">
-                          {inCat.map((it) => {
-                            const p = it.place;
-                            const words = (p.special || p.note || "").trim();
-                            return (
-                              <li key={p.id} className="flex items-center gap-2 rounded-2xl border border-line/70 bg-paper pr-2.5 hover:border-terracotta-soft">
-                                <Link href={it.href} className="flex-1 min-w-0 flex gap-3 items-center p-2.5">
-                                  <PlaceTile place={p} size={56} />
-                                  <span className="flex-1 min-w-0">
-                                    <span className="block font-semibold text-[14.5px] truncate">{p.name}</span>
-                                    {placeArea(p) && <span className="block text-[12px] text-ink-muted truncate">{placeArea(p)}</span>}
-                                    {words ? (
-                                      <span className="block text-[12px] text-ink italic truncate">“{words}”</span>
-                                    ) : (
-                                      <span className="block text-[11.5px] text-ink-faint">Added {timeAgo(p.createdAt)}</span>
-                                    )}
-                                    {it.inGuides.length > 0 && (
-                                      <span className="block text-[11.5px] text-sage truncate">In {it.inGuides.map((g) => g.title).join(", ")}</span>
-                                    )}
-                                  </span>
-                                </Link>
-                                {it.recommended && !p.sharedAt ? (
-                                  // Public through a published guide: recommended already, nothing to switch here.
-                                  <span title="In a public guide" className="shrink-0 inline-flex items-center gap-1 rounded-full px-2.5 py-1.5 text-[11.5px] font-semibold border bg-sage-tint border-sage-soft text-ink">
-                                    <CheckIcon size={12} /> Recommended
-                                  </span>
-                                ) : (
-                                  it.inStash && <RecommendToggle variant="pill" placeIds={[p.id]} shared={!!p.sharedAt} city={city} />
-                                )}
-                              </li>
-                            );
-                          })}
-                        </ul>
-                      </details>
-                    );
-                  })}
-                </>
-              );
-            })()
+            <>
+              {Number.isFinite(imported) && focusShown && importBanner}
+              {focusCity && (unguided.get(focusCity)?.length ?? 0) >= NUDGE_MIN && <GuideNudge city={focusCity} count={unguided.get(focusCity)!.length} />}
+              <MySpotsCity
+                city={focusCity}
+                categories={orderedCategories(cityRows.map((r) => r.place))}
+                spots={cityRows.map((it) => ({
+                  id: it.place.id,
+                  name: it.place.name,
+                  category: it.place.category,
+                  photoUrl: it.place.photoUrl,
+                  photoMediaId: it.place.photoMediaId,
+                  lat: it.place.lat,
+                  lng: it.place.lng,
+                  href: it.href,
+                  area: placeArea(it.place),
+                  words: (it.place.special || it.place.note || "").trim(),
+                  added: `Added ${timeAgo(it.place.createdAt)}`,
+                  guides: it.inGuides.map((g) => g.title),
+                  recommended: it.recommended,
+                  shared: !!it.place.sharedAt,
+                  inStash: it.inStash,
+                }))}
+              />
+            </>
           )}
         </main>
       </AppShell>
