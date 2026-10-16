@@ -76,7 +76,7 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
   const guide = await getGuideBySlug(slug);
   if (!guide) notFound();
   const user = await getCurrentUser();
-  // A place recommended on its own from someone's My places can be opened without the (private) list.
+  // A place recommended on its own from someone's My spots can be opened without the (private) list.
   let sharedOnly = false;
   if (!(await canViewGuide(guide, user?.id, key))) {
     const db = await getDb();
@@ -126,7 +126,7 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
   const targets = canReuse && user ? await reuseTargets(user.id, tidyCity(guide.city || place.city)) : null;
   // Opened someone else's copy of a spot you have too: fix yours from here.
   const mine = user && !detail.viewerCanEdit ? await ownCopyOf(user.id, place) : null;
-  // Where "← Back" (and Remove) goes: My places for a My places spot, else the guide.
+  // Where "← Back" (and Remove) goes: My spots for a My spots spot, else the guide.
   const backHref = stashPlace ? myPlacesHref(place.city ? canonicalCity(place.city) : "") : `/g/${slug}${keyQuery}`;
   const noteAuthor = place.noteAuthorId && place.noteAuthorId !== detail.owner.id ? detail.noteAuthors[place.noteAuthorId] : null;
 
@@ -199,7 +199,7 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
               name={place.name}
               editHref={stashPlace ? null : `/g/${slug}/edit#place-edit-${place.id}`}
               backHref={backHref}
-              from={stashPlace ? "My places" : detail.guide.title}
+              from={stashPlace ? "My spots" : detail.guide.title}
             />
           )}
           {detail.viewerCanEdit && (
@@ -207,7 +207,7 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
               guideId={guide.id}
               placeId={place.id}
               name={place.name}
-              // A guide's city is what it should be; in My places the saved city may be the wrong one.
+              // A guide's city is what it should be; in My spots the saved city may be the wrong one.
               cityHint={stashPlace ? undefined : tidyCity(guide.city) || undefined}
               droppedPin={isDroppedPin(place)}
               at={place.lat != null && place.lng != null ? { lat: place.lat, lng: place.lng } : null}
@@ -219,7 +219,7 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
                 <CheckIcon size={15} /> One of your spots
               </p>
               <p className="mt-0.5 text-[12.5px] text-ink-muted">
-                {mine.recommended ? "You recommend it too — friends see you both." : mine.inStash ? "It's in My places, private for now." : "It's in one of your guides."}{" "}
+                {mine.recommended ? "You recommend it too — friends see you both." : mine.inStash ? "It's in My spots, private for now." : "It's in one of your guides."}{" "}
                 <Link href={`/g/${mine.slug}/p/${mine.placeId}`} className="font-semibold text-terracotta">Open yours →</Link>
               </p>
               {mine.inStash && !mine.recommended && (
@@ -407,7 +407,7 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
         {stashPlace && !detail.viewerCanEdit ? (
           <Link href={`/u/${detail.owner.username}`} className="text-[12.5px] text-ink-muted hover:text-terracotta">← {detail.owner.displayName}</Link>
         ) : (
-          <Link href={backHref} className="text-[12.5px] text-ink-muted hover:text-terracotta">← Back to {stashPlace ? "My places" : detail.guide.title}</Link>
+          <Link href={backHref} className="text-[12.5px] text-ink-muted hover:text-terracotta">← Back to {stashPlace ? "My spots" : detail.guide.title}</Link>
         )}
       </div>
     </AppShell>

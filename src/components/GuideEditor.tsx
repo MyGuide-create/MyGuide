@@ -65,7 +65,7 @@ export function GuideEditor({ detail, justForked, justCreated, viewerId, wishFor
   const [pending, start] = useTransition();
   const owner = detail.owner;
   const isDraft = !guide.publishedAt;
-  /** My places (the private list, never a guide): only its places are edited here — no cover, title or publishing. */
+  /** My spots (the private list, never a guide): only its places are edited here — no cover, title or publishing. */
   const stash = isStash(guide);
   const hasCover = !!(guide.coverMediaId || guide.coverUrl);
   /** Saves still in flight, so "Save draft" can wait for the last edit before leaving. */
@@ -339,7 +339,7 @@ export function GuideEditor({ detail, justForked, justCreated, viewerId, wishFor
 
       {stash ? (
         <p className="mx-5 mt-3 text-[13px] text-ink-muted leading-snug">
-          Edit or remove your places. Changes save as you go — My places is your own list, not a guide, so there&apos;s nothing to publish.
+          Edit or remove your places. Changes save as you go — My spots is your own list, not a guide, so there&apos;s nothing to publish.
         </p>
       ) : (
       <>
@@ -421,7 +421,7 @@ export function GuideEditor({ detail, justForked, justCreated, viewerId, wishFor
         </>
       )}
 
-      {/* Publish bar (My places: just Done) */}
+      {/* Publish bar (My spots: just Done) */}
       {stash ? (
         <div className="fixed bottom-0 inset-x-0 z-30 flex justify-center pointer-events-none">
           <div className="pointer-events-auto w-full max-w-[480px] safe-bottom bg-paper/95 backdrop-blur border-t border-line px-4 py-3 flex items-center gap-2">

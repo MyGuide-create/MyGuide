@@ -18,7 +18,7 @@ export default async function SavedPage({ searchParams }: { searchParams: Promis
   const sp = await searchParams;
   const user = await requireUser("/saved");
   const [saved, guides] = await Promise.all([listSavedPlaces(user.id), listSavedGuides(user.id)]);
-  // Your own places (My places) have their own page; Want to go is the other people's places and guides you bookmarked.
+  // Your own places (My spots) have their own page; Want to go is the other people's places and guides you bookmarked.
   const myCount = (await loadMyPlaces(user.id)).items.length;
   const tab = sp.tab === "guides" || (sp.tab !== "places" && saved.length === 0 && guides.length > 0) ? "guides" : "places";
   const tabLink = (t: "places" | "guides", label: string, n: number) => (
@@ -54,7 +54,7 @@ export default async function SavedPage({ searchParams }: { searchParams: Promis
         {myCount > 0 && (
           <Link href="/my-places" className="flex items-center justify-between gap-3 rounded-2xl border border-line/80 bg-paper px-4 py-3 hover:border-terracotta-soft">
             <span className="min-w-0">
-              <span className="block font-semibold text-[15px]">My places</span>
+              <span className="block font-semibold text-[15px]">My spots</span>
               <span className="block text-[12.5px] text-ink-muted">{myCount} place{myCount === 1 ? "" : "s"} you&apos;ve added · Saved below is other people&apos;s spots you saved</span>
             </span>
             <span aria-hidden className="text-[20px] text-terracotta">›</span>

@@ -10,7 +10,7 @@ import { PinIcon } from "./Icons";
 /**
  * On a place's own page, for its owner: "Wrong place?" searches Google again and swaps the match;
  * "Move pin" (or "Drop a pin instead") puts it exactly where it is. Same actions as the guide editor,
- * and the fix reaches the same spot in My places and your other guides.
+ * and the fix reaches the same spot in My spots and your other guides.
  */
 export function FixPlaceLocation({
   guideId,

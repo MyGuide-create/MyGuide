@@ -4,12 +4,13 @@ import { requireUser } from "@/lib/auth";
 import { listGuidesByOwner } from "@/lib/guides";
 import { isStash } from "@/lib/stash";
 import { wishesForMaking } from "@/lib/wishes";
+import { isAdmin } from "@/lib/admin";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Add a place" };
 
 /**
- * + → Add a place. Saves to My places; `?guide=<slug>` (one of your guides) saves straight into that guide.
+ * + → Add a place. Saves to My spots; `?guide=<slug>` (one of your guides) saves straight into that guide.
  * `?wish=<id>` (someone's wish list or ask): add spots for their city, then send them from the done screen.
  */
 export default async function RecordPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
@@ -26,6 +27,7 @@ export default async function RecordPage({ searchParams }: { searchParams: Promi
       <RecordFlow
         guides={guides}
         intoGuide={from ? { id: from.guide.id, slug: from.guide.slug, title: from.guide.title } : null}
+        photoPlaces={isAdmin(user)}
         forWish={!from && wish ? { id: wish.wish.id, city: wish.wish.city, name: wish.user.displayName.split(" ")[0] } : null}
       />
     </AppShell>

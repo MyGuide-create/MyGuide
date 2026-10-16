@@ -41,7 +41,7 @@ export default async function CreatePage({ searchParams }: PageProps<"/create">)
   const askerFirst = asker?.displayName.split(" ")[0];
   return (
     <AppShell nav={false}>
-      {/* Imports land in My places (a guide made for someone is still a guide). */}
+      {/* Imports land in My spots (a guide made for someone is still a guide). */}
       <TopBar back={myAsk ? `/ask/${myAsk.token}` : forWish ? "/wishes" : sp.import === "1" ? "/record" : "/"} title={sp.import === "1" && !forWish ? "Import places" : "Create a guide"} />
       {forWish && (
         <div className="mx-4 mt-3 rounded-2xl bg-terracotta-tint/70 px-4 py-3 text-[13px] leading-snug flex gap-2.5 items-start">

@@ -10,9 +10,9 @@ import { EDIT_DESCRIPTION_EVENT } from "./DescriptionEditor";
 const pill = "inline-flex items-center gap-1.5 h-8 px-3 rounded-full border border-line text-[12.5px] font-medium text-ink-muted hover:text-ink disabled:opacity-50";
 
 /**
- * On your own place's page: Edit (a guide's place opens in the guide editor; a My places spot edits its
+ * On your own place's page: Edit (a guide's place opens in the guide editor; a My spots spot edits its
  * description right on the page, never in a guide editor) and Remove
- * (same action as the editor's remove, then back to My places or the guide).
+ * (same action as the editor's remove, then back to My spots or the guide).
  */
 export function PlaceOwnerActions({
   guideId,
@@ -25,10 +25,10 @@ export function PlaceOwnerActions({
   guideId: string;
   placeId: string;
   name: string;
-  /** Guide editor link; null = edit on the page (My places). */
+  /** Guide editor link; null = edit on the page (My spots). */
   editHref: string | null;
   backHref: string;
-  /** "My places" or the guide's title, for the confirm line. */
+  /** "My spots" or the guide's title, for the confirm line. */
   from: string;
 }) {
   const router = useRouter();

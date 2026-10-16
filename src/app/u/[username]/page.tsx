@@ -51,7 +51,7 @@ export default async function ProfilePage({ params, searchParams }: PageProps<"/
   // Shared taste (15 Oct 2026): places you both recommend / have.
   const shared = viewer && !own ? new Set(spotCities.flatMap((c) => c.spots.map((s) => s.key))) : null;
   const commonCount = shared && viewer ? [...(await ownSpotKeys(viewer.id)).values()].flatMap((k) => [...k]).filter((k) => shared.has(k)).length : 0;
-  // Your own places (My places) get their own card, not a draft.
+  // Your own places (My spots) get their own card, not a draft.
   const myPlaces = own ? (await loadMyPlaces(profile.id)).items : [];
   const published = cards.filter((c) => c.guide.publishedAt);
   const drafts = cards.filter((c) => !c.guide.publishedAt);
@@ -142,7 +142,7 @@ export default async function ProfilePage({ params, searchParams }: PageProps<"/
                   <span className="w-11 h-11 rounded-full bg-terracotta-tint text-terracotta flex items-center justify-center shrink-0"><PlusIcon size={20} /></span>
                 )}
                 <span className="flex-1 min-w-0">
-                  <span className="block font-display text-[20px] leading-tight">My places</span>
+                  <span className="block font-display text-[20px] leading-tight">My spots</span>
                   <span className="block text-[12.5px] text-ink-muted">
                     {myPlaces.length ? `${myPlaces.length} place${myPlaces.length === 1 ? "" : "s"}` : "Every place you add lands here"}
                   </span>
@@ -195,7 +195,7 @@ export default async function ProfilePage({ params, searchParams }: PageProps<"/
             )}
             {!own && spotCities.length > 0 && published.length > 0 && <h2 className="font-display text-[22px] px-1 mt-2">Guides</h2>}
             {published.length === 0 && (own || spotCities.length === 0) && (
-              <EmptyState title={own ? "No guides yet" : `${profile.displayName.split(" ")[0]} hasn't shared any spots yet`} body={own ? "Group your places into a guide whenever you like — from My places, a city page, or New guide above." : undefined} />
+              <EmptyState title={own ? "No guides yet" : `${profile.displayName.split(" ")[0]} hasn't shared any spots yet`} body={own ? "Group your places into a guide whenever you like — from My spots, a city page, or New guide above." : undefined} />
             )}
             {published.map((c) => <GuideCard key={c.guide.id} data={c} showOwner={false} />)}
           </>

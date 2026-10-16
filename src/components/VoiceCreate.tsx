@@ -82,8 +82,8 @@ export function VoiceCreate({
   const [listLink, setListLink] = useState("");
   const [linkError, setLinkError] = useState<string | null>(null);
   /**
-   * Imports land in My places (12 Oct 2026). A guide made for someone (a wish or an ask) is still a
-   * guide — the point is sending it — and its places go into the maker's My places too, private by default.
+   * Imports land in My spots (12 Oct 2026). A guide made for someone (a wish or an ask) is still a
+   * guide — the point is sending it — and its places go into the maker's My spots too, private by default.
    */
   const forSomeone = !!forWish || !!askId;
   const [share, setShare] = useState(!forSomeone);
@@ -301,7 +301,7 @@ export function VoiceCreate({
             <span className="w-12 h-12 rounded-2xl bg-sage text-white flex items-center justify-center shrink-0"><ListIcon size={22} /></span>
             <span className="min-w-0">
               <span className="block font-semibold text-[16px]">Import a Google Maps list</span>
-              <span className="block mt-0.5 text-[13px] text-ink-muted leading-snug">Bring a saved list into My places in seconds — and make it a guide if you like. Or bring places in from:</span>
+              <span className="block mt-0.5 text-[13px] text-ink-muted leading-snug">Bring a saved list into My spots in seconds — and make it a guide if you like. Or bring places in from:</span>
               <span className="mt-2 flex flex-wrap gap-1.5">
                 {["Screenshots", "WhatsApp", "Notes"].map((t) => (
                   <span key={t} className="rounded-full bg-sage-tint px-2.5 py-0.5 text-[11.5px] font-medium text-sage">{t}</span>
@@ -323,7 +323,7 @@ export function VoiceCreate({
           <p className="mt-2 text-[13.5px] text-ink-muted leading-relaxed">
             {forSomeone
               ? "Paste a Google Maps saved list’s link and we’ll bring in every place. Screenshots, links, a WhatsApp message or your Notes work too."
-              : "Paste a Google Maps saved list’s link and every place comes into My places. Screenshots, links, a WhatsApp message or your Notes work too."}
+              : "Paste a Google Maps saved list’s link and every place comes into My spots. Screenshots, links, a WhatsApp message or your Notes work too."}
           </p>
         </div>
         {(() => {
@@ -455,7 +455,7 @@ export function VoiceCreate({
           </div>
         ) : (
           <div>
-            <h1 className="font-display text-[30px] leading-[1.05]">Add {kept.length} place{kept.length === 1 ? "" : "s"} to My places</h1>
+            <h1 className="font-display text-[30px] leading-[1.05]">Add {kept.length} place{kept.length === 1 ? "" : "s"} to My spots</h1>
             <p className="mt-1 text-[13px] text-ink-muted">Check the list, then choose who can see them.</p>
           </div>
         )}
@@ -526,10 +526,10 @@ export function VoiceCreate({
         </div>
         <div className="rounded-2xl border border-line bg-paper p-3.5 flex flex-col gap-3">
           <div>
-            <div className="text-[13.5px] font-semibold">{forSomeone ? "In your My places too" : "Who can see them"}</div>
+            <div className="text-[13.5px] font-semibold">{forSomeone ? "In your My spots too" : "Who can see them"}</div>
             <p className="mt-0.5 text-[12px] text-ink-muted leading-snug">
               {forSomeone
-                ? "These are your places, so they also go into My places. Recommend them and they show on the city page for friends."
+                ? "These are your places, so they also go into My spots. Recommend them and they show on the city page for friends."
                 : "Recommended places show on their city’s page for friends. You can change this per place later."}
             </p>
           </div>
@@ -556,7 +556,7 @@ export function VoiceCreate({
               <button type="button" role="switch" aria-checked={alsoGuide} onClick={() => { setAlsoGuide((v) => !v); setError(null); }} className="flex items-center justify-between gap-3 text-left pt-1">
                 <span>
                   <span className="block text-[13.5px] font-semibold">Also make a guide from these</span>
-                  <span className="block text-[12px] text-ink-muted">{alsoGuide ? "A private draft — publish it when you're ready." : "Optional. You can do it later from My places."}</span>
+                  <span className="block text-[12px] text-ink-muted">{alsoGuide ? "A private draft — publish it when you're ready." : "Optional. You can do it later from My spots."}</span>
                 </span>
                 <span className={cx("relative w-11 h-6 rounded-full shrink-0 transition-colors", alsoGuide ? "bg-terracotta" : "bg-line")}>
                   <span className={cx("absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all", alsoGuide ? "left-[22px]" : "left-0.5")} />
@@ -578,7 +578,7 @@ export function VoiceCreate({
             <button type="button" onClick={() => { setStage("paste"); setFromList(false); setError(null); }} className="text-[13px] font-medium text-ink-muted px-3 py-2">Start over</button>
             <div className="flex-1" />
             <Button onClick={finish} disabled={creating || kept.length === 0 || ((forSomeone || alsoGuide) && !title.trim())}>
-              {creating ? <Spinner /> : forSomeone ? `Create guide · ${kept.length} place${kept.length === 1 ? "" : "s"}` : `Add ${kept.length} place${kept.length === 1 ? "" : "s"} to My places`}
+              {creating ? <Spinner /> : forSomeone ? `Create guide · ${kept.length} place${kept.length === 1 ? "" : "s"}` : `Add ${kept.length} place${kept.length === 1 ? "" : "s"} to My spots`}
             </Button>
           </div>
         </div>

@@ -25,7 +25,7 @@ export const metadata = { title: "My spots" };
  * Saved (other people's spots you bookmarked). A city tile opens that city's list ("My Lisbon"),
  * or for Saved, the city page filtered to your saved spots. Below Yours: your guides.
  *
- * My places: every place you've added, grouped by city ("My Lisbon"). Private unless you recommend
+ * My spots: every place you've added, grouped by city ("My Lisbon"). Private unless you recommend
  * them: a recommended place shows on its city page's spots without needing a guide. Places you put
  * straight into one of your guides show here too. Group them into guides any time.
  */

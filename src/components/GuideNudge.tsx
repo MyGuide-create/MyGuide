@@ -16,7 +16,7 @@ function hiddenNow(city: string): boolean {
   }
 }
 
-// "Not now" in one place hides the card everywhere on the page (done screen and My places).
+// "Not now" in one place hides the card everywhere on the page (done screen and My spots).
 const listeners = new Set<() => void>();
 const subscribe = (fn: () => void) => {
   listeners.add(fn);
@@ -24,7 +24,7 @@ const subscribe = (fn: () => void) => {
 };
 
 /**
- * "You've got 6 Lisbon spots. Make them a guide?" — shown when 4+ places in a city are in My places
+ * "You've got 6 Lisbon spots. Make them a guide?" — shown when 4+ places in a city are in My spots
  * but not in any of your guides. "Not now" hides it for that city for 7 days (this browser only).
  */
 export function GuideNudge({ city, count, className }: { city: string; count: number; className?: string }) {
@@ -45,7 +45,7 @@ export function GuideNudge({ city, count, className }: { city: string; count: nu
         <SparkleIcon size={17} className="mt-0.5 shrink-0 text-ochre" />
         <div className="min-w-0">
           <p className="text-[14.5px] font-semibold leading-snug">You&apos;ve got {count} {city} spots. Make them a guide?</p>
-          <p className="mt-0.5 text-[12px] text-cream/70 leading-snug">They stay in My places too.</p>
+          <p className="mt-0.5 text-[12px] text-cream/70 leading-snug">They stay in My spots too.</p>
         </div>
       </div>
       <div className="mt-3 flex items-center gap-2">

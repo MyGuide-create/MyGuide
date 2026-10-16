@@ -12,7 +12,7 @@ export const EDIT_DESCRIPTION_EVENT = "mg:edit-description";
 
 /**
  * Your own place's description, edited right on the place page (14 Oct 2026): no trip to the guide
- * editor, so a My places spot is never turned into a guide to change one line.
+ * editor, so a My spots spot is never turned into a guide to change one line.
  */
 export function DescriptionEditor({
   guideId,

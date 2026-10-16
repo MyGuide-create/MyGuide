@@ -52,7 +52,7 @@ export default async function GuidePage({ params, searchParams }: PageProps<"/g/
   const guide = await getGuideBySlug(slug);
   if (!guide) notFound();
   const user = await getCurrentUser();
-  // Your My places list has its own page.
+  // Your My spots list has its own page.
   if (user && guide.ownerId === user.id && isStash(guide)) redirect("/my-places");
   if (!(await canViewGuide(guide, user?.id, key))) {
     return (

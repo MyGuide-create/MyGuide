@@ -12,10 +12,10 @@ import { loadMyPlaces, unguidedByCity } from "@/lib/myPlaces";
 import { myPlacesHref } from "@/lib/stash";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Make a guide from My places" };
+export const metadata = { title: "Make a guide from My spots" };
 
 /**
- * Tick places in My places and copy (or move) them into a new or existing guide.
+ * Tick places in My spots and copy (or move) them into a new or existing guide.
  * `?city=Lisbon` (the "Make them a guide?" nudge): that city's places not yet in a guide are ticked, starting at step 2.
  */
 export default async function SortSavedPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
@@ -34,7 +34,7 @@ export default async function SortSavedPage({ searchParams }: { searchParams: Pr
       {rows.length === 0 ? (
         <div className="px-4 pt-6">
           <EmptyState
-            title="Nothing in My places yet"
+            title="Nothing in My spots yet"
             body="Tap + when you're somewhere you love to add it. Group your places into guides here whenever you like."
             action={<LinkButton href="/record" size="sm">Add a place</LinkButton>}
           />

@@ -3,7 +3,8 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { AppShell, TopBar } from "@/components/AppShell";
 import { GuideCover } from "@/components/GuideCover";
-import { BookmarkIcon, ChevronDown, LockIcon, MapIcon, SparkleIcon } from "@/components/Icons";
+import { BookmarkIcon, ChevronDown, ListIcon, LockIcon, MapIcon, SparkleIcon } from "@/components/Icons";
+import { WhoPicker, type WhoOption } from "@/components/WhoPicker";
 import { findCity, metroOfDistrict } from "@/lib/places/cities";
 import { placeArea } from "@/lib/places/neighbourhood";
 import { redirect } from "next/navigation";
@@ -162,7 +163,21 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
     return `/city?${new URLSearchParams(q).toString()}`;
   };
   const sortHref = (s: "saved" | "new") => cityHref({ sort: s === "new" ? "new" : "" });
-  // Places first: "Add your spots" opens Add a place (it lands in My places, recommended or not).
+  // "Whose spots" as one chip with a sheet (16 Oct 2026): Everyone, Saved, You, then friends.
+  const whoOptions: WhoOption[] = [
+    { key: "all", label: "Everyone", sub: `${spots.length} spot${spots.length === 1 ? "" : "s"}`, href: cityHref({ friend: "", list: "", cat: "" }), active: !picked && !wantActive, kind: "all" },
+    ...(wantSpots.length ? [{ key: "saved", label: "Saved", sub: `${wantSpots.length} you saved here`, href: cityHref({ friend: "", list: "want", cat: "" }), active: wantActive, kind: "saved" as const }] : []),
+    ...(showYou && me ? [{ key: "me", label: "You", sub: `${ownSpots} spot${ownSpots === 1 ? "" : "s"}`, href: cityHref({ friend: me.username, list: "", cat: "" }), active: isMe, user: me }] : []),
+    ...friends.map((f) => ({
+      key: f.user.id,
+      label: first(f.user),
+      sub: f.spots ? `${f.spots} spot${f.spots === 1 ? "" : "s"}` : `${f.guides} guide${f.guides === 1 ? "" : "s"}`,
+      href: cityHref({ friend: f.user.username, list: "", cat: "" }),
+      active: picked?.id === f.user.id,
+      user: f.user,
+    })),
+  ];
+  // Places first: "Add your spots" opens Add a place (it lands in My spots, recommended or not).
   const addSpotsHref = user ? "/record" : "/signup?next=/record&why=record";
   const hasAny = all.length > 0 || spots.length > 0;
   const wishFirst = wish?.others[0]?.wish.id;
@@ -173,7 +188,22 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
 
   return (
     <AppShell>
-      <TopBar back="/" title={null} avatarUser={user ? toPublicUser(user) : null} />
+      <TopBar
+        back="/"
+        title={null}
+        right={
+          city && spots.length > 0 ? (
+            <div role="group" aria-label="List or map" className="flex rounded-full bg-cream-deep/70 p-[3px] mr-1">
+              <Link href={cityHref({ view: "" })} replace scroll={false} aria-current={!mapView ? "true" : undefined} className={cx("inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px]", !mapView ? "bg-paper font-semibold shadow-sm" : "text-ink-muted")}>
+                <ListIcon size={14} /> List
+              </Link>
+              <Link href={cityHref({ view: "map" })} replace scroll={false} aria-current={mapView ? "true" : undefined} className={cx("inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px]", mapView ? "bg-paper font-semibold shadow-sm" : "text-ink-muted")}>
+                <MapIcon size={14} /> Map
+              </Link>
+            </div>
+          ) : null
+        }
+      />
       <header className="px-5 pt-2 pb-4">
         <h1 className="font-display text-[38px] leading-[1.02]">{city || "Pick a city"}</h1>
         {city && (
@@ -218,96 +248,12 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
           </div>
         )}
 
-        {(friends.length > 0 || showYou || wantSpots.length > 0) && (
-          <section className="pt-1 flex flex-col gap-2.5">
-            <h2 className="px-5 text-[13px] font-semibold text-ink-muted">Whose spots</h2>
-            <div role="group" aria-label="Filter by friend" className="flex gap-3 overflow-x-auto no-scrollbar px-5 pb-1">
-              <FriendChip href={cityHref({ friend: "", list: "", cat: "" })} active={!picked && !wantActive} label="Everyone" count={spots.length}>
-                <span className="w-12 h-12 rounded-full bg-cream-deep text-ink text-[13px] font-semibold flex items-center justify-center">All</span>
-              </FriendChip>
-              {wantSpots.length > 0 && (
-                <FriendChip href={cityHref({ friend: "", list: wantActive ? "" : "want", cat: "" })} active={wantActive} label="Saved" count={wantSpots.length} wide>
-                  <span className="w-12 h-12 rounded-full bg-terracotta-tint text-terracotta flex items-center justify-center"><BookmarkIcon size={20} filled /></span>
-                </FriendChip>
-              )}
-              {showYou && me && (
-                <FriendChip href={cityHref({ friend: isMe ? "" : me.username, list: "", cat: "" })} active={isMe} label="You" count={ownSpots}>
-                  <Avatar user={me} size={48} />
-                </FriendChip>
-              )}
-              {friends.map((f) => {
-                const on = picked?.id === f.user.id;
-                return (
-                  <FriendChip key={f.user.id} href={cityHref({ friend: on ? "" : f.user.username, list: "", cat: "" })} active={on} label={first(f.user)} count={f.spots}>
-                    <Avatar user={f.user} size={48} />
-                  </FriendChip>
-                );
-              })}
-            </div>
-          </section>
-        )}
-
-        {knowers.length > 0 && (
-          <section className="pt-6 flex flex-col gap-2.5">
-            <div className="px-5">
-              <h2 className="text-[13px] font-semibold text-ink-muted">These people know {city}</h2>
-              <p className="text-[12px] text-ink-faint">Follow them and their spots join your friends&apos; here.</p>
-            </div>
-            <div className="flex gap-2.5 overflow-x-auto no-scrollbar px-5 pb-1">
-              {knowers.map((k) => (
-                <span key={k.user.id} className="shrink-0 flex items-center gap-2.5 rounded-2xl border border-line/80 bg-paper pl-2 pr-2.5 py-2">
-                  <Link href={`/u/${k.user.username}`} className="flex items-center gap-2.5 min-w-0">
-                    <Avatar user={k.user} size={36} />
-                    <span className="min-w-0">
-                      <span className="block text-[13px] font-semibold leading-tight">{first(k.user)}</span>
-                      <span className="block text-[11.5px] text-ink-muted leading-tight">
-                        {k.inCity} spot{k.inCity === 1 ? "" : "s"} here{k.followedBy.length ? ` · followed by ${k.followedBy[0]}` : k.shared ? ` · ${k.shared} in common` : ""}
-                      </span>
-                    </span>
-                  </Link>
-                  <FollowPill userId={k.user.id} signedIn next={cityHref({})} />
-                </span>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {friendGuides.length > 0 && (
-          <section className="pt-6 flex flex-col gap-3">
-            <div className="px-5">
-              <h2 className="font-display text-[22px]">{isMe ? "Your guides" : picked ? `${first(picked)}\u2019s guides` : "Guides from friends"}</h2>
-              <p className="text-[13px] text-ink-muted">{isMe ? "Drafts and private ones are only visible to you" : picked ? `Their full take on ${city}` : `${friendGuides.length} guide${friendGuides.length === 1 ? "" : "s"} to ${city} from people you follow`}</p>
-            </div>
-            <div className="flex gap-3 overflow-x-auto no-scrollbar px-5">
-              {friendGuides.map((g) => (
-                <Link key={g.guide.id} href={`/g/${g.guide.slug}`} className="shrink-0 w-[236px] rounded-2xl border border-line/80 bg-paper overflow-hidden">
-                  <span className="relative block">
-                    <GuideCover guide={g.guide} ownerUsername={g.owner.username} bare thumb className="h-[124px]" />
-                    <span className="absolute left-2.5 bottom-2.5 rounded-full bg-paper/95 px-2.5 py-1 text-[12px] font-semibold">
-                      {g.placeCount} place{g.placeCount === 1 ? "" : "s"}
-                      {(g.guide.visibility !== "public" || !g.guide.publishedAt) && <> · {g.guide.publishedAt ? "Private" : "Draft"}</>}
-                    </span>
-                  </span>
-                  <span className="block p-3">
-                    <span className="block font-semibold text-[15px] leading-snug line-clamp-2">{g.guide.title}</span>
-                    {g.guide.description.trim() && <span className="block mt-1 text-[13px] leading-snug text-ink/80 line-clamp-2">{g.guide.description}</span>}
-                    <span className="mt-2 flex items-center gap-2 text-[12.5px] text-ink-muted">
-                      <Avatar user={g.owner} size={22} />
-                      {first(g.owner)}
-                      {(saves.get(g.guide.id) ?? 0) > 0 && <> · <BookmarkIcon size={12} filled aria-hidden className="text-terracotta-deep" /> {saves.get(g.guide.id)}</>}
-                    </span>
-                  </span>
-                </Link>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {spots.length > 0 && (
-          <section className="pt-7 flex flex-col gap-3">
-            {cats.length > 1 && (
-              <div role="group" aria-label="Filter by category" className="flex gap-2 overflow-x-auto no-scrollbar px-5">
-                {[null, ...cats].map((c) => (
+        {(spots.length > 0 || wantSpots.length > 0) && (
+          <div className="sticky top-14 z-20 bg-cream/95 backdrop-blur border-b border-line/70 py-2.5">
+            <div role="group" aria-label="Filter spots" className="flex items-center gap-2 overflow-x-auto no-scrollbar px-4">
+              {whoOptions.length > 1 && <WhoPicker options={whoOptions} />}
+              {cats.length > 1 &&
+                [null, ...cats].map((c) => (
                   <Link
                     key={c ?? "all"}
                     href={cityHref({ cat: c ?? "" })}
@@ -315,26 +261,26 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
                     scroll={false}
                     aria-current={cat === c ? "true" : undefined}
                     className={cx(
-                      "shrink-0 rounded-full px-4 py-2 text-[13.5px] whitespace-nowrap border",
+                      "shrink-0 rounded-full px-3.5 py-[7px] text-[13.5px] whitespace-nowrap border",
                       cat === c ? "bg-ink text-cream border-ink font-semibold" : "bg-paper border-line text-ink font-medium",
                     )}
                   >
                     {c ?? "All"}
                   </Link>
                 ))}
-              </div>
-            )}
+            </div>
+          </div>
+        )}
 
-            {shownSpots.some((s) => s.place.lat != null && s.place.lng != null) && (
+
+
+        {spots.length > 0 && (
+          <section className="pt-7 flex flex-col gap-3">
+
+            {mapView && shownSpots.some((s) => s.place.lat != null && s.place.lng != null) && (
               <div className="px-4 flex flex-col gap-2">
-                <div className="flex items-center justify-between px-1">
-                  <span className="text-[12.5px] text-ink-muted">Tap ◎ to see what&apos;s around you</span>
-                  <Link href={cityHref({ view: mapView ? "" : "map" })} replace scroll={false} className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-terracotta-deep">
-                    <MapIcon size={15} /> {mapView ? "Smaller map" : "Full map"}
-                  </Link>
-                </div>
                 <GuideMap
-                  height={mapView ? "70vh" : 240}
+                  height="calc(100dvh - 230px)"
                   locate
                   center={centre ? { lat: centre.lat, lng: centre.lng } : null}
                   places={shownSpots
@@ -360,6 +306,8 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
               </div>
             )}
 
+            {!mapView && (
+              <>
             <div className="px-4 flex flex-col gap-2.5">
               <div className="flex items-baseline justify-between px-1">
                 <h2 className="font-display text-[22px]">{isMe ? `My ${city}` : picked ? `${first(picked)}\u2019s ${city}` : fromFriends ? "Most recommended" : "Most recommended on MyGuide"}</h2>
@@ -399,6 +347,64 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
                 ))}
               </div>
             )}
+              </>
+            )}
+          </section>
+        )}
+
+        {knowers.length > 0 && (
+          <section className="pt-9 flex flex-col gap-2.5">
+            <div className="px-5">
+              <h2 className="text-[13px] font-semibold text-ink-muted">These people know {city}</h2>
+              <p className="text-[12px] text-ink-faint">Follow them and their spots join your friends&apos; here.</p>
+            </div>
+            <div className="flex gap-2.5 overflow-x-auto no-scrollbar px-5 pb-1">
+              {knowers.map((k) => (
+                <span key={k.user.id} className="shrink-0 flex items-center gap-2.5 rounded-2xl border border-line/80 bg-paper pl-2 pr-2.5 py-2">
+                  <Link href={`/u/${k.user.username}`} className="flex items-center gap-2.5 min-w-0">
+                    <Avatar user={k.user} size={36} />
+                    <span className="min-w-0">
+                      <span className="block text-[13px] font-semibold leading-tight">{first(k.user)}</span>
+                      <span className="block text-[11.5px] text-ink-muted leading-tight">
+                        {k.inCity} spot{k.inCity === 1 ? "" : "s"} here{k.followedBy.length ? ` · followed by ${k.followedBy[0]}` : k.shared ? ` · ${k.shared} in common` : ""}
+                      </span>
+                    </span>
+                  </Link>
+                  <FollowPill userId={k.user.id} signedIn next={cityHref({})} />
+                </span>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {friendGuides.length > 0 && (
+          <section className="pt-9 flex flex-col gap-3">
+            <div className="px-5">
+              <h2 className="font-display text-[22px]">{isMe ? "Your guides" : picked ? `${first(picked)}\u2019s guides` : `Guides to ${city}`}</h2>
+              <p className="text-[13px] text-ink-muted">{isMe ? "Drafts and private ones are only visible to you" : picked ? `Their full take on ${city}` : `${friendGuides.length} guide${friendGuides.length === 1 ? "" : "s"} to ${city} from people you follow`}</p>
+            </div>
+            <div className="flex gap-3 overflow-x-auto no-scrollbar px-5">
+              {friendGuides.map((g) => (
+                <Link key={g.guide.id} href={`/g/${g.guide.slug}`} className="shrink-0 w-[236px] rounded-2xl border border-line/80 bg-paper overflow-hidden">
+                  <span className="relative block">
+                    <GuideCover guide={g.guide} ownerUsername={g.owner.username} bare thumb className="h-[124px]" />
+                    <span className="absolute left-2.5 bottom-2.5 rounded-full bg-paper/95 px-2.5 py-1 text-[12px] font-semibold">
+                      {g.placeCount} place{g.placeCount === 1 ? "" : "s"}
+                      {(g.guide.visibility !== "public" || !g.guide.publishedAt) && <> · {g.guide.publishedAt ? "Private" : "Draft"}</>}
+                    </span>
+                  </span>
+                  <span className="block p-3">
+                    <span className="block font-semibold text-[15px] leading-snug line-clamp-2">{g.guide.title}</span>
+                    {g.guide.description.trim() && <span className="block mt-1 text-[13px] leading-snug text-ink/80 line-clamp-2">{g.guide.description}</span>}
+                    <span className="mt-2 flex items-center gap-2 text-[12.5px] text-ink-muted">
+                      <Avatar user={g.owner} size={22} />
+                      {first(g.owner)}
+                      {(saves.get(g.guide.id) ?? 0) > 0 && <> · <BookmarkIcon size={12} filled aria-hidden className="text-terracotta-deep" /> {saves.get(g.guide.id)}</>}
+                    </span>
+                  </span>
+                </Link>
+              ))}
+            </div>
           </section>
         )}
 
@@ -509,16 +515,6 @@ function GuideRow({ g, hearts }: { g: GuideCard; hearts: number }) {
           <span>Updated {timeAgo(g.guide.updatedAt)}</span>
         </span>
       </span>
-    </Link>
-  );
-}
-
-function FriendChip({ href, active, label, count, children, wide }: { href: string; active: boolean; label: string; count: number; children: ReactNode; wide?: boolean }) {
-  return (
-    <Link href={href} replace scroll={false} aria-current={active ? "true" : undefined} className={cx("shrink-0 flex flex-col items-center gap-1", wide ? "w-[78px]" : "w-[60px]")}>
-      <span className={cx("rounded-full p-[2px] border-2", active ? "border-ink" : "border-transparent")}>{children}</span>
-      <span className={cx("text-[12px] max-w-full truncate", active ? "font-semibold" : "font-medium text-ink/85")}>{label}</span>
-      {count > 0 && <span className="text-[11px] text-ink-muted -mt-1">{count} spot{count === 1 ? "" : "s"}</span>}
     </Link>
   );
 }

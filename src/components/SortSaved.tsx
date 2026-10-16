@@ -11,7 +11,7 @@ import { Button, Input, Spinner, cx } from "./ui";
 type SavedPlace = { id: string; name: string; category: string; photoUrl: string | null; photoMediaId: string | null; city: string; area: string };
 type GuideOption = { id: string; title: string; city: string; placeCount: number };
 
-/** Remembers "Keep a copy in My places". A new key: the old one (mg.keepCopyInSaved, off by default) is ignored once, as the default is now on. */
+/** Remembers "Keep a copy in My spots". A new key: the old one (mg.keepCopyInSaved, off by default) is ignored once, as the default is now on. */
 const KEEP_KEY = "mg.keepCopyInMyPlaces";
 
 export function SortSaved({ places, guides, preTicked }: { places: SavedPlace[]; guides: GuideOption[]; /** From the "Make them a guide?" nudge: these are ticked and we start at step 2. */ preTicked?: string[] }) {
@@ -21,7 +21,7 @@ export function SortSaved({ places, guides, preTicked }: { places: SavedPlace[];
   const [mode, setMode] = useState<"new" | "existing">("new");
   const [title, setTitle] = useState("");
   const [guideId, setGuideId] = useState<string | null>(null);
-  // Remember the person's last choice for "Keep a copy" (on by default: places in a guide stay in My places).
+  // Remember the person's last choice for "Keep a copy" (on by default: places in a guide stay in My spots).
   // Read after hydration (the page can open straight on step 2, where the switch is).
   const [keepCopy, setKeepCopy] = useState(true);
   useEffect(() => {
@@ -217,8 +217,8 @@ export function SortSaved({ places, guides, preTicked }: { places: SavedPlace[];
 
       <button type="button" role="switch" aria-checked={keepCopy} onClick={toggleKeep} className="flex items-center justify-between gap-3 rounded-2xl border border-line bg-paper px-4 py-3 text-left">
         <span>
-          <span className="block text-[14px] font-semibold">Keep them in My places</span>
-          <span className="block text-[12px] text-ink-muted">{keepCopy ? "They stay in My places too." : "Off: they move out of My places into the guide."}</span>
+          <span className="block text-[14px] font-semibold">Keep them in My spots</span>
+          <span className="block text-[12px] text-ink-muted">{keepCopy ? "They stay in My spots too." : "Off: they move out of My spots into the guide."}</span>
         </span>
         <span className={cx("relative w-11 h-6 rounded-full shrink-0 transition-colors", keepCopy ? "bg-terracotta" : "bg-line")}>
           <span className={cx("absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all", keepCopy ? "left-[22px]" : "left-0.5")} />

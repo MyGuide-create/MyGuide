@@ -24,7 +24,7 @@ export function BottomNav({ signedIn, username, unread }: { signedIn: boolean; u
   };
   return (
     <>
-      {/* + goes straight to Add a place (12 Oct 2026); guides are made from My places, a city page or your profile. */}
+      {/* + goes straight to Add a place (12 Oct 2026); guides are made from My spots, a city page or your profile. */}
       <nav className="fixed bottom-0 inset-x-0 z-40 flex justify-center pointer-events-none">
         <div className="pointer-events-auto w-full max-w-[480px] safe-bottom bg-paper/95 backdrop-blur border-t border-line flex items-end justify-around px-2 pt-2 pb-2">
           <Link href="/" onClick={toTopIfHere("/")} aria-label="Explore" className={cx(item, exploreActive ? "text-ink" : "text-ink-muted")}>
