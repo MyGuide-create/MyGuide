@@ -249,29 +249,27 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
                     {myCities.map((c) => (
                       <CityTile key={c.city} href={cityHref(c)} city={c.city} photo={photoFor(c.city)} near={nearKeys.has(cityKey(c.city))} spots={c.spots}>
                         <Faces users={user ? [toPublicUser(user), ...c.friends] : c.friends} ring="ring-cream" />
-                        <span>{c.friends.length ? `you + ${c.friends.length}` : "you"}</span>
                       </CityTile>
                     ))}
                     <AddCityTile />
                   </CityRow>
                 )}
                 {(friendsCities.length > 0 || popularTiles.length > 0) && (
-                  <CityRow title={friendsCities.length ? "Cities your friends know" : "Popular on MyGuide"} sub={friendsCities.length ? "Where people you follow have spots." : undefined} all={!myCities.length}>
+                  <CityRow title={friendsCities.length ? "Cities your friends know" : "Popular on MyGuide"} all={!myCities.length}>
                     {friendsCities.map((c) => (
-                      <CityTile key={c.city} href={cityHref(c)} city={c.city} photo={photoFor(c.city)} near={nearKeys.has(cityKey(c.city))} spots={c.spots}>
+                      <CityTile small key={c.city} href={cityHref(c)} city={c.city} photo={photoFor(c.city)} near={nearKeys.has(cityKey(c.city))} spots={c.spots}>
                         <Faces users={c.friends} ring="ring-cream" />
-                        <span className="truncate">{c.friends.length === 1 ? first(c.friends[0]) : `${c.friends.length} friends`}</span>
                       </CityTile>
                     ))}
                     {friendsCities.length > 0 && popularTiles.length > 0 && (
-                      <span className="shrink-0 w-[64px] h-[170px] flex items-center justify-center">
+                      <span className="shrink-0 w-[40px] h-[100px] flex items-center justify-center">
                         <span className="[writing-mode:vertical-rl] rotate-180 text-[11.5px] font-semibold uppercase tracking-[0.1em] text-ink-muted">Popular on MyGuide</span>
                       </span>
                     )}
                     {popularTiles.map((t) => (
-                      <CityTile key={t.city} href={cityHref(t)} city={t.city} photo={photoFor(t.city)} near={nearKeys.has(cityKey(t.city))} spots={t.spots} guides={t.guides} />
+                      <CityTile small key={t.city} href={cityHref(t)} city={t.city} photo={photoFor(t.city)} near={nearKeys.has(cityKey(t.city))} spots={t.spots} guides={t.guides} />
                     ))}
-                    <Link href="/cities" className="shrink-0 w-[150px] h-[170px] rounded-2xl border-[1.5px] border-dashed border-cream-line flex flex-col items-center justify-center gap-1.5 text-center px-3">
+                    <Link href="/cities" className="shrink-0 w-[112px] h-[100px] rounded-2xl border-[1.5px] border-dashed border-cream-line flex flex-col items-center justify-center gap-1.5 text-center px-3">
                       <span className="font-semibold text-[14px]">All cities</span>
                       <span className="text-[12px] text-ink-muted">
                         {moreToExplore > 0 ? (
@@ -360,14 +358,14 @@ function feedKey(f: FeedEntry): string {
 /** A row of city tiles that scrolls sideways, with "All cities" in the header when `all`. */
 function CityRow({ title, sub, all, children }: { title: string; sub?: string; all?: boolean; children: React.ReactNode }) {
   return (
-    <section className="pt-8 flex flex-col gap-3">
+    <section className="flex flex-col gap-2">
       <div className="px-5 flex items-end justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="font-display text-[22px]">{title}</h2>
-          {sub && <p className="text-[13px] text-ink-muted">{sub}</p>}
+          <h3 className="text-[15px] font-semibold">{title}</h3>
+          {sub && <p className="text-[12.5px] text-ink-muted">{sub}</p>}
         </div>
         {all && (
-          <Link href="/cities" className="shrink-0 pb-1 text-[13px] font-medium text-terracotta-deep">
+          <Link href="/cities" className="shrink-0 text-[13px] font-medium text-terracotta-deep">
             All cities →
           </Link>
         )}
@@ -378,16 +376,20 @@ function CityRow({ title, sub, all, children }: { title: string; sub?: string; a
 }
 
 /** One city: picture, who knows it (children), and how many spots. */
-function CityTile({ href, city, photo, near, spots, guides, children }: { href: string; city: string; photo?: CityPhoto; near?: boolean; spots: number; guides?: number; children?: React.ReactNode }) {
+/** `small`: friends' and popular cities (16 Oct 2026); your own cities stay bigger. */
+function CityTile({ href, city, photo, near, spots, guides, children, small = false }: { href: string; city: string; photo?: CityPhoto; near?: boolean; spots: number; guides?: number; children?: React.ReactNode; small?: boolean }) {
   return (
-    <Link href={href} className="shrink-0 w-[150px] flex flex-col gap-2">
+    <Link href={href} className={cx("shrink-0 flex flex-col gap-1.5", small ? "w-[112px]" : "w-[140px]")}>
       <span className="relative block">
-        <CityTileImage photo={photo} city={city} />
-        {near && <span className="absolute left-2 top-2 rounded-full bg-paper/95 px-2 py-0.5 text-[11px] font-semibold text-ink">Near you</span>}
+        <CityTileImage photo={photo} city={city} small={small} className={small ? "h-[100px]" : "h-[150px]"} />
+        {near && <span className="absolute left-1.5 top-1.5 rounded-full bg-paper/95 px-1.5 py-0.5 text-[10.5px] font-semibold text-ink">Near you</span>}
       </span>
-      {children && <span className="px-0.5 flex items-center gap-1.5 text-[12.5px] text-ink-muted min-w-0">{children}</span>}
-      <span className={cx("px-0.5 text-[13px] font-semibold", !!children && "-mt-1")}>
-        {spots || !guides ? `${spots} spot${spots === 1 ? "" : "s"}` : `${guides} guide${guides === 1 ? "" : "s"}`}
+      {/* One line under the photo (16 Oct 2026): faces, then the spot count. */}
+      <span className="px-0.5 flex items-center gap-1.5 text-[12px] text-ink-muted min-w-0">
+        {children}
+        <span className="font-semibold text-ink whitespace-nowrap">
+          {spots || !guides ? `${spots} spot${spots === 1 ? "" : "s"}` : `${guides} guide${guides === 1 ? "" : "s"}`}
+        </span>
       </span>
     </Link>
   );
@@ -508,7 +510,7 @@ function StartTile({ href, photo, title, line, cta }: { href: string; photo?: Ci
   return (
     <Link href={href} className="shrink-0 w-[220px] flex flex-col gap-2">
       <span className="relative block">
-        <CityImage photo={photo} className="h-[170px] w-full rounded-2xl opacity-60" />
+        <CityImage photo={photo} className="h-[140px] w-full rounded-2xl opacity-60" />
         <span aria-hidden className="absolute inset-0 rounded-2xl bg-gradient-to-t from-black/60 to-black/10" />
         <span className="absolute left-3 right-3 bottom-3 flex flex-col gap-1.5 text-white">
           <span className="font-display text-[22px] leading-tight drop-shadow-[0_1px_4px_rgb(0_0_0/0.45)]">{title}</span>
@@ -523,11 +525,10 @@ function StartTile({ href, photo, title, line, cta }: { href: string; photo?: Ci
 /** The last tile of "Your cities": add spots in another city you know — even one helps friends going there. */
 function AddCityTile({ first = false }: { first?: boolean }) {
   return (
-    <Link href="/record" className="shrink-0 w-[150px] flex flex-col gap-2">
-      <span className="h-[170px] w-full rounded-2xl border-2 border-dashed border-cream-line bg-paper/60 flex flex-col items-center justify-center gap-2 px-3 text-center hover:border-terracotta-soft">
-        <span className="w-10 h-10 rounded-full bg-terracotta-tint text-terracotta flex items-center justify-center text-[22px] leading-none">+</span>
-        <span className="font-display text-[18px] leading-tight">{first ? "A city you know" : "Another city you know"}</span>
-        <span className="text-[11.5px] leading-snug text-ink-muted">Even one spot helps a friend going there</span>
+    <Link href="/record" className="shrink-0 w-[140px] flex flex-col gap-1.5">
+      <span className="h-[150px] w-full rounded-2xl border-2 border-dashed border-cream-line bg-paper/60 flex flex-col items-center justify-center gap-1.5 px-2.5 text-center hover:border-terracotta-soft">
+        <span className="w-8 h-8 rounded-full bg-terracotta-tint text-terracotta flex items-center justify-center text-[19px] leading-none">+</span>
+        <span className="text-[13px] font-semibold leading-tight">{first ? "A city you know" : "Another city you know"}</span>
       </span>
     </Link>
   );

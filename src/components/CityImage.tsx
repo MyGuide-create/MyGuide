@@ -14,12 +14,12 @@ export function CityImage({ photo, className }: { photo?: CityPhoto; className?:
 }
 
 /** A city tile's picture with the name over a dark fade. */
-export function CityTileImage({ photo, city, className = "h-[170px]" }: { photo?: CityPhoto; city: string; className?: string }) {
+export function CityTileImage({ photo, city, className = "h-[170px]", small = false }: { photo?: CityPhoto; city: string; className?: string; small?: boolean }) {
   return (
     <span className="relative block">
       <CityImage photo={photo} className={cx("w-full rounded-2xl", className)} />
-      <span aria-hidden className="absolute inset-x-0 bottom-0 h-20 rounded-b-2xl bg-gradient-to-t from-black/50 to-transparent" />
-      <span className="absolute left-3 bottom-2.5 right-2 font-display text-[20px] leading-tight text-white drop-shadow-[0_1px_4px_rgb(0_0_0/0.45)] truncate">{city}</span>
+      <span aria-hidden className={cx("absolute inset-x-0 bottom-0 rounded-b-2xl bg-gradient-to-t from-black/50 to-transparent", small ? "h-14" : "h-20")} />
+      <span className={cx("absolute right-2 font-display leading-tight text-white drop-shadow-[0_1px_4px_rgb(0_0_0/0.45)] truncate", small ? "left-2.5 bottom-2 text-[16px]" : "left-3 bottom-2.5 text-[20px]")}>{city}</span>
     </span>
   );
 }

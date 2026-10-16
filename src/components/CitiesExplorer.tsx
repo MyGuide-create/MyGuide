@@ -40,10 +40,11 @@ const STORE = "mg_cities_view";
  * Nearby dots group into a count; tap a group to zoom, a dot for a preview card, Open for the city.
  */
 export function CitiesExplorer({ cities, tiles }: { cities: MapCity[]; tiles: ReactNode }) {
-  const [view, setView] = useState<"map" | "tiles">("map");
+  // Tiles first (16 Oct 2026: they look better); the map is there for anyone who prefers it.
+  const [view, setView] = useState<"map" | "tiles">("tiles");
   useEffect(() => {
     try {
-      if (localStorage.getItem(STORE) === "tiles") queueMicrotask(() => setView("tiles"));
+      if (localStorage.getItem(STORE) === "map") queueMicrotask(() => setView("map"));
     } catch {
       /* storage blocked: map */
     }
@@ -57,7 +58,7 @@ export function CitiesExplorer({ cities, tiles }: { cities: MapCity[]; tiles: Re
     }
   };
   return (
-    <section className="pt-6 flex flex-col gap-3">
+    <section className="pt-4 flex flex-col gap-2">
       <div className="px-5 flex items-center justify-between gap-3">
         <h2 className="font-display text-[22px]">Cities</h2>
         <div role="tablist" aria-label="Cities view" className="flex rounded-full bg-cream-deep/70 p-[3px]">
@@ -80,7 +81,7 @@ export function CitiesExplorer({ cities, tiles }: { cities: MapCity[]; tiles: Re
           <WorldMap cities={cities} />
         </div>
       ) : (
-        <div className="flex flex-col">{tiles}</div>
+        <div className="flex flex-col gap-4">{tiles}</div>
       )}
     </section>
   );
