@@ -89,12 +89,15 @@ export default async function MyPlacesPage({ searchParams }: { searchParams: Pro
             Tap <span className="font-semibold text-ink">Recommend</span> on a place to share it. Recommended places show on {focusCity ? `the ${focusCity}` : "their city\u2019s"} page for friends, no guide needed.
           </p>
           {n > 0 && (
-            <div className="mt-4 flex gap-2.5">
-              {stash && items.some((i) => i.inStash) ? <LinkButton href="/saved/sort" className="flex-1">Make a guide from these</LinkButton> : <span className="flex-1" />}
+            // One row of compact buttons (16 Oct 2026): short labels so nothing wraps on a phone.
+            <div className="mt-4 flex items-center gap-2">
               {stash && items.some((i) => i.inStash) && (
-                <LinkButton href={`/g/${stash.slug}/edit`} variant="outline" aria-label="Edit or remove places"><EditIcon size={15} /> Edit</LinkButton>
+                <LinkButton href="/saved/sort" size="sm" className="flex-1 whitespace-nowrap">Make a guide</LinkButton>
               )}
-              <LinkButton href="/record" variant="outline"><PlusIcon size={15} /> Add</LinkButton>
+              {stash && items.some((i) => i.inStash) && (
+                <LinkButton href={`/g/${stash.slug}/edit`} size="sm" variant="outline" aria-label="Edit or remove places" className="whitespace-nowrap"><EditIcon size={14} /> Edit</LinkButton>
+              )}
+              <LinkButton href="/record" size="sm" variant="outline" className="whitespace-nowrap"><PlusIcon size={14} /> Add</LinkButton>
             </div>
           )}
         </header>
