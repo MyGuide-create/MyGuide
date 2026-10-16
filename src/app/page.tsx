@@ -1,6 +1,6 @@
 import { isAdmin } from "@/lib/admin";
 import Link from "next/link";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, ne } from "drizzle-orm";
 import { AppShell, Wordmark } from "@/components/AppShell";
 import { GoingSomewhere } from "@/components/GoingSomewhere";
 import { GuideCover } from "@/components/GuideCover";
@@ -17,8 +17,8 @@ import { acceptedFollowingIds, friendCities, loadRecommendations, ownSpotKeys, s
 import { cityPhotoKey, cityPhotosFor } from "@/lib/cityPhotos";
 import type { CityPhoto } from "@/lib/db/schema";
 import { getDb } from "@/lib/db";
-import { savedPlaces } from "@/lib/db/schema";
-import { listFeed, peopleToFollow, type GuideCard } from "@/lib/guides";
+import { savedGuides, savedPlaces, users } from "@/lib/db/schema";
+import { listFeed, listGuidesByOwner, peopleToFollow, type GuideCard } from "@/lib/guides";
 import { pickSpotlight, reasonLine, suggestPeople } from "@/lib/suggest";
 import { SpotlightCard } from "@/components/SpotlightCard";
 import { cityKey, cityTiles, everyoneFeed, feedOwner, homeFeed, nameList, nextTrip, wantedGuides, type FeedEntry } from "@/lib/homeV2";
@@ -30,7 +30,7 @@ import { nearestFirst, viewerLocation } from "@/lib/nearby";
 import { FollowPill } from "@/components/FollowPill";
 import { ClapBar } from "@/components/ClapBar";
 import { loadClaps } from "@/lib/claps";
-import { clapKey, spotsTarget, type ClapSummary } from "@/lib/clapTargets";
+import { clapKey, clapNames, spotsTarget, type ClapSummary } from "@/lib/clapTargets";
 import { placeArea } from "@/lib/places/neighbourhood";
 import { timeAgo } from "@/lib/utils";
 
@@ -44,6 +44,8 @@ const FEED_DAYS = 45;
 const FEED_TARGET = 15;
 /** Below this many friends' posts, "More on MyGuide" fills in. */
 const FEED_FILL_BELOW = 6;
+/** Your own posts in the feed: the latest few. */
+const OWN_FEED_MAX = 4;
 /** Explore's one row of cities: up to this many, then "All cities". */
 const CITY_TILES = 12;
 
@@ -65,6 +67,11 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
     user ? loadRecommendations({ viewerId: user.id, ownerIds: followingIds }) : Promise.resolve([]),
     user ? listFeed({ viewerId: user.id, scope: "following", limit: 40 }) : Promise.resolve([] as GuideCard[]),
   ]);
+  // Your own posts in the feed too (16 Oct 2026), like other apps: spots you recommended and guides
+  // you published, with how people reacted (claps, saves).
+  const [ownRecs, ownGuides] = user
+    ? await Promise.all([loadRecommendations({ viewerId: user.id, ownerIds: [user.id] }), listGuidesByOwner(user.id, user.id)])
+    : [[], [] as GuideCard[]];
   // One row of cities (16 Oct 2026): Explore is for discovering. Every city with spots you can see
   // (friends', yours, then the most active on MyGuide), the one you're in first, then most spots.
   // Your own cities live in My spots. Counts are everyone's spots, as the city page shows them.
@@ -129,9 +136,14 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
 
   // New from friends: their spots, spots several friends now share, and newly published guides.
   // Then "New on MyGuide": everyone else's, filling up to FEED_TARGET (all of it when you follow nobody).
-  const feed = capRuns(homeFeed(recs, followingGuides, FEED_DAYS), feedOwner).slice(0, FEED_TARGET);
+  const friendsFeed = homeFeed(recs, followingGuides, FEED_DAYS);
+  const ownFeed = homeFeed(ownRecs, ownGuides.filter((g) => g.guide.visibility === "public"), FEED_DAYS)
+    .filter((f) => f.kind !== "overlap")
+    .slice(0, OWN_FEED_MAX);
+  const feed = capRuns([...friendsFeed, ...ownFeed].sort((a, b) => b.at.getTime() - a.at.getTime()), feedOwner).slice(0, FEED_TARGET);
   // Everyone's posts only fill in while friends' are thin (16 Oct 2026), so Explore stays short.
-  const fillCount = feed.length >= FEED_FILL_BELOW ? 0 : Math.max(FEED_TARGET - feed.length, 4);
+  const friendsShown = feed.filter((f) => feedOwner(f) !== user?.id).length;
+  const fillCount = friendsShown >= FEED_FILL_BELOW ? 0 : Math.max(FEED_TARGET - feed.length, 4);
   const everyone = fillCount ? await everyoneFeed(user?.id, new Set([...(user ? [user.id] : []), ...followingIds]), { days: 30, limit: fillCount }) : [];
   const feedPlaceIds = [...feed, ...everyone].flatMap((f) => (f.kind === "spots" ? f.recs.slice(0, 8).map((r) => r.place.id) : []));
   const savedIds = new Set<string>();
@@ -139,6 +151,33 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
     const db = await getDb();
     for (const r of await db.select({ id: savedPlaces.placeId }).from(savedPlaces).where(and(eq(savedPlaces.userId, user.id), inArray(savedPlaces.placeId, feedPlaceIds)))) savedIds.add(r.id);
   }
+
+  // Who saved your posts (not you): per place for your spots, per guide for your guides.
+  const savers = new Map<string, PublicUser[]>();
+  if (user) {
+    const db = await getDb();
+    const mine = feed.filter((f) => feedOwner(f) === user.id);
+    const placeIds = mine.flatMap((f) => (f.kind === "spots" ? f.recs.map((r) => r.place.id) : []));
+    const guideIds = mine.flatMap((f) => (f.kind === "guide" ? [f.card.guide.id] : []));
+    const add = (k: string, u: typeof users.$inferSelect) => {
+      const list = savers.get(k) ?? [];
+      if (!list.some((x) => x.id === u.id)) list.push(toPublicUser(u));
+      savers.set(k, list);
+    };
+    if (placeIds.length)
+      for (const r of await db.select({ id: savedPlaces.placeId, u: users }).from(savedPlaces).innerJoin(users, eq(users.id, savedPlaces.userId)).where(and(inArray(savedPlaces.placeId, placeIds), ne(savedPlaces.userId, user.id))))
+        add(`p:${r.id}`, r.u);
+    if (guideIds.length)
+      for (const r of await db.select({ id: savedGuides.guideId, u: users }).from(savedGuides).innerJoin(users, eq(users.id, savedGuides.userId)).where(and(inArray(savedGuides.guideId, guideIds), ne(savedGuides.userId, user.id))))
+        add(`g:${r.id}`, r.u);
+  }
+  const saversFor = (f: FeedEntry): PublicUser[] => {
+    if (f.kind === "guide") return savers.get(`g:${f.card.guide.id}`) ?? [];
+    if (f.kind !== "spots") return [];
+    const out: PublicUser[] = [];
+    for (const r of f.recs) for (const u of savers.get(`p:${r.place.id}`) ?? []) if (!out.some((x) => x.id === u.id)) out.push(u);
+    return out;
+  };
 
   // Spots you already have (any of your places): no "Want to go" on those, a ✓ instead.
   const ownKeys = new Set(user ? [...(await ownSpotKeys(user.id)).values()].flatMap((k) => [...k]) : []);
@@ -243,8 +282,8 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
         {spotlight && (!fewFollows || !peopleRow || previewSpotlight) && <SpotlightCard s={spotlight} reason={reasonLine(spotlight)} preview={previewSpotlight} />}
         {feed.length > 0 && (
           <section className="px-4 pt-8 flex flex-col gap-3">
-            <h2 className="px-1 font-display text-[22px]">New from friends</h2>
-            {feed.map((f) => <FeedCard key={feedKey(f)} f={f} savedIds={savedIds} signedIn={!!user} viewerId={user?.id} claps={clapsFor(f)} ownKeys={ownKeys} />)}
+            <h2 className="px-1 font-display text-[22px]">{friendsShown ? "New from friends" : "Your latest"}</h2>
+            {feed.map((f) => <FeedCard key={feedKey(f)} f={f} savedIds={savedIds} signedIn={!!user} viewerId={user?.id} claps={clapsFor(f)} ownKeys={ownKeys} savers={saversFor(f)} />)}
           </section>
         )}
         {everyone.length > 0 && (
@@ -339,8 +378,9 @@ function Faces({ users, ring }: { users: PublicUser[]; ring: string }) {
  * One item on Home. `followable`: from someone you don't follow ("New on MyGuide") — a small
  * Follow sits next to their name.
  */
-function FeedCard({ f, savedIds, signedIn, followable = false, viewerId, claps, ownKeys }: { f: FeedEntry; savedIds: Set<string>; signedIn: boolean; followable?: boolean; viewerId?: string; claps?: ClapSummary; ownKeys?: Set<string> }) {
+function FeedCard({ f, savedIds, signedIn, followable = false, viewerId, claps, ownKeys, savers = [] }: { f: FeedEntry; savedIds: Set<string>; signedIn: boolean; followable?: boolean; viewerId?: string; claps?: ClapSummary; ownKeys?: Set<string>; savers?: PublicUser[] }) {
   const yours = (p: Parameters<typeof spotKey>[0]) => !!ownKeys?.has(spotKey(p));
+  const mine = !!viewerId && feedOwner(f) === viewerId;
   if (f.kind === "guide") {
     const g = f.card;
     return (
@@ -354,13 +394,13 @@ function FeedCard({ f, savedIds, signedIn, followable = false, viewerId, claps, 
         <span className="flex items-center gap-2.5 px-3.5 py-3">
           <Link href={`/u/${g.owner.username}`} className="shrink-0"><Avatar user={g.owner} size={32} /></Link>
           <Link href={`/g/${g.guide.slug}`} className="flex-1 min-w-0 text-[13.5px] leading-snug">
-            <b className="font-semibold">{first(g.owner)}</b> published <b className="font-semibold">{g.guide.title}</b>
+            <b className="font-semibold">{mine ? "You" : first(g.owner)}</b> published <b className="font-semibold">{g.guide.title}</b>
             <span className="block text-[12px] text-ink-muted">{[g.guide.city, timeAgo(f.at)].filter(Boolean).join(" · ")}</span>
           </Link>
           {followable && <FollowPill userId={g.owner.id} signedIn={signedIn} next="/" />}
         </span>
         <div className="px-3.5 pb-3 -mt-0.5">
-          <ClapBar kind="guide" target={g.guide.id} ownerId={g.owner.id} ownerName={first(g.owner)} initial={claps} signedIn={signedIn} own={viewerId === g.owner.id} />
+          {mine ? <Reactions claps={claps} savers={savers} what="guide" /> : <ClapBar kind="guide" target={g.guide.id} ownerId={g.owner.id} ownerName={first(g.owner)} initial={claps} signedIn={signedIn} own={false} />}
         </div>
       </div>
     );
@@ -384,7 +424,7 @@ function FeedCard({ f, savedIds, signedIn, followable = false, viewerId, claps, 
       <span className="flex items-center gap-2.5">
         <Link href={followable ? `/u/${f.user.username}` : cityHref({ city: f.city }, f.user.username)} className="shrink-0"><Avatar user={f.user} size={32} /></Link>
         <Link href={followable ? `/u/${f.user.username}` : cityHref({ city: f.city }, f.user.username)} className="flex-1 min-w-0 text-[13.5px] leading-snug">
-          <b className="font-semibold">{followable ? f.user.displayName : first(f.user)}</b> recommended {one ? "a spot" : `${f.recs.length} spots`}{f.city ? <> in <b className="font-semibold">{f.city}</b></> : null}
+          <b className="font-semibold">{mine ? "You" : followable ? f.user.displayName : first(f.user)}</b> recommended {one ? "a spot" : `${f.recs.length} spots`}{f.city ? <> in <b className="font-semibold">{f.city}</b></> : null}
           <span className="block text-[12px] text-ink-muted">{timeAgo(f.at)}</span>
         </Link>
         {followable && <FollowPill userId={f.user.id} signedIn={signedIn} next="/" />}
@@ -430,7 +470,33 @@ function FeedCard({ f, savedIds, signedIn, followable = false, viewerId, claps, 
           ))}
         </span>
       )}
-      <ClapBar kind="spots" target={spotsTarget(f.user.id, f.city, f.at)} ownerId={f.user.id} ownerName={first(f.user)} city={f.city} count={f.recs.length} initial={claps} signedIn={signedIn} own={viewerId === f.user.id} />
+      {mine ? (
+        <Reactions claps={claps} savers={savers} what={one ? "spot" : "spots"} />
+      ) : (
+        <ClapBar kind="spots" target={spotsTarget(f.user.id, f.city, f.at)} ownerId={f.user.id} ownerName={first(f.user)} city={f.city} count={f.recs.length} initial={claps} signedIn={signedIn} own={false} />
+      )}
+    </div>
+  );
+}
+
+/** Under your own post: who clapped and who saved it, or a quiet line while nobody has yet. */
+function Reactions({ claps, savers, what }: { claps?: ClapSummary; savers: PublicUser[]; what: string }) {
+  const clapCount = claps?.count ?? 0;
+  if (!clapCount && !savers.length) return <p className="text-[12.5px] text-ink-faint">No claps or saves on your {what} yet</p>;
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[12.5px] text-ink-muted">
+      {clapCount > 0 && (
+        <span className="inline-flex items-center gap-1.5">
+          <span aria-hidden className="text-[14px] leading-none">👏</span>
+          {clapNames(claps!)} clapped
+        </span>
+      )}
+      {savers.length > 0 && (
+        <span className="inline-flex items-center gap-1.5 min-w-0">
+          <Faces users={savers} ring="ring-paper" />
+          <span className="truncate">Saved by {nameList(savers.map((u) => u.displayName))}</span>
+        </span>
+      )}
     </div>
   );
 }
