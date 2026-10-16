@@ -33,6 +33,11 @@ const ux = (c: { lng: number }) => c.lng + 180;
 const uy = (c: { lat: number }) => 76 - c.lat;
 const ease = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 const STORE = "mg_cities_view";
+/** The whole world, land centred vertically (north Greenland, lat 83, to Tierra del Fuego, lat −56). */
+const worldBox = (px: number): Box => {
+  const h = (300 * MAP_H) / px;
+  return { x: 35, y: 62.5 - h / 2, w: 300, h };
+};
 
 /**
  * Explore's cities (16 Oct 2026): a world map with a dot per city (solid = yours, ringed =
@@ -98,14 +103,14 @@ function WorldMap({ cities }: { cities: MapCity[] }) {
     const fit = () => {
       const w = el.clientWidth || 358;
       setWidth(w);
-      setVb({ x: 35, y: -18, w: 300, h: (300 * MAP_H) / w });
+      setVb(worldBox(w));
     };
     const ro = new ResizeObserver(fit);
     ro.observe(el);
     fit();
     return () => ro.disconnect();
   }, []);
-  const world = useMemo<Box>(() => ({ x: 35, y: -18, w: 300, h: (300 * MAP_H) / width }), [width]);
+  const world = useMemo<Box>(() => worldBox(width), [width]);
   const vbRef = useRef(vb);
   vbRef.current = vb;
   const [settled, setSettled] = useState(true);
