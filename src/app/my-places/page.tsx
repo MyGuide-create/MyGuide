@@ -2,9 +2,11 @@ import Link from "next/link";
 import { AppShell, TopBar } from "@/components/AppShell";
 import { GuideNudge } from "@/components/GuideNudge";
 import { BookmarkIcon, EditIcon, PlusIcon } from "@/components/Icons";
-import { CityTileImage } from "@/components/CityImage";
+import { CityImage, CityTileImage } from "@/components/CityImage";
 import { GuideCover } from "@/components/GuideCover";
-import { MySpotsCity } from "@/components/MySpotsCity";
+import { MySpotsCity, LAST_CITY_COOKIE, type MySpot } from "@/components/MySpotsCity";
+import { cookies } from "next/headers";
+import { nearestFirst, nearestKnownCity, nearKeyOf, viewerLocation } from "@/lib/nearby";
 import { orderedCategories } from "@/lib/places/order";
 import { EmptyState, LinkButton, cx } from "@/components/ui";
 import { requireUser } from "@/lib/auth";
@@ -47,13 +49,10 @@ export default async function MyPlacesPage({ searchParams }: { searchParams: Pro
   const tab = one("tab") === "saved" ? "saved" : "yours";
   // A city picked (or just imported into): that city's list. Otherwise the tiles.
   const isFocus = (c: string) => (focus === "_other" ? c === "" : !!c && c.toLowerCase() === focus);
-  const cityView = !!focus && [...groups.keys()].some(isFocus);
   // The city you just added to first, then biggest first; places with no city last.
   const sorted = [...groups.entries()].sort((a, b) =>
     !a[0] ? 1 : !b[0] ? -1 : Number(b[0].toLowerCase() === focus) - Number(a[0].toLowerCase() === focus) || b[1].length - a[1].length,
   );
-  // The import result sits at the top of the imported city (where the page scrolls to), else under the header.
-  const focusShown = !!focus && sorted.some(([c]) => c.toLowerCase() === focus);
   const importBanner = (
     <div className="mb-2.5 rounded-2xl bg-sage-tint px-3.5 py-2.5 text-[13px] leading-snug" role="status">
       <b className="font-semibold">Added {imported} place{imported === 1 ? "" : "s"}.</b>
@@ -67,26 +66,129 @@ export default async function MyPlacesPage({ searchParams }: { searchParams: Pro
   );
   const n = items.length;
 
-  if (cityView) {
-    const focusCity = sorted.find(([c]) => isFocus(c))![0];
-    const cityRows = groups.get(focusCity) ?? [];
+  // ---- One city, your own guide to it (16 Oct 2026): the city you're in opens first. ----
+  const saved = await listSavedPlaces(user.id);
+  const savedCity = (sv: (typeof saved)[number]) => tidyCity(sv.place.city) || sv.place.country || "";
+  const ownCities = sorted.filter(([c]) => !!c).map(([city, rows]) => ({ city, spots: rows.length }));
+  const here = await viewerLocation();
+  const near = await nearestFirst(ownCities, here);
+  const hereKey = near.nearKey;
+  const isHere = (c: string) => !!hereKey && nearKeyOf(c) === hereKey;
+  // Somewhere with none of your spots: that city as a trip ("My Lisbon", your saved spots there).
+  const hereCity = hereKey ? null : nearestKnownCity(here);
+  const lastCity = decodeURIComponent((await cookies()).get(LAST_CITY_COOKIE)?.value ?? "");
+  const overview = tab === "saved" || one("all") === "1";
+  let pick: { city: string; trip: boolean } | null = null;
+  if (!overview) {
+    if (focus) {
+      const own = sorted.find(([c]) => isFocus(c));
+      if (own) pick = { city: own[0], trip: false };
+      else if (focus !== "_other") pick = { city: one("city").trim(), trip: true };
+    } else if (hereKey) pick = { city: near.items[0].city, trip: false };
+    else if (hereCity) pick = { city: hereCity.city, trip: true };
+    else if (lastCity && groups.has(lastCity)) pick = { city: lastCity, trip: false };
+    else if (ownCities.length) pick = { city: near.items[0].city, trip: false };
+  }
+
+  if (pick) {
+    const focusCity = pick.city;
+    const trip = pick.trip;
+    const cityRows = trip ? [] : (groups.get(focusCity) ?? []);
+    const savedHere = trip ? saved.filter((sv) => savedCity(sv).toLowerCase() === focusCity.toLowerCase()) : [];
     const cityShared = cityRows.filter((p) => p.recommended).length;
+    const youreHere = trip ? !!hereCity && hereCity.city.toLowerCase() === focusCity.toLowerCase() : isHere(focusCity);
+    // The city row: this one first, then yours by most spots, then Saved and Other.
+    const chips = [
+      ...(trip ? [{ city: focusCity, sub: savedHere.length ? `${savedHere.length} saved` : "New", trip: true }] : []),
+      ...near.items.map((c) => ({ city: c.city, sub: String(c.spots), trip: false })),
+    ].sort((x, y) => Number(y.city === focusCity) - Number(x.city === focusCity));
+    const otherCount = groups.get("")?.length ?? 0;
+    const chipPhotos = await cityPhotosFor(chips.map((c) => c.city), new Map());
+    const cityCount = ownCities.length + (otherCount ? 1 : 0);
+    const chipCls = (on: boolean) =>
+      cx(
+        "shrink-0 inline-flex items-center gap-1.5 rounded-full border pl-[3px] pr-3 py-[3px] text-[13px] whitespace-nowrap",
+        on ? "bg-ink text-cream border-ink font-semibold" : "bg-paper border-line text-ink font-medium",
+      );
+    const spotsOf = (rows: MyPlace[]): MySpot[] =>
+      rows.map((it) => ({
+        id: it.place.id,
+        name: it.place.name,
+        category: it.place.category,
+        photoUrl: it.place.photoUrl,
+        photoMediaId: it.place.photoMediaId,
+        lat: it.place.lat,
+        lng: it.place.lng,
+        href: it.href,
+        area: placeArea(it.place),
+        words: (it.place.special || it.place.note || "").trim(),
+        added: `Added ${timeAgo(it.place.createdAt)}`,
+        guides: it.inGuides.map((g) => g.title),
+        recommended: it.recommended,
+        shared: !!it.place.sharedAt,
+        inStash: it.inStash,
+      }));
+    const savedSpots: MySpot[] = savedHere.map(({ place, guide }) => ({
+      id: place.id,
+      name: place.name,
+      category: place.category,
+      photoUrl: place.photoUrl,
+      photoMediaId: place.photoMediaId,
+      lat: place.lat,
+      lng: place.lng,
+      href: `/g/${guide.slug}/p/${place.id}${guide.visibility === "private" && guide.ownerId !== user.id ? `?key=${guide.shareToken}` : ""}`,
+      area: placeArea(place),
+      words: (place.special || place.note || "").trim(),
+      added: "Saved",
+      guides: [],
+      recommended: false,
+      shared: false,
+      inStash: false,
+    }));
+    const cityLink = `/city?${new URLSearchParams({ name: focusCity }).toString()}`;
     return (
       <AppShell>
-        <TopBar back="/my-places" title={null} />
-        <header className="px-5 pt-2 pb-4">
-          <div className="flex items-center gap-3">
-            <div className="min-w-0">
-              <h1 className="font-display text-[32px] leading-none">{focusCity || "Other places"}</h1>
-              <p className="mt-1 text-[13px] text-ink-muted">
-                Your spots here{cityShared ? ` · ${cityShared} recommended` : ""}
-              </p>
-            </div>
+        <header className="pt-5 pb-3">
+          <div className="px-5 flex items-baseline justify-between gap-3">
+            <span className="font-display text-[24px] leading-none">My spots</span>
+            <Link href="/my-places?all=1" className="text-[13px] font-semibold text-terracotta-deep whitespace-nowrap">
+              {cityCount > 1 ? `All ${cityCount} cities` : "All"} ›
+            </Link>
           </div>
-          {Number.isFinite(imported) && !focusShown && <div className="mt-3">{importBanner}</div>}
-          {n > 0 && (
+          {/* Every city one tap away (16 Oct 2026), the one you're looking at first. */}
+          <nav aria-label="Your cities" className="mt-3 flex gap-2 overflow-x-auto no-scrollbar px-5">
+            {chips.map((c) => (
+              <Link key={c.city} href={`/my-places?city=${encodeURIComponent(c.city)}`} replace aria-current={c.city === focusCity ? "page" : undefined} className={chipCls(c.city === focusCity)}>
+                <CityImage photo={chipPhotos.get(cityPhotoKey(c.city))} className="w-7 h-7 rounded-full" />
+                {c.city}
+                <span className={cx("text-[11.5px] font-medium", c.city === focusCity ? "text-cream/70" : "text-ink-faint")}>{c.sub}</span>
+              </Link>
+            ))}
+            {otherCount > 0 && (
+              <Link href="/my-places?city=_other" replace className={chipCls(focus === "_other")}>
+                <span className="w-7 h-7 rounded-full bg-cream-deep" />
+                Other <span className="text-[11.5px] text-ink-faint">{otherCount}</span>
+              </Link>
+            )}
+            <Link href="/my-places?tab=saved" className={cx(chipCls(false), "pl-3")}>
+              <BookmarkIcon size={13} className="text-terracotta" /> Saved <span className="text-[11.5px] text-ink-faint">{saved.length}</span>
+            </Link>
+          </nav>
+          <div className="px-5 mt-4 flex items-center gap-2.5 flex-wrap">
+            <h1 className="font-display text-[32px] leading-none">{focusCity ? `My ${focusCity}` : "Other places"}</h1>
+            {youreHere && (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-sage-tint px-2.5 py-1 text-[12px] font-semibold text-sage">
+                <span className="w-1.5 h-1.5 rounded-full bg-sage" /> You&apos;re here
+              </span>
+            )}
+          </div>
+          <p className="px-5 mt-1 text-[13px] text-ink-muted">
+            {trip ? "No spots of yours here yet" : `${cityRows.length} spot${cityRows.length === 1 ? "" : "s"}${cityShared ? ` · ${cityShared} recommended` : ""}`}
+          </p>
+          {Number.isFinite(imported) && <div className="px-5 mt-3">{importBanner}</div>}
+          {!trip && (
             // One row of compact buttons (16 Oct 2026): short labels so nothing wraps on a phone.
-            <div className="mt-4 flex items-center gap-2">
+            <div className="px-5 mt-3 flex items-center gap-2">
               {stash && items.some((i) => i.inStash) && (
                 <LinkButton href="/saved/sort" size="sm" className="flex-1 whitespace-nowrap">Make a guide</LinkButton>
               )}
@@ -99,42 +201,33 @@ export default async function MyPlacesPage({ searchParams }: { searchParams: Pro
         </header>
 
         <main className="px-4 pb-8 flex flex-col gap-5">
-          {n === 0 ? (
-            <EmptyState
-              title="Nothing here yet"
-              body="Out somewhere you love? Tap + to add it. Got a Google Maps list? Import it and every place comes in."
-              action={
-                <div className="flex gap-2 justify-center">
-                  <LinkButton href="/record" size="sm">Add a place</LinkButton>
-                  <LinkButton href="/create?import=1" size="sm" variant="outline">Import a list</LinkButton>
+          {trip ? (
+            <>
+              <div className="rounded-[20px] border border-line bg-paper overflow-hidden">
+                <span className="relative block">
+                  <CityImage photo={chipPhotos.get(cityPhotoKey(focusCity))} className="h-[110px] w-full" />
+                  <span aria-hidden className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
+                  <span className="absolute left-4 bottom-3 font-display text-[26px] text-white drop-shadow">Your {focusCity}</span>
+                </span>
+                <div className="p-3.5 flex flex-col gap-3">
+                  <p className="text-[13px] leading-snug text-ink-muted">Add the spots you find here. They stay private until you recommend them.</p>
+                  <div className="flex gap-2">
+                    <LinkButton href="/record" size="sm" className="flex-1 whitespace-nowrap"><PlusIcon size={14} /> Add a spot</LinkButton>
+                    <LinkButton href={cityLink} size="sm" variant="outline" className="flex-1 whitespace-nowrap">Spots in {focusCity}</LinkButton>
+                  </div>
                 </div>
-              }
-            />
+              </div>
+              {savedSpots.length > 0 && (
+                <>
+                  <h2 className="px-1 -mb-2 font-display text-[21px]">You saved <span className="text-[12px] font-sans text-ink-faint">{savedSpots.length}</span></h2>
+                  <MySpotsCity city={focusCity} spots={savedSpots} categories={orderedCategories(savedSpots)} autoNear={youreHere} />
+                </>
+              )}
+            </>
           ) : (
             <>
-              {Number.isFinite(imported) && focusShown && importBanner}
               {focusCity && (unguided.get(focusCity)?.length ?? 0) >= NUDGE_MIN && <GuideNudge city={focusCity} count={unguided.get(focusCity)!.length} />}
-              <MySpotsCity
-                city={focusCity}
-                categories={orderedCategories(cityRows.map((r) => r.place))}
-                spots={cityRows.map((it) => ({
-                  id: it.place.id,
-                  name: it.place.name,
-                  category: it.place.category,
-                  photoUrl: it.place.photoUrl,
-                  photoMediaId: it.place.photoMediaId,
-                  lat: it.place.lat,
-                  lng: it.place.lng,
-                  href: it.href,
-                  area: placeArea(it.place),
-                  words: (it.place.special || it.place.note || "").trim(),
-                  added: `Added ${timeAgo(it.place.createdAt)}`,
-                  guides: it.inGuides.map((g) => g.title),
-                  recommended: it.recommended,
-                  shared: !!it.place.sharedAt,
-                  inStash: it.inStash,
-                }))}
-              />
+              <MySpotsCity city={focusCity} spots={spotsOf(cityRows)} categories={orderedCategories(cityRows.map((r) => r.place))} autoNear={youreHere} remember />
             </>
           )}
         </main>
@@ -143,7 +236,7 @@ export default async function MyPlacesPage({ searchParams }: { searchParams: Pro
   }
 
   // ---- The tab: city tiles ----
-  const [saved, savedGuides, ownGuides] = await Promise.all([listSavedPlaces(user.id), listSavedGuides(user.id), listGuidesByOwner(user.id, user.id)]);
+  const [savedGuides, ownGuides] = await Promise.all([listSavedGuides(user.id), listGuidesByOwner(user.id, user.id)]);
   const savedByCity = new Map<string, { city: string; country: string; n: number }>();
   for (const sv of saved) {
     const city = tidyCity(sv.place.city) || sv.place.country || "";
@@ -164,7 +257,7 @@ export default async function MyPlacesPage({ searchParams }: { searchParams: Pro
   );
   const tabLink = (t: "yours" | "saved", label: string, count: number) => (
     <Link
-      href={t === "saved" ? "/my-places?tab=saved" : "/my-places"}
+      href={t === "saved" ? "/my-places?tab=saved" : "/my-places?all=1"}
       replace
       aria-current={tab === t ? "page" : undefined}
       className={cx("flex-1 text-center rounded-full py-2 text-[13.5px]", tab === t ? "bg-paper font-semibold shadow-sm" : "text-ink-muted font-medium")}
@@ -175,8 +268,9 @@ export default async function MyPlacesPage({ searchParams }: { searchParams: Pro
 
   return (
     <AppShell>
-      <header className="px-5 pt-6 pb-3">
-        <h1 className="font-display text-[32px] leading-none">My spots</h1>
+      {n > 0 && <TopBar back="/my-places" title={null} />}
+      <header className={cx("px-5 pb-3", n > 0 ? "pt-1" : "pt-6")}>
+        <h1 className="font-display text-[32px] leading-none">{tab === "saved" ? "Saved spots" : "All your cities"}</h1>
         <p className="mt-1.5 text-[13px] text-ink-muted">Your places in every city, and the ones you&apos;ve saved from friends.</p>
         <div role="tablist" aria-label="My spots" className="mt-4 flex rounded-full bg-cream-deep/70 p-[3px]">
           {tabLink("yours", "Yours", n)}

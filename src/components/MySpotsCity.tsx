@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { GuideMap } from "./GuideMap";
 import { CheckIcon, ChevronDown, LocateIcon } from "./Icons";
 import { PlaceTile } from "./PlaceTile";
@@ -33,6 +33,11 @@ export interface MySpot {
 
 type Here = { lat: number; lng: number };
 
+/** The city you last opened in My spots, so it opens there next time when we can't tell where you are. */
+export const LAST_CITY_COOKIE = "mg_last_city";
+/** Set when you turn Near me off, so it stays off. */
+const NEAR_OFF = "mg_near_off";
+
 /** Metres between two points. */
 function metres(a: Here, b: Here): number {
   const R = 6_371_000;
@@ -49,17 +54,28 @@ const distLabel = (m: number) => (m < 950 ? `${Math.max(50, Math.round(m / 50) *
  * the map and the list together. All → grouped by category; a chip → that category; Near me →
  * nearest first with distances.
  */
-export function MySpotsCity({ city, spots, categories }: { city: string; spots: MySpot[]; categories: string[] }) {
+export function MySpotsCity({
+  city,
+  spots,
+  categories,
+  autoNear = false,
+  remember = false,
+}: {
+  city: string;
+  spots: MySpot[];
+  categories: string[];
+  /** You're in this city: start nearest first (unless you turned it off), when location is already allowed. */
+  autoNear?: boolean;
+  /** Remember this as the city to open next time. */
+  remember?: boolean;
+}) {
   const [cat, setCat] = useState<string | null>(null);
   const [here, setHere] = useState<Here | null>(null);
   const [near, setNear] = useState(false);
   const [locating, setLocating] = useState(false);
   const [locError, setLocError] = useState<string | null>(null);
 
-  const toggleNear = () => {
-    if (near) return setNear(false);
-    if (here) return setNear(true);
-    if (!("geolocation" in navigator)) return setLocError("Your browser can't share your location.");
+  const locate = () => {
     setLocating(true);
     setLocError(null);
     navigator.geolocation.getCurrentPosition(
@@ -75,6 +91,44 @@ export function MySpotsCity({ city, spots, categories }: { city: string; spots: 
       { enableHighAccuracy: true, timeout: 10_000, maximumAge: 60_000 },
     );
   };
+  const toggleNear = () => {
+    const keep = (off: boolean) => {
+      try {
+        if (off) localStorage.setItem(NEAR_OFF, "1");
+        else localStorage.removeItem(NEAR_OFF);
+      } catch {}
+    };
+    if (near) {
+      keep(true);
+      return setNear(false);
+    }
+    keep(false);
+    if (here) return setNear(true);
+    if (!("geolocation" in navigator)) return setLocError("Your browser can't share your location.");
+    locate();
+  };
+
+  useEffect(() => {
+    if (remember && city) document.cookie = `${LAST_CITY_COOKIE}=${encodeURIComponent(city)}; path=/; max-age=31536000; samesite=lax`;
+  }, [remember, city]);
+
+  // In the city: nearest first, without a prompt — only when location is already allowed.
+  useEffect(() => {
+    if (!autoNear || !("geolocation" in navigator) || !navigator.permissions) return;
+    try {
+      if (localStorage.getItem(NEAR_OFF) === "1") return;
+    } catch {}
+    let live = true;
+    navigator.permissions
+      .query({ name: "geolocation" })
+      .then((st) => {
+        if (live && st.state === "granted") locate();
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [autoNear]);
 
   const shown = useMemo(() => {
     const list = cat ? spots.filter((s) => s.category === cat) : spots;
@@ -91,7 +145,7 @@ export function MySpotsCity({ city, spots, categories }: { city: string; spots: 
 
   return (
     <>
-      <div className="sticky top-14 z-20 -mx-4 bg-cream/95 backdrop-blur border-b border-line/70 py-2.5">
+      <div className="sticky top-0 z-20 -mx-4 bg-cream/95 backdrop-blur border-b border-line/70 py-2.5">
         <div role="group" aria-label="Filter spots" className="flex items-center gap-2 overflow-x-auto no-scrollbar px-4">
           <button
             type="button"
