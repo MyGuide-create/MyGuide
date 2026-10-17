@@ -24,17 +24,17 @@ async function checked(input: ClapInput) {
   const user = await getCurrentUser();
   if (!user) throw new UserError("Log in to clap.", "auth");
   const { kind, target, ownerId } = input;
-  if (kind !== "spots" && kind !== "guide") throw new UserError("Can't clap for that.", "invalid");
-  if (!target || target.length > 300 || !ownerId) throw new UserError("Can't clap for that.", "invalid");
+  if (kind !== "spots" && kind !== "guide") throw new UserError("Can't do that.", "invalid");
+  if (!target || target.length > 300 || !ownerId) throw new UserError("Can't do that.", "invalid");
   if (ownerId === user.id) throw new UserError("That's your own post.", "invalid");
-  if (kind === "spots" && !target.startsWith(`${ownerId}|`)) throw new UserError("Can't clap for that.", "invalid");
+  if (kind === "spots" && !target.startsWith(`${ownerId}|`)) throw new UserError("Can't do that.", "invalid");
   const db = await getDb();
   if (kind === "guide") {
     const g = await db.query.guides.findFirst({ where: eq(guides.id, target), columns: { ownerId: true } });
     if (!g || g.ownerId !== ownerId) throw new UserError("That guide is gone.", "gone");
   }
   const owner = await db.query.users.findFirst({ where: eq(users.id, ownerId), columns: { id: true } });
-  if (!owner || (await hiddenUserIds(user.id)).has(ownerId)) throw new UserError("Can't clap for that.", "forbidden");
+  if (!owner || (await hiddenUserIds(user.id)).has(ownerId)) throw new UserError("Can't do that.", "forbidden");
   return { user, db };
 }
 

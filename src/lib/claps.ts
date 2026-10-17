@@ -12,7 +12,7 @@ export async function loadClaps(viewerId: string | null | undefined, targets: Ar
   const db = await getDb();
   const [rows, hidden] = await Promise.all([
     db
-      .select({ kind: claps.kind, target: claps.target, userId: claps.userId, note: claps.note, name: users.displayName })
+      .select({ kind: claps.kind, target: claps.target, userId: claps.userId, note: claps.note, name: users.displayName, username: users.username, avatarMediaId: users.avatarMediaId })
       .from(claps)
       .innerJoin(users, eq(users.id, claps.userId))
       .where(inArray(claps.target, keys))
@@ -22,14 +22,20 @@ export async function loadClaps(viewerId: string | null | undefined, targets: Ar
   for (const r of rows) {
     if (hidden.has(r.userId)) continue;
     const k = clapKey(r.kind as ClapKind, r.target);
-    const s = out.get(k) ?? { count: 0, mine: false, myNote: null, names: [] };
+    const s = out.get(k) ?? { count: 0, mine: false, myNote: null, names: [], faces: [] };
+    const face = { username: r.username, displayName: r.name, avatarMediaId: r.avatarMediaId };
     s.count++;
     if (r.userId === viewerId) {
       s.mine = true;
       s.myNote = r.note;
       s.names.unshift("You");
-    } else s.names.push(r.name.split(" ")[0]);
+      s.faces!.unshift(face);
+    } else {
+      s.names.push(r.name.split(" ")[0]);
+      s.faces!.push(face);
+    }
     out.set(k, s);
   }
+  for (const s of out.values()) s.faces = s.faces?.slice(0, 3);
   return out;
 }

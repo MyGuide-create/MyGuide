@@ -106,6 +106,13 @@ textarea {
 }
 
 
+/* ♥ pop when you love a post (ClapBar, 17 Oct 2026). */
+@keyframes heart {
+  0% { transform: scale(1); }
+  45% { transform: scale(1.35); }
+  100% { transform: scale(1); }
+}
+
 /* 👏 pop when you clap (ClapBar). */
 @keyframes clap {
   0% { transform: scale(1) rotate(0); }

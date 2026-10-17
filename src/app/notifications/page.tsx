@@ -138,7 +138,7 @@ export default async function NotificationsPage() {
                   )}
                   {n.type === "clap" && (
                     <>
-                      {who} 👏 {rawGuide ? <>your guide <span className="font-display text-[16px]">“{rawGuide.title}”</span></> : <>your {n.city ? <b className="font-semibold">{n.city}</b> : null} spot{n.count === 1 ? "" : "s"}</>}
+                      {who} loved {rawGuide ? <>your guide <span className="font-display text-[16px]">“{rawGuide.title}”</span></> : <>your {n.city ? <b className="font-semibold">{n.city}</b> : null} spot{n.count === 1 ? "" : "s"}</>}
                       {n.note ? <span className="block text-[13px] italic text-ink/85">“{n.note}”</span> : null}
                     </>
                   )}

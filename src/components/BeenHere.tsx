@@ -8,7 +8,7 @@ import { toggleReaction } from "@/lib/actions/saved";
 import { beenNotForMe, vouchForPlace } from "@/lib/actions/vouch";
 import { FollowPill } from "./FollowPill";
 import { myPlacesHref } from "@/lib/stash";
-import { CheckIcon, XIcon } from "./Icons";
+import { CheckIcon, RecommendIcon, XIcon } from "./Icons";
 import { Button, Input, Spinner, Textarea, cx } from "./ui";
 
 /**
@@ -35,8 +35,8 @@ export function BeenHere({
   signedIn: boolean;
   /** You already have this spot (My spots or a guide): no "recommend it?" step. */
   youHaveIt: boolean;
-  /** "chip": "Been here?" on a place page. "icon": a small ✓ on a city page row (14 Oct 2026). */
-  variant?: "chip" | "icon";
+  /** "chip": "Been here?" on a place page. "icon": a small ✓ on a city page row (14 Oct 2026). "bar": in a Home post's action row (17 Oct 2026). */
+  variant?: "chip" | "icon" | "bar";
   /** Reload the page once it's yours (My spots: the saved row moves into your own spots). */
   refreshOnDone?: boolean;
 }) {
@@ -65,6 +65,17 @@ export function BeenHere({
     </>
   );
 
+  const barCls = cx(
+    "inline-flex items-center gap-1.5 h-8 rounded-full border pl-2 pr-3 text-[12.5px] font-semibold whitespace-nowrap transition-colors",
+    been ? "border-sage-soft bg-sage-tint text-sage" : "border-line text-ink",
+  );
+  const barBody = (
+    <>
+      <RecommendIcon size={18} filled={been} />
+      {been ? (youHaveIt || done ? "Recommended" : "Been here") : "Recommend"}
+    </>
+  );
+
   const iconCls = cx(
     "w-9 h-9 -m-1.5 flex items-center justify-center rounded-full",
     been ? "text-sage" : "text-ink-faint hover:text-sage",
@@ -76,8 +87,8 @@ export function BeenHere({
   );
   if (!signedIn)
     return (
-      <Link href={`/signup?why=save&next=${encodeURIComponent(path)}`} className={variant === "icon" ? iconCls : cls} aria-label="Recommend">
-        {variant === "icon" ? iconBody : label}
+      <Link href={`/signup?why=save&next=${encodeURIComponent(path)}`} className={variant === "icon" ? iconCls : variant === "bar" ? barCls : cls} aria-label="Recommend">
+        {variant === "icon" ? iconBody : variant === "bar" ? barBody : label}
       </Link>
     );
 
@@ -102,7 +113,7 @@ export function BeenHere({
   /** Close the sheet; on a city page row, refresh once it's yours so the row shows ✓ Yours. */
   const close = () => {
     setOpen(false);
-    if (done && (variant === "icon" || refreshOnDone)) router.refresh();
+    if (done && (variant !== "chip" || refreshOnDone)) router.refresh();
   };
 
   const vouch = async () => {
@@ -124,6 +135,10 @@ export function BeenHere({
       {variant === "icon" ? (
         <button type="button" aria-pressed={been} aria-label={been ? "Recommended (tap to undo)" : "Recommend"} title="Recommend" className={iconCls} onClick={tap}>
           {iconBody}
+        </button>
+      ) : variant === "bar" ? (
+        <button type="button" aria-pressed={been} title="Been here? Recommend it too" className={barCls} onClick={tap}>
+          {barBody}
         </button>
       ) : (
       <div className="flex flex-wrap items-center gap-2">

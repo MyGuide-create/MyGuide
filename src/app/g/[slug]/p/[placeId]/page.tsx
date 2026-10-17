@@ -412,7 +412,8 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
         )}
 
 
-        <div>
+        {/* #comments: the 💬 on a Home post lands here (17 Oct 2026). */}
+        <div id="comments" className="scroll-mt-20">
           <p className="text-[13px] font-semibold text-ink-muted mb-2">Comments</p>
           <PlaceComments placeId={place.id} initial={detail.placeComments[place.id] ?? []} currentUser={user ? toPublicUser(user) : null} />
         </div>

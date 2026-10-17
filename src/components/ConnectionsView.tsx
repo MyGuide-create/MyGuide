@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AppShell, TopBar } from "@/components/AppShell";
-import { FollowButton } from "@/components/FollowButton";
-import { Avatar, EmptyState, cx } from "@/components/ui";
+import { ConnectionsList } from "@/components/ConnectionsList";
+import { EmptyState, cx } from "@/components/ui";
 import { getCurrentUser } from "@/lib/auth";
 import { getFollowStats, getUserByUsername, listConnections } from "@/lib/guides";
 
@@ -44,20 +44,7 @@ export async function ConnectionsView({ username, kind }: { username: string; ki
             body={own ? (kind === "followers" ? "Share a guide and people can follow you from it." : "Find creators from the search or the feed.") : undefined}
           />
         ) : (
-          <ul className="flex flex-col">
-            {rows.map(({ user, viewerStatus }) => (
-              <li key={user.id} className="flex items-center gap-3 py-2.5 px-1 border-b border-line/50 last:border-0">
-                <Link href={`/u/${user.username}`} className="flex flex-1 min-w-0 items-center gap-3">
-                  <Avatar user={user} size={44} />
-                  <span className="min-w-0">
-                    <span className="block truncate text-[14.5px] font-medium text-ink">{user.displayName}</span>
-                    <span className="block truncate text-[12.5px] text-ink-muted">@{user.username}</span>
-                  </span>
-                </Link>
-                {viewer && viewerStatus !== "self" && <FollowButton userId={user.id} initial={viewerStatus} next={`${base}/${kind}`} followsYou={own && kind === "followers"} />}
-              </li>
-            ))}
-          </ul>
+          <ConnectionsList rows={rows} showFollow={!!viewer} next={`${base}/${kind}`} followsYou={own && kind === "followers"} />
         )}
       </main>
     </AppShell>

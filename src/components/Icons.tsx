@@ -109,6 +109,17 @@ export const AlertIcon = ({ size, ...p }: P) => (
 export const ChatIcon = ({ size, ...p }: P) => (
   <svg {...base(size, p)}><path d="M4 5h16v11H8l-4 4V5z" /></svg>
 );
+/** Send a post to someone (17 Oct 2026). */
+export const SendIcon = ({ size, ...p }: P) => (
+  <svg {...base(size, p)}><path d="M21 3 10.5 13.5" /><path d="M21 3 14.5 21l-4-7.5L3 9.5 21 3Z" /></svg>
+);
+/** "I recommend it too" (17 Oct 2026): the pin with a tick; filled sage once you do. */
+export const RecommendIcon = ({ size, filled, ...p }: P & { filled?: boolean }) => (
+  <svg {...base(size, p)}>
+    <path d="M12 21s7-7.5 7-12a7 7 0 1 0-14 0c0 4.5 7 12 7 12z" fill={filled ? "currentColor" : "none"} />
+    <path d="m9.2 9.2 2 2 3.7-3.8" stroke={filled ? "white" : "currentColor"} strokeWidth={2} />
+  </svg>
+);
 
 /* Category glyphs used on place tiles (white strokes on a gradient). */
 export const CategoryGlyph = ({ name, size = 26 }: { name: string; size?: number }) => {

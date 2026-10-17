@@ -19,6 +19,14 @@ export interface ClapSummary {
   myNote: string | null;
   /** First names of who clapped, viewer first ("You"), most recent next. */
   names: string[];
+  /** Up to 3 of them for the little faces on a post (17 Oct 2026), same order. */
+  faces?: ClapFace[];
+}
+
+export interface ClapFace {
+  username: string;
+  displayName: string;
+  avatarMediaId: string | null;
 }
 
 /** "You, Shaz and 2 others" */

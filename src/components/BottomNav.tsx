@@ -21,6 +21,8 @@ export function BottomNav({ signedIn, username, unread }: { signedIn: boolean; u
     if (path !== href.split("?")[0]) return;
     e.preventDefault();
     window.scrollTo({ top: 0, behavior: window.scrollY > 4000 ? "auto" : "smooth" });
+    // Explore on Home (17 Oct 2026): the cities reel slides back to its first city too.
+    document.querySelectorAll<HTMLElement>("[data-reel]").forEach((el) => el.scrollTo({ left: 0, behavior: "smooth" }));
   };
   return (
     <>

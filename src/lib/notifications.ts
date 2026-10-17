@@ -140,7 +140,7 @@ export async function addNotifications(rows: NewNotification[]): Promise<void> {
               body = r.note ? `“${r.note}”` : "Your recommendation worked.";
               if (g) url = p ? `/g/${g.slug}/p/${p.id}` : `/g/${g.slug}`;
             } else {
-              title = g ? `${who} 👏 your guide ${g.title}` : `${who} 👏 your ${r.city ? `${r.city} ` : ""}spot${n === 1 ? "" : "s"}`;
+              title = g ? `${who} loved your guide ${g.title}` : `${who} loved your ${r.city ? `${r.city} ` : ""}spot${n === 1 ? "" : "s"}`;
               body = r.note ?? "";
               if (g) url = `/g/${g.slug}`;
             }

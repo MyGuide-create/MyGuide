@@ -17,7 +17,9 @@ import { acceptedFollowingIds, friendCities, loadRecommendations, ownSpotKeys, s
 import { cityPhotoKey, cityPhotosFor } from "@/lib/cityPhotos";
 import type { CityPhoto } from "@/lib/db/schema";
 import { getDb } from "@/lib/db";
-import { savedPlaces } from "@/lib/db/schema";
+import { placeComments, placeReactions, savedPlaces } from "@/lib/db/schema";
+import { hiddenUserIds } from "@/lib/blocks";
+import { BeenHere } from "@/components/BeenHere";
 import { listFeed, peopleToFollow, type GuideCard } from "@/lib/guides";
 import { pickSpotlight, reasonLine, suggestPeople } from "@/lib/suggest";
 import { SpotlightCard } from "@/components/SpotlightCard";
@@ -30,7 +32,7 @@ import { nearestFirst, viewerLocation } from "@/lib/nearby";
 import { FollowPill } from "@/components/FollowPill";
 import { ClapBar } from "@/components/ClapBar";
 import { loadClaps } from "@/lib/claps";
-import { clapKey, spotsTarget, type ClapSummary } from "@/lib/clapTargets";
+import { clapKey, spotsTarget, type ClapFace, type ClapSummary } from "@/lib/clapTargets";
 import { placeArea } from "@/lib/places/neighbourhood";
 import { timeAgo } from "@/lib/utils";
 
@@ -149,6 +151,28 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   // 👏 on activity posts (spots on a day, new guides).
   const clapTargetOf = (f: FeedEntry) => (f.kind === "guide" ? { kind: "guide" as const, target: f.card.guide.id } : f.kind === "spots" ? { kind: "spots" as const, target: spotsTarget(f.user.id, f.city, f.at) } : null);
   const clapMap = await loadClaps(user?.id, [...feed, ...everyone].map(clapTargetOf).filter((x) => !!x));
+  // The action row (17 Oct 2026): comments, Recommend and "N friends recommend it too" on one-spot posts.
+  const onePlaceIds = [...feed, ...everyone].flatMap((f) => (f.kind === "spots" && f.recs.length === 1 ? [f.recs[0].place.id] : []));
+  const commentCounts = new Map<string, number>();
+  const beenIds = new Set<string>();
+  if (onePlaceIds.length) {
+    const db = await getDb();
+    const [rows, hidden, been] = await Promise.all([
+      db.select({ placeId: placeComments.placeId, authorId: placeComments.authorId }).from(placeComments).where(inArray(placeComments.placeId, onePlaceIds)),
+      hiddenUserIds(user?.id),
+      user ? db.select({ id: placeReactions.placeId }).from(placeReactions).where(and(eq(placeReactions.userId, user.id), eq(placeReactions.kind, "been"), inArray(placeReactions.placeId, onePlaceIds))) : Promise.resolve([]),
+    ]);
+    for (const r of rows) if (!hidden.has(r.authorId)) commentCounts.set(r.placeId, (commentCounts.get(r.placeId) ?? 0) + 1);
+    for (const r of been) beenIds.add(r.id);
+  }
+  const recommenders = new Map<string, Set<string>>();
+  for (const r of recs) {
+    const k = spotKey(r.place);
+    recommenders.set(k, (recommenders.get(k) ?? new Set<string>()).add(r.owner.id));
+  }
+  const meFace: ClapFace | undefined = user ? { username: user.username, displayName: user.displayName, avatarMediaId: user.avatarMediaId } : undefined;
+  const rowData: RowData = { commentCounts, beenIds, recommenders, me: meFace };
+
   const clapsFor = (f: FeedEntry) => {
     const t = clapTargetOf(f);
     return t ? clapMap.get(clapKey(t.kind, t.target)) : undefined;
@@ -218,7 +242,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
           <CitiesExplorer
             cities={mapCities}
             tiles={
-              <div className="flex gap-3 overflow-x-auto no-scrollbar px-5">
+              <div data-reel="cities" className="flex gap-3 overflow-x-auto no-scrollbar px-5">
                 {cities.map((c) => (
                   <CityTile key={c.city} href={cityHref(c)} city={c.city} photo={photoFor(c.city)} near={row.nearKey === cityKey(c.city)} spots={c.spots} guides={c.guides}>
                     <Faces users={c.mine > 0 && me ? [me, ...c.friends.filter((f) => f.id !== me.id)] : c.friends} ring="ring-cream" />
@@ -247,7 +271,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
         {feed.length > 0 && (
           <section className="px-4 pt-8 flex flex-col gap-3">
             <h2 className="px-1 font-display text-[22px]">New from friends</h2>
-            {feed.map((f) => <FeedCard key={feedKey(f)} f={f} savedIds={savedIds} signedIn={!!user} viewerId={user?.id} claps={clapsFor(f)} ownKeys={ownKeys} />)}
+            {feed.map((f) => <FeedCard key={feedKey(f)} f={f} savedIds={savedIds} signedIn={!!user} viewerId={user?.id} claps={clapsFor(f)} ownKeys={ownKeys} row={rowData} />)}
           </section>
         )}
         {everyone.length > 0 && (
@@ -256,7 +280,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
               <h2 className="font-display text-[22px]">More on MyGuide</h2>
               <p className="text-[13px] text-ink-muted">{feed.length ? "More from people you don\u2019t follow yet." : "What people are recommending right now. Follow anyone whose taste you like."}</p>
             </div>
-            {everyone.map((f) => <FeedCard key={feedKey(f)} f={f} savedIds={savedIds} signedIn={!!user} viewerId={user?.id} claps={clapsFor(f)} ownKeys={ownKeys} followable />)}
+            {everyone.map((f) => <FeedCard key={feedKey(f)} f={f} savedIds={savedIds} signedIn={!!user} viewerId={user?.id} claps={clapsFor(f)} ownKeys={ownKeys} row={rowData} followable />)}
           </section>
         )}
 
@@ -342,7 +366,16 @@ function Faces({ users, ring }: { users: PublicUser[]; ring: string }) {
  * One item on Home. `followable`: from someone you don't follow ("New on MyGuide") — a small
  * Follow sits next to their name.
  */
-function FeedCard({ f, savedIds, signedIn, followable = false, viewerId, claps, ownKeys }: { f: FeedEntry; savedIds: Set<string>; signedIn: boolean; followable?: boolean; viewerId?: string; claps?: ClapSummary; ownKeys?: Set<string> }) {
+/** What a post's action row needs beyond the post (17 Oct 2026). */
+interface RowData {
+  commentCounts: Map<string, number>;
+  beenIds: Set<string>;
+  /** Spot key → friends who recommend it. */
+  recommenders: Map<string, Set<string>>;
+  me?: ClapFace;
+}
+
+function FeedCard({ f, savedIds, signedIn, followable = false, viewerId, claps, ownKeys, row }: { f: FeedEntry; savedIds: Set<string>; signedIn: boolean; followable?: boolean; viewerId?: string; claps?: ClapSummary; ownKeys?: Set<string>; row: RowData }) {
   const yours = (p: Parameters<typeof spotKey>[0]) => !!ownKeys?.has(spotKey(p));
   if (f.kind === "guide") {
     const g = f.card;
@@ -363,7 +396,7 @@ function FeedCard({ f, savedIds, signedIn, followable = false, viewerId, claps, 
           {followable && <FollowPill userId={g.owner.id} signedIn={signedIn} next="/" />}
         </span>
         <div className="px-3.5 pb-3 -mt-0.5">
-          <ClapBar kind="guide" target={g.guide.id} ownerId={g.owner.id} ownerName={first(g.owner)} initial={claps} signedIn={signedIn} own={viewerId === g.owner.id} />
+          <ClapBar kind="guide" target={g.guide.id} ownerId={g.owner.id} ownerName={first(g.owner)} initial={claps} signedIn={signedIn} own={viewerId === g.owner.id} me={row.me} share={{ path: `/g/${g.guide.slug}`, title: g.guide.title }} />
         </div>
       </div>
     );
@@ -382,12 +415,16 @@ function FeedCard({ f, savedIds, signedIn, followable = false, viewerId, claps, 
   }
   const r0 = f.recs[0];
   const one = f.recs.length === 1;
+  const own = viewerId === f.user.id;
+  // "in Copenhagen, Denmark" (17 Oct 2026): the country spelled out, never a code; skipped for city-states (Singapore).
+  const country = f.city ? findCity(f.city)?.country || (r0?.place.country.length > 3 ? r0.place.country : "") : "";
+  const where = country && country.toLowerCase() !== f.city.toLowerCase() ? `${f.city}, ${country}` : f.city;
   return (
     <div className="rounded-2xl border border-line/80 bg-paper p-3.5 flex flex-col gap-2.5">
       <span className="flex items-center gap-2.5">
         <Link href={followable ? `/u/${f.user.username}` : cityHref({ city: f.city }, f.user.username)} className="shrink-0"><Avatar user={f.user} size={32} /></Link>
         <Link href={followable ? `/u/${f.user.username}` : cityHref({ city: f.city }, f.user.username)} className="flex-1 min-w-0 text-[13.5px] leading-snug">
-          <b className="font-semibold">{followable ? f.user.displayName : first(f.user)}</b> recommended {one ? "a spot" : `${f.recs.length} spots`}{f.city ? <> in <b className="font-semibold">{f.city}</b></> : null}
+          <b className="font-semibold">{followable ? f.user.displayName : first(f.user)}</b> recommended {one ? "a spot" : `${f.recs.length} spots`}{f.city ? <> in <b className="font-semibold">{where}</b></> : null}
           <span className="block text-[12px] text-ink-muted">{timeAgo(f.at)}</span>
         </Link>
         {followable && <FollowPill userId={f.user.id} signedIn={signedIn} next="/" />}
@@ -424,26 +461,30 @@ function FeedCard({ f, savedIds, signedIn, followable = false, viewerId, claps, 
           ))}
         </span>
       )}
-      {/* One line (16 Oct 2026): Clap, then Save for a one-spot post. The city is a tap away on the name above. */}
+      {/* Action row (17 Oct 2026): ♥ · 💬 · Recommend · Send … Save. Comment, Recommend and Save are per spot, so one-spot posts only. */}
       <ClapBar
-          kind="spots"
-          target={spotsTarget(f.user.id, f.city, f.at)}
-          ownerId={f.user.id}
-          ownerName={first(f.user)}
-          city={f.city}
-          count={f.recs.length}
-          initial={claps}
-          signedIn={signedIn}
-          own={viewerId === f.user.id}
-          extra={
-            one &&
-            (yours(r0.place) ? (
-              <span className="inline-flex items-center gap-1.5 h-9 rounded-full bg-sage-tint px-3 text-[12.5px] font-medium text-sage whitespace-nowrap">✓ Your spot</span>
-            ) : (
-              <SaveButton placeId={r0.place.id} initial={savedIds.has(r0.place.id)} signedIn={signedIn} variant="pill" />
-            ))
-          }
-        />
+        kind="spots"
+        target={spotsTarget(f.user.id, f.city, f.at)}
+        ownerId={f.user.id}
+        ownerName={first(f.user)}
+        city={f.city}
+        count={f.recs.length}
+        initial={claps}
+        signedIn={signedIn}
+        own={own}
+        me={row.me}
+        comments={one ? { count: row.commentCounts.get(r0.place.id) ?? 0, href: `/g/${r0.guide.slug}/p/${r0.place.id}#comments` } : undefined}
+        alsoRecommend={one ? [...(row.recommenders.get(spotKey(r0.place)) ?? [])].filter((id) => id !== f.user.id && id !== viewerId).length : 0}
+        recommend={
+          one && !own
+            ? yours(r0.place)
+              ? <span className="inline-flex items-center gap-1 h-8 rounded-full bg-sage-tint px-3 text-[12.5px] font-semibold text-sage whitespace-nowrap">✓ Your spot</span>
+              : <BeenHere variant="bar" placeId={r0.place.id} placeName={r0.place.name} ownerFirst={first(f.user)} initial={row.beenIds.has(r0.place.id)} count={0} signedIn={signedIn} youHaveIt={false} />
+            : undefined
+        }
+        share={one ? { path: `/g/${r0.guide.slug}/p/${r0.place.id}`, title: r0.place.name } : { path: cityHref({ city: f.city }, f.user.username), title: `${first(f.user)}\u2019s ${f.city} spots` }}
+        save={one && !own && !yours(r0.place) ? <SaveButton placeId={r0.place.id} initial={savedIds.has(r0.place.id)} signedIn={signedIn} /> : undefined}
+      />
     </div>
   );
 }
