@@ -133,7 +133,9 @@ export function ClapBar({
           {faces.length > 0 && (
             <span className="flex shrink-0">
               {faces.map((f, i) => (
-                <Avatar key={`${f.username}-${i}`} user={f} size={20} className={cx("ring-2 ring-paper", i > 0 && "-ml-1.5")} />
+                <Link key={`${f.username}-${i}`} href={`/u/${f.username}`} aria-label={`${f.displayName}'s profile`} className={cx("rounded-full", i > 0 && "-ml-1.5")}>
+                  <Avatar user={f} size={20} className="ring-2 ring-paper" />
+                </Link>
               ))}
             </span>
           )}

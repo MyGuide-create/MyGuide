@@ -103,10 +103,10 @@ export function PlaceComments({ placeId, initial, currentUser }: { placeId: stri
             const isMine = currentUser?.id === row.author.id;
             return (
               <div key={row.comment.id} className="flex items-start gap-2">
-                <Avatar user={row.author} size={22} />
+                <Link href={`/u/${row.author.username}`} aria-label={`${row.author.displayName}'s profile`} className="shrink-0"><Avatar user={row.author} size={22} /></Link>
                 <div className="flex-1 min-w-0 rounded-2xl bg-cream-deep/50 px-2.5 py-1.5">
                   <div className="flex items-baseline gap-1.5">
-                    <span className="text-[11.5px] font-semibold">{row.author.displayName}</span>
+                    <Link href={`/u/${row.author.username}`} className="text-[11.5px] font-semibold">{row.author.displayName}</Link>
                     <span className="text-[10.5px] text-ink-faint">{timeAgo(row.comment.createdAt)}{row.comment.editedAt ? " · edited" : ""}</span>
                     {currentUser && !isMine && !isPending && <ReportButton targetType="comment" targetId={row.comment.id} className="ml-auto text-[10.5px]" />}
                   </div>

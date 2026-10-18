@@ -389,10 +389,13 @@ function FeedCard({ f, savedIds, signedIn, followable = false, viewerId, claps, 
         </Link>
         <span className="flex items-center gap-2.5 px-3.5 py-3">
           <Link href={`/u/${g.owner.username}`} className="shrink-0"><Avatar user={g.owner} size={32} /></Link>
-          <Link href={`/g/${g.guide.slug}`} className="flex-1 min-w-0 text-[13.5px] leading-snug">
-            <b className="font-semibold">{first(g.owner)}</b> published <b className="font-semibold">{g.guide.title}</b>
-            <span className="block text-[12px] text-ink-muted">{[g.guide.city, timeAgo(f.at)].filter(Boolean).join(" · ")}</span>
-          </Link>
+          {/* Name → profile, the rest → the guide (18 Oct 2026). */}
+          <span className="flex-1 min-w-0 text-[13.5px] leading-snug">
+            <Link href={`/u/${g.owner.username}`} className="font-semibold">{first(g.owner)}</Link>{" "}
+            <Link href={`/g/${g.guide.slug}`}>published <b className="font-semibold">{g.guide.title}</b>
+              <span className="block text-[12px] text-ink-muted">{[g.guide.city, timeAgo(f.at)].filter(Boolean).join(" · ")}</span>
+            </Link>
+          </span>
           {followable && <FollowPill userId={g.owner.id} signedIn={signedIn} next="/" />}
         </span>
         <div className="px-3.5 pb-3 -mt-0.5">
@@ -422,11 +425,16 @@ function FeedCard({ f, savedIds, signedIn, followable = false, viewerId, claps, 
   return (
     <div className="rounded-2xl border border-line/80 bg-paper p-3.5 flex flex-col gap-2.5">
       <span className="flex items-center gap-2.5">
-        <Link href={followable ? `/u/${f.user.username}` : cityHref({ city: f.city }, f.user.username)} className="shrink-0"><Avatar user={f.user} size={32} /></Link>
-        <Link href={followable ? `/u/${f.user.username}` : cityHref({ city: f.city }, f.user.username)} className="flex-1 min-w-0 text-[13.5px] leading-snug">
-          <b className="font-semibold">{followable ? f.user.displayName : first(f.user)}</b> recommended {one ? "a spot" : `${f.recs.length} spots`}{f.city ? <> in <b className="font-semibold">{where}</b></> : null}
-          <span className="block text-[12px] text-ink-muted">{timeAgo(f.at)}</span>
-        </Link>
+        {/* The face always opens their profile (18 Oct 2026); the words open the city. */}
+        <Link href={`/u/${f.user.username}`} aria-label={`${f.user.displayName}'s profile`} className="shrink-0"><Avatar user={f.user} size={32} /></Link>
+        {/* Name → profile, the rest → their spots in that city (18 Oct 2026). */}
+        <span className="flex-1 min-w-0 text-[13.5px] leading-snug">
+          <Link href={`/u/${f.user.username}`} className="font-semibold">{followable ? f.user.displayName : first(f.user)}</Link>{" "}
+          <Link href={followable ? `/u/${f.user.username}` : cityHref({ city: f.city }, f.user.username)}>
+            recommended {one ? "a spot" : `${f.recs.length} spots`}{f.city ? <> in <b className="font-semibold">{where}</b></> : null}
+            <span className="block text-[12px] text-ink-muted">{timeAgo(f.at)}</span>
+          </Link>
+        </span>
         {followable && <FollowPill userId={f.user.id} signedIn={signedIn} next="/" />}
       </span>
       {one ? (
