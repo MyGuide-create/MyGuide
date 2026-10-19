@@ -224,12 +224,12 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
           </p>
         )}
         {/* The link across to your list here (19 Oct 2026). */}
-        {city && user && haveSpots.length > 0 && (
+        {city && user && haveVouched + haveSaved > 0 && (
           <Link href={myCityHref} className="mt-3 flex items-center gap-2.5 rounded-2xl border border-line/80 bg-paper px-3.5 py-2.5 text-[13px]">
             <BookmarkIcon size={15} filled className="shrink-0 text-terracotta" />
             <span className="flex-1 min-w-0">
               <b className="font-semibold">Your list here:</b>{" "}
-              {[haveVouched ? `${haveVouched} you vouch for` : "", haveSaved ? `${haveSaved} saved` : "", haveSpots.length - haveVouched - haveSaved > 0 ? `${haveSpots.length - haveVouched - haveSaved} been` : ""].filter(Boolean).join(" · ")}
+              {[haveVouched ? `${haveVouched} you vouch for` : "", haveSaved ? `${haveSaved} saved` : ""].filter(Boolean).join(" · ")}
             </span>
             <span className="shrink-0 font-semibold text-terracotta-deep">Open ›</span>
           </Link>
@@ -303,7 +303,7 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
 
 
         {/* You already have every spot your friends vouch for here (19 Oct 2026). */}
-        {city && user && fromFriends && newSpots.length === 0 && haveSpots.length > 0 && (
+        {city && user && fromFriends && newSpots.length === 0 && haveVouched + haveSaved > 0 && (
           <div className="px-4 pt-6">
             <div className="rounded-[20px] bg-sage-tint p-4 flex flex-col gap-2">
               <p className="font-display text-[21px] leading-snug">You have all your friends&apos; {city} spots</p>
@@ -388,9 +388,9 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
                 ))}
               </div>
             )}
-            {user && haveSpots.length > 0 && (
+            {user && haveVouched + haveSaved > 0 && (
               <Link href={myCityHref} className="mx-4 mt-4 rounded-2xl border border-dashed border-cream-line px-4 py-3 text-center text-[13px] text-ink-muted">
-                {haveSpots.length} more already in your list · <span className="font-semibold text-terracotta-deep">Open My spots</span>
+                {haveVouched + haveSaved} more already in your list · <span className="font-semibold text-terracotta-deep">Open My spots</span>
               </Link>
             )}
               </>

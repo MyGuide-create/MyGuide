@@ -4,7 +4,6 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { errorText } from "@/lib/errorText";
-import { toggleReaction } from "@/lib/actions/saved";
 import { beenNotForMe, vouchForPlace } from "@/lib/actions/vouch";
 import { FollowPill } from "./FollowPill";
 import { myPlacesHref } from "@/lib/stash";
@@ -25,8 +24,6 @@ export function BeenHere({
   placeId,
   placeName,
   ownerFirst,
-  initial,
-  count,
   signedIn,
   youHaveIt,
   variant = "chip",
@@ -35,8 +32,9 @@ export function BeenHere({
   placeId: string;
   placeName: string;
   ownerFirst: string;
-  initial: boolean;
-  count: number;
+  /** Unused since 19 Oct 2026 ("been" is never shown); kept so callers don't change. */
+  initial?: boolean;
+  count?: number;
   signedIn: boolean;
   /** You already vouch for this spot: nothing to ask. */
   youHaveIt: boolean;
@@ -46,8 +44,6 @@ export function BeenHere({
 }) {
   const path = usePathname();
   const router = useRouter();
-  const [been, setBeen] = useState(initial);
-  const [n, setN] = useState(count);
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<"made" | "ask" | "words" | "done">("ask");
   const [note, setNote] = useState("");
@@ -60,30 +56,29 @@ export function BeenHere({
 
   const cls = cx(
     "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12.5px] font-medium",
-    vouched || been ? "border-sage bg-sage-tint text-sage" : "border-line bg-paper text-ink",
+    vouched ? "border-sage bg-sage-tint text-sage" : "border-line bg-paper text-ink",
   );
   const label = (
     <>
       <CheckIcon size={14} />
-      {vouched ? "You vouch for it" : been ? "Been here" : "Been here? Vouch for it"}
-      {n > 0 && <span className="tabular-nums text-ink-muted font-normal">{n}</span>}
+      {vouched ? "You vouch for it" : "Been here? Vouch for it"}
     </>
   );
 
   const barCls = cx(
     "inline-flex items-center gap-1.5 h-8 rounded-full border pl-2 pr-3 text-[12.5px] font-semibold whitespace-nowrap transition-colors",
-    vouched || been ? "border-sage-soft bg-sage-tint text-sage" : "border-line text-ink",
+    vouched ? "border-sage-soft bg-sage-tint text-sage" : "border-line text-ink",
   );
   const barBody = (
     <>
-      <RecommendIcon size={18} filled={vouched || been} />
-      {vouched ? "Vouched" : been ? "Been" : "Vouch"}
+      <RecommendIcon size={18} filled={vouched} />
+      {vouched ? "Vouched" : "Vouch"}
     </>
   );
 
-  const iconCls = cx("w-9 h-9 -m-1.5 flex items-center justify-center rounded-full", been ? "text-sage" : "text-ink-faint hover:text-sage");
+  const iconCls = cx("w-9 h-9 -m-1.5 flex items-center justify-center rounded-full", vouched ? "text-sage" : "text-ink-faint hover:text-sage");
   const iconBody = (
-    <span className={cx("w-[22px] h-[22px] rounded-full border-[1.6px] flex items-center justify-center", been ? "bg-sage border-sage text-white" : "border-current")}>
+    <span className={cx("w-[22px] h-[22px] rounded-full border-[1.6px] flex items-center justify-center", vouched ? "bg-sage border-sage text-white" : "border-current")}>
       <CheckIcon size={13} />
     </span>
   );
@@ -104,23 +99,11 @@ export function BeenHere({
       setOpen(true);
       return;
     }
-    // Asking "Vouch for it?" — "been" is only recorded once they answer.
-    if (!been) {
-      setStep("ask");
-      setError(null);
-      setOpen(true);
-      return;
-    }
-    // Been already (said no before): tapping again takes it back.
-    setBeen(false);
-    setN((c) => Math.max(0, c - 1));
-    start(async () => {
-      try {
-        await toggleReaction(placeId, "been");
-      } catch {
-        setBeen(true);
-      }
-    });
+    // Always the question (19 Oct 2026): "been" is a quiet state the app keeps (it hides the spot
+    // from your Explore) and is never shown, so saying no before doesn't change how this looks.
+    setStep("ask");
+    setError(null);
+    setOpen(true);
   };
 
   /** Close the sheet; refresh once something changed so rows move to where they now belong. */
@@ -131,14 +114,12 @@ export function BeenHere({
 
   const notForMe = () => {
     setOpen(false);
-    setBeen(true);
-    setN((c) => c + 1);
     start(async () => {
       try {
         await beenNotForMe(placeId);
         if (variant === "madeit" || refreshOnDone) router.refresh();
       } catch {
-        setBeen(false);
+        /* nothing shown either way */
       }
     });
   };
@@ -148,7 +129,6 @@ export function BeenHere({
     setError(null);
     try {
       const r = await vouchForPlace(placeId, { note, tip });
-      setBeen(true);
       setDone({ city: r.city, followOwner: r.followOwner });
       setStep("done");
     } catch (e) {
@@ -161,11 +141,11 @@ export function BeenHere({
   return (
     <>
       {variant === "icon" ? (
-        <button type="button" aria-pressed={been} aria-label={vouched ? "You vouch for it" : "Vouch"} title="Vouch" className={iconCls} onClick={tap}>
+        <button type="button" aria-pressed={vouched} aria-label={vouched ? "You vouch for it" : "Vouch"} title="Vouch" className={iconCls} onClick={tap}>
           {iconBody}
         </button>
       ) : variant === "bar" ? (
-        <button type="button" aria-pressed={vouched || been} title="Been and loved it? Vouch for it" className={barCls} onClick={tap}>
+        <button type="button" aria-pressed={vouched} title="Been and loved it? Vouch for it" className={barCls} onClick={tap}>
           {barBody}
         </button>
       ) : variant === "madeit" ? (
@@ -174,7 +154,7 @@ export function BeenHere({
         </button>
       ) : (
         <div className="flex flex-wrap items-center gap-2">
-          <button type="button" aria-pressed={vouched || been} className={cls} onClick={tap}>
+          <button type="button" aria-pressed={vouched} className={cls} onClick={tap}>
             {label}
           </button>
           {done && (

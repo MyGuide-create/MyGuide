@@ -268,7 +268,7 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
           )}
           {detail.viewerCanEdit && ((detail.placeSocial[place.id]?.been ?? 0) + (detail.placeSocial[place.id]?.loved ?? 0) + (detail.placeSocial[place.id]?.favourites ?? 0)) > 0 && (
             <p className="mt-2 text-[12px] text-ink-muted">
-              Readers: {detail.placeSocial[place.id].favourites} saved · {detail.placeSocial[place.id].been} been · {detail.placeSocial[place.id].loved} loved it
+              Readers: {detail.placeSocial[place.id].favourites} saved · {detail.placeSocial[place.id].been} tried it
             </p>
           )}
         </div>
