@@ -15,7 +15,7 @@ import { capRuns } from "@/lib/fill";
 import { GuideMap } from "@/components/GuideMap";
 import { PlaceTile } from "@/components/PlaceTile";
 import { Avatar, EmptyState, LinkButton, cx } from "@/components/ui";
-import { getCurrentUser, toPublicUser, type PublicUser } from "@/lib/auth";
+import { getCurrentUser, type PublicUser } from "@/lib/auth";
 import { listFeed, listGuidesByOwner, type GuideCard } from "@/lib/guides";
 import { cityKey, guideSaveCounts, wantedGuides } from "@/lib/homeV2";
 import { acceptedFollowingIds, citySpots, type CitySpot } from "@/lib/citySpots";
@@ -27,6 +27,7 @@ import { guideWishes, placeReactions, savedPlaces } from "@/lib/db/schema";
 import { AskForSpots } from "@/components/WishList";
 import { and, eq } from "drizzle-orm";
 import { SaveButton } from "@/components/SaveButton";
+import { ExploreTip } from "@/components/ExploreTip";
 
 export const dynamic = "force-dynamic";
 
@@ -66,8 +67,10 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
   const sort = one(sp.sort) === "new" ? "new" : "saved";
   const friendParam = one(sp.friend).toLowerCase();
   const catParam = one(sp.cat);
-  // "Want to go" chip (14 Oct 2026): only the spots you bookmarked here.
-  const wantParam = one(sp.list) === "want";
+  // Explore only shows spots you don't have yet (19 Oct 2026). Your own and saved spots live in My
+  // spots, so the old "Saved" and "You" views of this page open My spots on this city instead.
+  if (user && city && (one(sp.list) === "want" || (friendParam && friendParam === user.username.toLowerCase()))) redirect(`/my-places?city=${encodeURIComponent(city)}`);
+  const wantParam = false;
   // Every spot is listed now; old ?all=1 / ?more=1 links still open the page and are ignored.
   const mapView = one(sp.view) === "map";
 
@@ -95,24 +98,24 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
 
   // Your own guides for this city, drafts and private ones included.
   const ownGuides = user && city ? (await listGuidesByOwner(user.id, user.id)).filter((g) => cityKey(g.guide.city) === cityKey(city)) : [];
-  const me = user ? toPublicUser(user) : null;
   const ownSpots = viewerId ? spots.filter((s) => s.recommenders.some((r) => r.user.id === viewerId)).length : 0;
 
   // Your Want to go list here: any spot (friends' or anyone's) with a place you bookmarked.
   const wantIds = user && city ? new Set((await (await getDb()).select({ id: savedPlaces.placeId }).from(savedPlaces).where(eq(savedPlaces.userId, user.id))).map((r) => r.id)) : new Set<string>();
-  const wantSpots: CitySpot[] = [];
-  if (wantIds.size) {
-    const seen = new Set<string>();
-    for (const s of [...spots, ...(fromFriends ? await citySpots({ city, viewerId }) : [])]) {
-      if (seen.has(s.key) || !s.recommenders.some((r) => wantIds.has(r.placeId))) continue;
-      seen.add(s.key);
-      wantSpots.push(s);
-    }
-  }
-  const wantActive = wantParam && wantSpots.length > 0;
+  const wantActive = wantParam;
   // Places you've marked "Been here" (for the ✓ on each row).
   const beenIds = user && city ? new Set((await (await getDb()).select({ id: placeReactions.placeId }).from(placeReactions).where(and(eq(placeReactions.userId, user.id), eq(placeReactions.kind, "been")))).map((r) => r.id)) : new Set<string>();
   const marks = { want: wantIds, been: beenIds };
+  // Already in your list (19 Oct 2026): you vouch for it, saved it, or went and said "not for me".
+  // Explore leaves those out — it answers "what's here that I don't have yet?".
+  const vouchedByYou = (s: CitySpot) => !!viewerId && s.recommenders.some((r) => r.user.id === viewerId);
+  const savedByYou = (s: CitySpot) => s.recommenders.some((r) => wantIds.has(r.placeId));
+  const hasIt = (s: CitySpot) => !!viewerId && (vouchedByYou(s) || savedByYou(s) || s.recommenders.some((r) => beenIds.has(r.placeId)));
+  const newSpots = spots.filter((s) => !hasIt(s));
+  const haveSpots = spots.filter(hasIt);
+  const haveVouched = haveSpots.filter(vouchedByYou).length;
+  const haveSaved = haveSpots.filter((s) => !vouchedByYou(s) && savedByYou(s)).length;
+  const myCityHref = `/my-places?city=${encodeURIComponent(city)}`;
   // Few friends' spots here: people who know this city, to follow (15 Oct 2026).
   const friendSpotCount = fromFriends ? friendSpots.filter((s) => s.recommenders.some((r) => r.user.id !== viewerId)).length : 0;
   const knowers = user && city && friendSpotCount < 5 ? await suggestPeople(user.id, { city, limit: 8 }) : [];
@@ -120,15 +123,15 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
   // The friend row: everyone you follow with spots or guides here, most spots first (you get your own chip).
   const people = new Map<string, { user: PublicUser; spots: number; guides: number }>();
   const person = (u: PublicUser) => people.get(u.id) ?? people.set(u.id, { user: u, spots: 0, guides: 0 }).get(u.id)!;
-  if (fromFriends) for (const s of friendSpots) for (const r of s.recommenders) if (r.user.id !== viewerId) person(r.user).spots++;
+  // Spot counts are new-to-you spots; a friend whose spots you all have still shows ("All in your list").
+  if (fromFriends) for (const s of friendSpots) for (const r of s.recommenders) if (r.user.id !== viewerId) person(r.user).spots += hasIt(s) ? 0 : 1;
   for (const g of mine) if (g.owner.id !== viewerId) person(g.owner).guides++;
   const friends = [...people.values()].sort((a, b) => b.spots - a.spots || b.guides - a.guides || first(a.user).localeCompare(first(b.user)));
   const friendCount = friends.length;
-  const isMe = !!me && friendParam === me.username.toLowerCase();
-  const picked = wantActive ? null : isMe ? me : (friends.find((f) => f.user.username.toLowerCase() === friendParam)?.user ?? null);
-  const showYou = !!me && (ownSpots > 0 || ownGuides.length > 0);
+  const isMe = false;
+  const picked = friends.find((f) => f.user.username.toLowerCase() === friendParam)?.user ?? null;
 
-  const bySomeone = wantActive ? wantSpots : picked ? spots.filter((s) => s.recommenders.some((r) => r.user.id === picked.id)) : spots;
+  const bySomeone = picked ? newSpots.filter((s) => s.recommenders.some((r) => r.user.id === picked.id)) : newSpots;
   const cats = CATEGORIES.filter((c) => bySomeone.some((s) => s.place.category === c));
   const cat = cats.find((c) => c === catParam) ?? null;
   const shownSpots = cat ? bySomeone.filter((s) => s.place.category === cat) : bySomeone;
@@ -138,7 +141,7 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
   const friendKeys = new Set(spots.map((s) => s.key));
   const moreAll =
     city && fromFriends && !picked && !wantActive
-      ? (await citySpots({ city, viewerId })).filter((s) => !friendKeys.has(s.key) && s.recommenders.some((r) => r.user.id !== viewerId) && (!cat || s.place.category === cat))
+      ? (await citySpots({ city, viewerId })).filter((s) => !friendKeys.has(s.key) && !hasIt(s) && s.recommenders.some((r) => r.user.id !== viewerId) && (!cat || s.place.category === cat))
       : [];
   const capLead = (list: CitySpot[]) => capRuns(list, (s) => leadFor(s, null, viewerId).user.id);
   // No category chip → both lists are grouped by category (same fixed order as guide pages), every
@@ -167,15 +170,15 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
     return `/city?${new URLSearchParams(q).toString()}`;
   };
   const sortHref = (s: "saved" | "new") => cityHref({ sort: s === "new" ? "new" : "" });
-  // "Whose spots" as one chip with a sheet (16 Oct 2026): Everyone, Saved, You, then friends.
+  // "Whose spots" as one chip with a sheet: Everyone, then friends. No You or Saved (19 Oct 2026):
+  // those are in My spots.
+  const newWord = user ? "new " : "";
   const whoOptions: WhoOption[] = [
-    { key: "all", label: "Everyone", sub: `${spots.length} spot${spots.length === 1 ? "" : "s"}`, href: cityHref({ friend: "", list: "", cat: "" }), active: !picked && !wantActive, kind: "all" },
-    ...(wantSpots.length ? [{ key: "saved", label: "Saved", sub: `${wantSpots.length} you saved here`, href: cityHref({ friend: "", list: "want", cat: "" }), active: wantActive, kind: "saved" as const }] : []),
-    ...(showYou && me ? [{ key: "me", label: "You", sub: `${ownSpots} spot${ownSpots === 1 ? "" : "s"}`, href: cityHref({ friend: me.username, list: "", cat: "" }), active: isMe, user: me }] : []),
+    { key: "all", label: "Everyone", sub: `${newSpots.length} ${newWord}spot${newSpots.length === 1 ? "" : "s"}`, href: cityHref({ friend: "", list: "", cat: "" }), active: !picked, kind: "all" },
     ...friends.map((f) => ({
       key: f.user.id,
       label: first(f.user),
-      sub: f.spots ? `${f.spots} spot${f.spots === 1 ? "" : "s"}` : `${f.guides} guide${f.guides === 1 ? "" : "s"}`,
+      sub: f.spots ? `${f.spots} ${newWord}spot${f.spots === 1 ? "" : "s"}` : f.guides ? `${f.guides} guide${f.guides === 1 ? "" : "s"}` : "All in your list",
       href: cityHref({ friend: f.user.username, list: "", cat: "" }),
       active: picked?.id === f.user.id,
       user: f.user,
@@ -214,15 +217,31 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
           <p className="mt-1 text-[14px] text-ink-muted">
             {[
               country,
-              spots.length ? `${spots.length} spot${spots.length === 1 ? "" : "s"}` : "",
+              newSpots.length ? `${newSpots.length} ${newWord}spot${newSpots.length === 1 ? "" : "s"}` : "",
               all.length ? `${all.length} guide${all.length === 1 ? "" : "s"}` : "",
               friendCount ? `${friendCount} friend${friendCount === 1 ? "" : "s"}` : "",
             ].filter(Boolean).join(" · ")}
           </p>
         )}
+        {/* The link across to your list here (19 Oct 2026). */}
+        {city && user && haveSpots.length > 0 && (
+          <Link href={myCityHref} className="mt-3 flex items-center gap-2.5 rounded-2xl border border-line/80 bg-paper px-3.5 py-2.5 text-[13px]">
+            <BookmarkIcon size={15} filled className="shrink-0 text-terracotta" />
+            <span className="flex-1 min-w-0">
+              <b className="font-semibold">Your list here:</b>{" "}
+              {[haveVouched ? `${haveVouched} you vouch for` : "", haveSaved ? `${haveSaved} saved` : "", haveSpots.length - haveVouched - haveSaved > 0 ? `${haveSpots.length - haveVouched - haveSaved} been` : ""].filter(Boolean).join(" · ")}
+            </span>
+            <span className="shrink-0 font-semibold text-terracotta-deep">Open ›</span>
+          </Link>
+        )}
         {city && user && hasAny && ownSpots === 0 && (
           <div className="mt-3">
             <AskForSpots city={city} country={country || undefined} asked={asking} />
+          </div>
+        )}
+        {city && user && newSpots.length + moreAll.length > 0 && (
+          <div className="mt-3">
+            <ExploreTip />
           </div>
         )}
       </header>
@@ -257,7 +276,7 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
           </div>
         )}
 
-        {(spots.length > 0 || wantSpots.length > 0) && (
+        {newSpots.length > 0 && (
           <div className="sticky top-14 z-20 bg-cream/95 backdrop-blur border-b border-line/70 py-2.5">
             <div role="group" aria-label="Filter spots" className="flex items-center gap-2 overflow-x-auto no-scrollbar px-4">
               {whoOptions.length > 1 && <WhoPicker options={whoOptions} />}
@@ -283,7 +302,18 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
 
 
 
-        {spots.length > 0 && (
+        {/* You already have every spot your friends vouch for here (19 Oct 2026). */}
+        {city && user && fromFriends && newSpots.length === 0 && haveSpots.length > 0 && (
+          <div className="px-4 pt-6">
+            <div className="rounded-[20px] bg-sage-tint p-4 flex flex-col gap-2">
+              <p className="font-display text-[21px] leading-snug">You have all your friends&apos; {city} spots</p>
+              <p className="text-[13.5px] text-ink-muted leading-snug">They&apos;re in your list. {moreAll.length ? "Below: what other people on MyGuide vouch for." : "Follow more people who know it to see new ones."}</p>
+              <Link href={myCityHref} className="self-start text-[13.5px] font-semibold text-terracotta-deep">Open My {city} ›</Link>
+            </div>
+          </div>
+        )}
+
+        {(newSpots.length > 0 || moreAll.length > 0) && (
           <section className="pt-7 flex flex-col gap-3">
 
             {mapView && shownSpots.some((s) => s.place.lat != null && s.place.lng != null) && (
@@ -317,13 +347,14 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
 
             {!mapView && (
               <>
+            {newSpots.length > 0 && (
             <div className="px-4 flex flex-col gap-2.5">
               <div className="flex items-baseline justify-between px-1">
-                <h2 className="font-display text-[22px]">{isMe ? `My ${city}` : picked ? `${first(picked)}\u2019s ${city}` : fromFriends ? "Most recommended" : "Most recommended on MyGuide"}</h2>
-                <span className="text-[13px] text-ink-muted">{shownSpots.length} spot{shownSpots.length === 1 ? "" : "s"}</span>
+                <h2 className="font-display text-[22px]">{picked ? `${first(picked)}\u2019s ${city}` : fromFriends ? "Friends vouch for" : "Vouched for on MyGuide"}</h2>
+                <span className="text-[13px] text-ink-muted">{shownSpots.length} {newWord}spot{shownSpots.length === 1 ? "" : "s"}</span>
               </div>
               {!fromFriends && (
-                <p className="px-1 -mt-1 text-[13px] text-ink-muted">Nobody you follow has added {city} spots yet, so here&apos;s what MyGuide travellers recommend{ownSpots ? ", with yours" : ""}.</p>
+                <p className="px-1 -mt-1 text-[13px] text-ink-muted">Nobody you follow has vouched for {city} spots yet, so here&apos;s what MyGuide travellers vouch for.</p>
               )}
               {shownSpots.length === 0 && (
                 <p className="rounded-2xl border border-dashed border-cream-line p-5 text-center text-[14px] text-ink-muted">
@@ -333,11 +364,12 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
               {spotGroups.map((g) => (
                 <SpotGroup key={g.category ?? "all"} category={headings ? g.category : null} count={g.spots.length}>
                   {g.spots.map((s) => (
-                    <SpotRow key={s.key} spot={s} picked={picked} fromFriends={fromFriends} viewerId={viewerId} follow={!fromFriends && canFollow(s)} signedIn={!!user} next={cityHref({})} grouped={headings} marks={marks} />
+                    <SpotRow key={s.key} spot={s} picked={picked} fromFriends={fromFriends} viewerId={viewerId} follow={!fromFriends && canFollow(s)} signedIn={!!user} next={cityHref({})} grouped={headings} marks={marks} city={city} />
                   ))}
                 </SpotGroup>
               ))}
             </div>
+            )}
             {moreAll.length > 0 && (
               <div className="px-4 pt-7 flex flex-col gap-2.5">
                 <div className="px-1">
@@ -345,16 +377,21 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
                     <h2 className="font-display text-[22px]">More from MyGuide</h2>
                     <span className="text-[13px] text-ink-muted">{moreAll.length} spot{moreAll.length === 1 ? "" : "s"}</span>
                   </div>
-                  <p className="text-[13px] text-ink-muted">{cat ? `${cat} spots` : "Spots"} recommended by people you don&apos;t follow yet.</p>
+                  <p className="text-[13px] text-ink-muted">{cat ? `${cat} spots` : "Spots"} vouched for by people you don&apos;t follow yet.</p>
                 </div>
                 {moreGroups.map((g) => (
                   <SpotGroup key={g.category ?? "all"} category={headings ? g.category : null} count={g.spots.length}>
                     {g.spots.map((s) => (
-                      <SpotRow key={s.key} spot={s} picked={null} fromFriends={false} viewerId={viewerId} follow={canFollow(s)} signedIn={!!user} next={cityHref({})} grouped={headings} marks={marks} />
+                      <SpotRow key={s.key} spot={s} picked={null} fromFriends={false} viewerId={viewerId} follow={canFollow(s)} signedIn={!!user} next={cityHref({})} grouped={headings} marks={marks} city={city} />
                     ))}
                   </SpotGroup>
                 ))}
               </div>
+            )}
+            {user && haveSpots.length > 0 && (
+              <Link href={myCityHref} className="mx-4 mt-4 rounded-2xl border border-dashed border-cream-line px-4 py-3 text-center text-[13px] text-ink-muted">
+                {haveSpots.length} more already in your list · <span className="font-semibold text-terracotta-deep">Open My spots</span>
+              </Link>
             )}
               </>
             )}
@@ -540,15 +577,16 @@ function recommendLabel(s: CitySpot, picked: PublicUser | null, fromFriends: boo
   const name = (u: PublicUser) => nm(u, viewerId);
   if (picked) {
     const others = rs.filter((r) => r.user.id !== picked.id);
-    if (!others.length) return picked.id === viewerId ? (rs[0]?.isPrivate ? "Only you · private" : "Only you") : `Only ${name(picked)}`;
-    return others.length === 1 ? `${name(picked)} & ${name(others[0].user)}` : `${name(picked)} + ${others.length} more`;
+    if (!others.length) return picked.id === viewerId ? (rs[0]?.isPrivate ? "Only you · private" : "Only you") : `${name(picked)} vouches`;
+    return others.length === 1 ? `${name(picked)} & ${name(others[0].user)} vouch` : `${name(picked)} + ${others.length} more vouch`;
   }
-  if (n === 1) return rs[0].user.id === viewerId ? (rs[0].isPrivate ? "You · private" : "You") : name(rs[0].user);
+  // "Lina vouches" / "Lina & Sam vouch" / "4 friends vouch" (19 Oct 2026): the word on every row.
+  if (n === 1) return rs[0].user.id === viewerId ? (rs[0].isPrivate ? "You · private" : "You vouch") : `${name(rs[0].user)} vouches`;
   // You first in the names: "You & Sara".
   const ordered = [...rs].sort((a, b) => Number(b.user.id === viewerId) - Number(a.user.id === viewerId));
-  if (n === 2) return `${name(ordered[0].user)} & ${name(ordered[1].user)}`;
+  if (n === 2) return `${name(ordered[0].user)} & ${name(ordered[1].user)} vouch`;
   const mineToo = rs.some((r) => r.user.id === viewerId);
-  return mineToo ? `You + ${n - 1} ${fromFriends ? "friends" : "others"}` : fromFriends ? `${n} friends recommend` : `${n} people recommend`;
+  return mineToo ? `You + ${n - 1} ${fromFriends ? "friends" : "others"} vouch` : fromFriends ? `${n} friends vouch` : `${n} people vouch`;
 }
 
 /** A spot in the list: who recommends it (faces + count) and one of their tips. */
@@ -562,6 +600,7 @@ function SpotRow({
   next = "/",
   grouped = false,
   marks,
+  city,
 }: {
   spot: CitySpot;
   picked: PublicUser | null;
@@ -575,6 +614,8 @@ function SpotRow({
   grouped?: boolean;
   /** Your Want to go and Been here place ids, for the 🔖 and ✓ on the row (14 Oct 2026). */
   marks?: { want: Set<string>; been: Set<string> };
+  /** For the Save toast: "Saved to your Lisbon spots". */
+  city?: string;
 }) {
   const lead = leadFor(spot, picked, viewerId);
   const onlyMinePrivate = spot.recommenders.every((r) => r.user.id === viewerId && r.isPrivate);
@@ -588,7 +629,8 @@ function SpotRow({
   const target = theirs.find((r) => marks?.want.has(r.placeId)) ?? (lead.user.id !== viewerId ? lead : theirs[0]);
   const showMarks = !!marks && !!target && !yours;
   return (
-    <div className="relative">
+    // data-leave: saving slides the row out of Explore (19 Oct 2026); it now lives in My spots.
+    <div className="relative" data-leave>
     <Link href={`/g/${lead.guideSlug}/p/${lead.placeId}`} className="flex gap-3 rounded-2xl border border-line/80 bg-paper p-3 hover:border-terracotta-soft">
       <PlaceTile place={p} size={68} />
       <span className="flex-1 min-w-0 flex flex-col gap-1">
@@ -616,7 +658,7 @@ function SpotRow({
     {follow && <FollowPill userId={lead.user.id} signedIn={signedIn} next={next} className="absolute right-3 bottom-3" />}
     {showMarks && (
       <span className="absolute right-3.5 top-3.5">
-        <SaveButton placeId={target.placeId} initial={spot.recommenders.some((r) => marks.want.has(r.placeId))} signedIn={signedIn} />
+        <SaveButton placeId={target.placeId} initial={spot.recommenders.some((r) => marks.want.has(r.placeId))} signedIn={signedIn} city={city} leave />
       </span>
     )}
     </div>

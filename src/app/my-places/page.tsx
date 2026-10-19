@@ -13,7 +13,7 @@ import { requireUser } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 import { placeReactions, users } from "@/lib/db/schema";
 import { and, eq, inArray } from "drizzle-orm";
-import { spotKey } from "@/lib/citySpots";
+import { acceptedFollowingIds, citySpots, spotKey } from "@/lib/citySpots";
 import { loadMyPlaces, NUDGE_MIN, unguidedByCity, type MyPlace } from "@/lib/myPlaces";
 import { placeArea } from "@/lib/places/neighbourhood";
 import { cityPhotoKey, cityPhotosFor } from "@/lib/cityPhotos";
@@ -112,6 +112,15 @@ export default async function MyPlacesPage({ searchParams }: { searchParams: Pro
         : [],
     );
     const cityShared = cityRows.filter((p) => p.recommended).length;
+    // Friends who vouch for the same spots (19 Oct 2026): Explore no longer lists spots you have, so
+    // "Yara vouches too" shows here instead.
+    const alsoBy = new Map<string, string[]>();
+    if (focusCity && cityRows.length) {
+      const following = await acceptedFollowingIds(user.id);
+      if (following.length)
+        for (const spot of await citySpots({ city: focusCity, viewerId: user.id, ownerIds: following }))
+          alsoBy.set(spot.key, spot.recommenders.filter((r) => r.user.id !== user.id).map((r) => r.user.displayName.split(" ")[0]));
+    }
     const youreHere = trip ? !!hereCity && hereCity.city.toLowerCase() === focusCity.toLowerCase() : isHere(focusCity);
     // The city row: this one first, then yours by most spots, then Saved and Other.
     const chips = [
@@ -143,6 +152,7 @@ export default async function MyPlacesPage({ searchParams }: { searchParams: Pro
         recommended: it.recommended,
         shared: !!it.place.sharedAt,
         inStash: it.inStash,
+        alsoBy: alsoBy.get(spotKey(it.place)) ?? [],
       }));
     const savedSpots: MySpot[] = savedHere.map(({ place, guide }) => ({
       id: place.id,
@@ -200,7 +210,7 @@ export default async function MyPlacesPage({ searchParams }: { searchParams: Pro
             )}
           </div>
           <p className="px-5 mt-1 text-[13px] text-ink-muted">
-            {trip ? "No spots of yours here yet" : `${cityRows.length} spot${cityRows.length === 1 ? "" : "s"}${cityShared ? ` · ${cityShared} recommended` : ""}${savedSpots.length ? ` · ${savedSpots.length} saved` : ""}`}
+            {trip ? "No spots of yours here yet" : `${cityRows.length} spot${cityRows.length === 1 ? "" : "s"}${cityShared ? ` · ${cityShared} you vouch for` : ""}${savedSpots.length ? ` · ${savedSpots.length} saved to try` : ""}`}
           </p>
           {Number.isFinite(imported) && <div className="px-5 mt-3">{importBanner}</div>}
           {!trip && (
@@ -227,16 +237,17 @@ export default async function MyPlacesPage({ searchParams }: { searchParams: Pro
                   <span className="absolute left-4 bottom-3 font-display text-[26px] text-white drop-shadow">Your {focusCity}</span>
                 </span>
                 <div className="p-3.5 flex flex-col gap-3">
-                  <p className="text-[13px] leading-snug text-ink-muted">Add the spots you find here. They stay private until you recommend them.</p>
+                  <p className="text-[13px] leading-snug text-ink-muted">
+                    {savedSpots.length ? "Your saved spots are below. Been somewhere you loved? Vouch for it and friends see it." : `Nothing in ${focusCity} yet. See what friends vouch for, and save the spots you want to try.`}
+                  </p>
                   <div className="flex gap-2">
-                    <LinkButton href="/record" size="sm" className="flex-1 whitespace-nowrap"><PlusIcon size={14} /> Add a spot</LinkButton>
-                    <LinkButton href={cityLink} size="sm" variant="outline" className="flex-1 whitespace-nowrap">Spots in {focusCity}</LinkButton>
+                    <LinkButton href={cityLink} size="sm" className="flex-1 whitespace-nowrap">Explore {focusCity} ›</LinkButton>
+                    <LinkButton href="/record" size="sm" variant="outline" className="whitespace-nowrap"><PlusIcon size={14} /> Add a spot</LinkButton>
                   </div>
                 </div>
               </div>
               {savedSpots.length > 0 && (
                 <>
-                  <h2 className="px-1 -mb-2 font-display text-[21px]">You saved <span className="text-[12px] font-sans text-ink-faint">{savedSpots.length}</span></h2>
                   <MySpotsCity city={focusCity} spots={savedSpots} categories={orderedCategories(savedSpots)} autoNear={youreHere} />
                 </>
               )}
@@ -288,7 +299,7 @@ export default async function MyPlacesPage({ searchParams }: { searchParams: Pro
       {n > 0 && <TopBar back="/my-places" title={null} />}
       <header className={cx("px-5 pb-3", n > 0 ? "pt-1" : "pt-6")}>
         <h1 className="font-display text-[32px] leading-none">{tab === "saved" ? "Saved spots" : "All your cities"}</h1>
-        <p className="mt-1.5 text-[13px] text-ink-muted">Your places in every city, and the ones you&apos;ve saved from friends.</p>
+        <p className="mt-1.5 text-[13px] text-ink-muted">Spots you vouch for (friends see them) and spots you saved to try (only you).</p>
         <div role="tablist" aria-label="My spots" className="mt-4 flex rounded-full bg-cream-deep/70 p-[3px]">
           {tabLink("yours", "Yours", n)}
           {tabLink("saved", "Saved", saved.length)}
@@ -302,10 +313,11 @@ export default async function MyPlacesPage({ searchParams }: { searchParams: Pro
             {n === 0 ? (
               <EmptyState
                 title="Nothing here yet"
-                body="Out somewhere you love? Tap + to add it. Got a Google Maps list? Import it and every place comes in."
+                body="Find spots in Explore and save the ones you want to try. Out somewhere you love? Tap + to add it, or import a Google Maps list."
                 action={
-                  <div className="flex gap-2 justify-center">
-                    <LinkButton href="/record" size="sm">Add a place</LinkButton>
+                  <div className="flex gap-2 justify-center flex-wrap">
+                    <LinkButton href="/" size="sm">Explore</LinkButton>
+                    <LinkButton href="/record" size="sm" variant="outline">Add a place</LinkButton>
                     <LinkButton href="/create?import=1" size="sm" variant="outline">Import a list</LinkButton>
                   </div>
                 }
@@ -318,7 +330,7 @@ export default async function MyPlacesPage({ searchParams }: { searchParams: Pro
                       <CityTileImage photo={photos.get(cityPhotoKey(t.city))} city={t.city} className="h-[132px]" />
                       <span className="px-0.5 text-[12.5px] text-ink-muted">
                         <b className="font-semibold text-ink">{t.n} spot{t.n === 1 ? "" : "s"}</b>
-                        {t.shared ? ` · ${t.shared} recommended` : ""}
+                        {t.shared ? ` · ${t.shared} vouched` : ""}
                       </span>
                     </Link>
                   ))}
@@ -367,17 +379,17 @@ export default async function MyPlacesPage({ searchParams }: { searchParams: Pro
             {savedTiles.length === 0 ? (
               <EmptyState
                 title="Nothing saved yet"
-                body="Tap Save on a friend’s spot to keep it here, your own shortlist for the trip. Been and loved it? Tap Recommend on the spot."
+                body="Save spots you want to try from Explore. Only you see them. Been and loved one? Vouch for it, and friends see it."
                 action={<LinkButton href="/" size="sm">Explore cities</LinkButton>}
               />
             ) : (
               <div className="grid grid-cols-2 gap-3">
                 {savedTiles.map((t) => (
-                  <Link key={t.city} href={`/city?${new URLSearchParams({ name: t.city, ...(t.country ? { country: t.country } : {}), list: "want" }).toString()}`} className="flex flex-col gap-1.5 min-w-0">
+                  <Link key={t.city} href={`/my-places?city=${encodeURIComponent(t.city)}`} className="flex flex-col gap-1.5 min-w-0">
                     <CityTileImage photo={photos.get(cityPhotoKey(t.city))} city={t.city} className="h-[132px]" />
                     <span className="px-0.5 text-[12.5px] text-ink-muted inline-flex items-center gap-1">
                       <BookmarkIcon size={12} filled className="text-terracotta" />
-                      <b className="font-semibold text-ink">{t.n} saved</b>
+                      <b className="font-semibold text-ink">{t.n} saved to try</b>
                     </span>
                   </Link>
                 ))}

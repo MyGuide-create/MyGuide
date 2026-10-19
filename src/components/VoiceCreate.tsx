@@ -529,13 +529,13 @@ export function VoiceCreate({
             <div className="text-[13.5px] font-semibold">{forSomeone ? "In your My spots too" : "Who can see them"}</div>
             <p className="mt-0.5 text-[12px] text-ink-muted leading-snug">
               {forSomeone
-                ? "These are your places, so they also go into My spots. Recommend them and they show on the city page for friends."
-                : "Recommended places show on their city’s page for friends. You can change this per place later."}
+                ? "These are your places, so they also go into My spots. Vouch for them and friends see them on the city page."
+                : "Places you vouch for show on their city’s page for friends. You can change this per place later."}
             </p>
           </div>
           <div role="radiogroup" aria-label="Who can see them" className="grid grid-cols-2 gap-2">
             {[
-              { v: true, t: "Recommend all", d: "Friends see them" },
+              { v: true, t: "Vouch for all", d: "Friends see them" },
               { v: false, t: "Keep them private", d: "Only you" },
             ].map((o) => (
               <button

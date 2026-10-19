@@ -306,7 +306,7 @@ export function PhotoPlacesFlow() {
           <span className="inline-flex self-start rounded-full bg-sage-tint px-2.5 py-0.5 text-[11px] font-semibold text-sage">Team test</span>
           <h1 className="font-display text-[30px] leading-tight">Places from your photos</h1>
           <p className="text-[15px] text-ink-muted leading-relaxed">
-            Pick photos and MyGuide finds the restaurants, cafés, gyms and spots where you took them. You choose which ones to recommend.
+            Pick photos and MyGuide finds the restaurants, cafés, gyms and spots where you took them. You choose which ones to vouch for.
           </p>
         </div>
         <ul className="flex flex-col gap-2.5 text-[14px] leading-relaxed">
@@ -501,7 +501,7 @@ export function PhotoPlacesFlow() {
         <div className="mx-auto max-w-[520px] flex flex-col gap-1.5">
           {error && <p className="text-[13px] text-terracotta">{error}</p>}
           <Button size="lg" className="w-full" disabled={!picked.size || stage === "saving"} onClick={save}>
-            {stage === "saving" ? "Adding…" : picked.size ? `Recommend ${picked.size} place${picked.size === 1 ? "" : "s"}` : "Tick the places you'd recommend"}
+            {stage === "saving" ? "Adding…" : picked.size ? `Vouch for ${picked.size} place${picked.size === 1 ? "" : "s"}` : "Tick the places you'd vouch for"}
           </Button>
         </div>
       </div>

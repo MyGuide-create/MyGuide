@@ -32,6 +32,8 @@ export interface MySpot {
   inStash: boolean;
   /** Someone else's spot you saved (16 Oct 2026): who it's from, and whether you've marked it been. */
   saved?: { from: string; been: boolean };
+  /** Friends who vouch for this spot too (19 Oct 2026): "Yara vouches too". */
+  alsoBy?: string[];
 }
 
 type Here = { lat: number; lng: number };
@@ -149,8 +151,6 @@ export function MySpotsCity({
   const count = (c: string) => spots.filter((s) => s.category === c).length;
   const savedSpots = spots.filter((s) => s.saved);
   const ownSpots = spots.filter((s) => !s.saved);
-  // Grouped by category: your spots, with saved ones in their own group at the end (just saved ones on a trip).
-  const base = ownSpots.length ? ownSpots : spots;
 
   return (
     <>
@@ -202,7 +202,8 @@ export function MySpotsCity({
             href: s.href,
             photoUrl: s.photoUrl,
             photoMediaId: s.photoMediaId,
-            subtitle: [s.category, d != null ? distLabel(d) : s.area].filter(Boolean).join(" · "),
+            subtitle: [s.saved ? "Saved to try" : s.recommended ? "You vouch for it" : "Only you", d != null ? distLabel(d) : s.area].filter(Boolean).join(" · "),
+            tone: s.saved ? "saved" : s.recommended ? "vouched" : "private",
           }))}
         />
       )}
@@ -214,29 +215,49 @@ export function MySpotsCity({
       )}
 
       {grouped ? (
-        [...categories.filter((c) => base.some((s) => s.category === c)), ...(savedSpots.length && ownSpots.length ? [SAVED] : [])].map((c) => {
-          const inCat = c === SAVED ? savedSpots : base.filter((s) => s.category === c);
-          return (
-            <details key={c || "_none"} open className="group/cat">
-              <summary className="list-none [&::-webkit-details-marker]:hidden cursor-pointer select-none px-1 flex items-center gap-2 min-h-[32px] group-open/cat:mb-2">
-                <h2 className="flex items-baseline gap-2 min-w-0">
-                  <span className="font-display text-[19px] truncate">{c === SAVED ? "Saved from friends" : c || "Other"}</span>
-                  <span className="text-[12px] text-ink-faint">{inCat.length}</span>
-                </h2>
-                <ChevronDown size={17} aria-hidden className="shrink-0 text-ink-muted transition-transform -rotate-90 group-open/cat:rotate-0" />
-              </summary>
+        // Two labelled parts (19 Oct 2026): your spots (friends see the ones you vouch for), then
+        // Saved to try (only you). Your spots stay grouped by category.
+        <>
+          {ownSpots.length > 0 && (
+            <PartHeading title="Your spots" sub={`${ownSpots.filter((s) => s.recommended).length} you vouch for · friends see those`} tone="sage" />
+          )}
+          {ownSpots.length > 0 &&
+            categories
+              .filter((c) => ownSpots.some((s) => s.category === c))
+              .map((c) => {
+                const inCat = ownSpots.filter((s) => s.category === c);
+                return (
+                  <details key={c || "_none"} open className="group/cat">
+                    <summary className="list-none [&::-webkit-details-marker]:hidden cursor-pointer select-none px-1 flex items-center gap-2 min-h-[32px] group-open/cat:mb-2">
+                      <h3 className="flex items-baseline gap-2 min-w-0">
+                        <span className="font-display text-[19px] truncate">{c || "Other"}</span>
+                        <span className="text-[12px] text-ink-faint">{inCat.length}</span>
+                      </h3>
+                      <ChevronDown size={17} aria-hidden className="shrink-0 text-ink-muted transition-transform -rotate-90 group-open/cat:rotate-0" />
+                    </summary>
+                    <ul className="flex flex-col gap-2">
+                      {inCat.map((s) => (
+                        <Row key={s.id} s={s} city={city} d={null} showCat={false} />
+                      ))}
+                    </ul>
+                  </details>
+                );
+              })}
+          {savedSpots.length > 0 && (
+            <section className="flex flex-col gap-2">
+              <PartHeading title="Saved to try" sub={`${savedSpots.length} · only you see these. Been? Tell us how it was`} tone="terracotta" />
               <ul className="flex flex-col gap-2">
-                {inCat.map((s) => (
-                  <Row key={s.id} s={s} city={city} d={null} showCat={false} />
+                {savedSpots.map((s) => (
+                  <Row key={s.id} s={s} city={city} d={null} showCat />
                 ))}
               </ul>
-            </details>
-          );
-        })
+            </section>
+          )}
+        </>
       ) : (
         <section className="flex flex-col gap-2">
           <p className="px-1 text-[12.5px] text-ink-muted">
-            {shown.length} {cat === SAVED ? "saved" : (cat ?? "spot")}
+            {shown.length} {cat === SAVED ? "saved to try" : (cat ?? "spot")}
             {shown.length === 1 || cat ? "" : "s"}
             {near ? " · nearest first" : ""}
           </p>
@@ -271,22 +292,39 @@ function Row({ s, city, d, showCat }: { s: MySpot; city: string; d: number | nul
           {s.saved && (
             <span className="block text-[11.5px] text-terracotta-deep truncate">
               <BookmarkIcon size={11} filled className="inline -mt-0.5 mr-1" />
-              Saved{s.saved.from ? ` from ${s.saved.from}` : ""}
+              Saved to try{s.saved.from ? ` · ${s.saved.from} vouches` : ""}
+            </span>
+          )}
+          {!s.saved && s.alsoBy && s.alsoBy.length > 0 && (
+            <span className="block text-[11.5px] font-medium text-sage truncate">
+              {s.alsoBy.length === 1 ? `${s.alsoBy[0]} vouches too` : s.alsoBy.length === 2 ? `${s.alsoBy[0]} & ${s.alsoBy[1]} vouch too` : `${s.alsoBy[0]} + ${s.alsoBy.length - 1} friends vouch too`}
             </span>
           )}
         </span>
       </Link>
       {s.saved ? (
-        // Been? Recommend it and it becomes one of your spots; or just mark it been.
-        <BeenHere placeId={s.id} placeName={s.name} ownerFirst={s.saved.from} initial={s.saved.been} count={0} signedIn youHaveIt={false} refreshOnDone />
+        // "Made it?" → Loved it (vouch: it becomes one of your spots) / Not for me / Not yet.
+        <BeenHere variant="madeit" placeId={s.id} placeName={s.name} ownerFirst={s.saved.from} initial={s.saved.been} count={0} signedIn youHaveIt={false} refreshOnDone />
       ) : s.recommended && !s.shared ? (
-        // Public through a published guide: recommended already, nothing to switch here.
+        // Public through a published guide: vouched already, nothing to switch here.
         <span title="In a public guide" className="shrink-0 inline-flex items-center gap-1 rounded-full px-2.5 py-1.5 text-[11.5px] font-semibold border bg-sage-tint border-sage-soft text-ink">
-          <CheckIcon size={12} /> Recommended
+          <CheckIcon size={12} /> Vouched
         </span>
       ) : (
         s.inStash && <RecommendToggle variant="pill" placeIds={[s.id]} shared={s.shared} city={city} />
       )}
     </li>
+  );
+}
+
+function PartHeading({ title, sub, tone }: { title: string; sub: string; tone: "sage" | "terracotta" }) {
+  return (
+    <div className="px-1 pt-1 -mb-1 flex flex-col">
+      <h2 className="flex items-center gap-2 font-display text-[22px] leading-tight">
+        <span aria-hidden className={cx("w-2.5 h-2.5 rounded-full", tone === "sage" ? "bg-sage" : "bg-terracotta")} />
+        {title}
+      </h2>
+      <p className="text-[12.5px] text-ink-muted">{sub}</p>
+    </div>
   );
 }

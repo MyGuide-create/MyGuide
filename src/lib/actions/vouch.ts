@@ -32,7 +32,7 @@ async function visiblePlace(placeId: string, userId: string) {
  */
 export async function vouchForPlace(placeId: string, input: { note?: string; tip?: string }): Promise<{ placeId: string; slug: string; city: string; followOwner: string | null }> {
   const user = await getCurrentUser();
-  if (!user) throw new UserError("Log in to recommend places.", "auth");
+  if (!user) throw new UserError("Log in to vouch for places.", "auth");
   const { db, place, guide } = await visiblePlace(placeId, user.id);
   const now = new Date();
   const note = (input.note ?? "").trim().slice(0, 5000);
@@ -88,10 +88,14 @@ export async function vouchForPlace(placeId: string, input: { note?: string; tip
   return { placeId: mineId, slug: stash.slug, city: place.city ? canonicalCity(place.city) : "", followOwner: followsOwner ? null : guide.ownerId };
 }
 
-/** "Been here" but not one you'd recommend: just takes it off your Want to go list. */
+/**
+ * Been, but not one you'd vouch for ("Went, not for me", 19 Oct 2026): marks it been (so Explore
+ * stops showing it to you) and takes it off your Saved list. Nobody is told.
+ */
 export async function beenNotForMe(placeId: string): Promise<void> {
   const user = await getCurrentUser();
   if (!user) return;
   const db = await getDb();
+  await db.insert(placeReactions).values({ userId: user.id, placeId, kind: "been", createdAt: new Date() }).onConflictDoNothing();
   await db.delete(savedPlaces).where(and(eq(savedPlaces.userId, user.id), eq(savedPlaces.placeId, placeId)));
 }

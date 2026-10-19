@@ -63,7 +63,7 @@ export default async function SavedPage({ searchParams }: { searchParams: Promis
         {saved.length === 0 ? (
           <EmptyState
             title="Nothing on your list yet"
-            body="Tap Save on a friend’s spot to keep it here — your own shortlist for the trip. Been and loved it? Tap Recommend on the spot."
+            body="Save spots you want to try from Explore. Only you see them. Been and loved one? Vouch for it, and friends see it."
             action={<LinkButton href="/" size="sm">Browse guides</LinkButton>}
           />
         ) : (

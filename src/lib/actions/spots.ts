@@ -27,7 +27,7 @@ export async function sendSpotsForWishes(wishIds: string[]): Promise<{ ok: true;
   const hidden = await hiddenUserIds(user.id);
   const city = canonicalCity(wishes[0].city);
   const mine = await citySpots({ city, viewerId: user.id, ownerIds: [user.id] });
-  if (!mine.length) return { ok: false, error: `You haven't recommended any ${city} spots yet.` };
+  if (!mine.length) return { ok: false, error: `You haven't vouched for any ${city} spots yet.` };
   const already = await db
     .select({ userId: notifications.userId, city: notifications.city })
     .from(notifications)

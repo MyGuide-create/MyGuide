@@ -107,7 +107,7 @@ export default async function ProfilePage({ params, searchParams }: PageProps<"/
           )}
           {!own && !hiddenFromMe && commonCount > 0 && (
             <p className="mt-2.5 text-[13px] text-sage font-medium">
-              You both recommend {commonCount} place{commonCount === 1 ? "" : "s"}
+              You both vouch for {commonCount} place{commonCount === 1 ? "" : "s"}
               {!stats.viewerFollows && commonCount >= 2 ? " — your taste matches" : ""}
             </p>
           )}
@@ -154,8 +154,8 @@ export default async function ProfilePage({ params, searchParams }: PageProps<"/
             ) : (
               own && (
                 <EmptyState
-                  title="No recommended spots yet"
-                  body="Recommend places from My spots and they show here, city by city, for friends."
+                  title="No spots vouched for yet"
+                  body="Vouch for places from My spots and they show here, city by city, for friends."
                   action={<LinkButton href="/my-places" size="sm">Go to My spots</LinkButton>}
                 />
               )

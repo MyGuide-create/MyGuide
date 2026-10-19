@@ -18,7 +18,11 @@ export interface MapCity {
   friends: PublicUser[];
   /** Not yours or your friends': everyone else's on MyGuide. */
   more?: boolean;
+  /** `spots` counts only spots new to you (19 Oct 2026): "4 new". */
+  fresh?: boolean;
 }
+
+const spotCount = (c: MapCity) => (c.fresh ? (c.spots ? `${c.spots} new` : "all in your list") : `${c.spots} spot${c.spots === 1 ? "" : "s"}`);
 
 type Box = { x: number; y: number; w: number; h: number };
 type Cluster = { key: string; x: number; y: number; members: MapCity[] };
@@ -410,7 +414,7 @@ function WorldMap({ cities }: { cities: MapCity[] }) {
                   <span className="flex-1 min-w-0">
                     <span className="block text-[14.5px] font-semibold truncate">{c.city}</span>
                     <span className="block text-[12.5px] text-ink-muted truncate">
-                      {[c.friends.length ? `${c.friends.length} friend${c.friends.length === 1 ? "" : "s"}` : "", c.mine ? "you" : "", `${c.spots} spot${c.spots === 1 ? "" : "s"}`].filter(Boolean).join(" · ")}
+                      {[c.friends.length ? `${c.friends.length} friend${c.friends.length === 1 ? "" : "s"}` : "", c.mine ? "you" : "", spotCount(c)].filter(Boolean).join(" · ")}
                     </span>
                   </span>
                   <span aria-hidden className="text-ink-faint">›</span>
@@ -437,7 +441,7 @@ function WorldMap({ cities }: { cities: MapCity[] }) {
                   {[
                     sel.friends.length ? `${sel.friends.length} friend${sel.friends.length === 1 ? "" : "s"}` : "",
                     sel.mine ? "you" : "",
-                    `${sel.spots} spot${sel.spots === 1 ? "" : "s"}`,
+                    spotCount(sel),
                   ]
                     .filter(Boolean)
                     .join(" · ")}

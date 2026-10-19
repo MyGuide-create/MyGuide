@@ -240,7 +240,7 @@ export function RecordFlow({
 
           {forWish && (
             <div className="mx-4 mt-3 rounded-2xl bg-terracotta-tint/70 px-4 py-3 text-[13px] leading-snug">
-              <b className="font-semibold">{forWish.city} spots for {forWish.name}.</b> Add the places you&apos;d recommend, then send them to {forWish.name} in one tap.
+              <b className="font-semibold">{forWish.city} spots for {forWish.name}.</b> Add the places you&apos;d vouch for, then send them to {forWish.name} in one tap.
             </div>
           )}
           <div className="flex flex-col items-center px-7 pt-6 pb-1 text-center">
@@ -406,9 +406,9 @@ export function RecordFlow({
             {!intoGuide && (
               <label className="flex items-center justify-between gap-4 rounded-2xl border border-line bg-paper px-4 py-3 cursor-pointer">
                 <span className="min-w-0">
-                  <span className="block text-[14.5px] font-semibold">Recommend to friends</span>
+                  <span className="block text-[14.5px] font-semibold">Vouch for it</span>
                   <span className="block text-[12.5px] text-ink-muted leading-snug">
-                    {recommend ? `Shows on the ${placeCity || "city"} page for friends` : "Saved just for you. You can recommend it later."}
+                    {recommend ? `You've been and love it. Friends see it on the ${placeCity || "city"} page` : "Only you see it. You can vouch for it later."}
                   </span>
                 </span>
                 <input
@@ -457,7 +457,7 @@ export function RecordFlow({
               Wrong place? Fix location
             </Link>
             <p className="mt-0.5 text-[12.5px] text-ink-muted">
-              {done.shared ? `Recommended · friends see it on the ${done.city || "city"} page` : "Only you can see it"}
+              {done.shared ? `You vouch for it · friends see it on the ${done.city || "city"} page` : "Only you can see it"}
             </p>
             {putIn && (
               <p className="mt-2 text-[12.5px] text-sage font-medium">
@@ -472,12 +472,12 @@ export function RecordFlow({
             {forWish && done.city.toLowerCase() === forWish.city.toLowerCase() && done.recommended > 0 ? (
               <div className="mb-2 rounded-2xl bg-ink text-cream px-4 py-3.5 flex flex-col gap-2.5">
                 <p className="text-[14.5px] font-semibold leading-snug">
-                  You recommend {done.recommended} {done.city} spot{done.recommended === 1 ? "" : "s"}. Send {done.recommended === 1 ? "it" : "them"} to {forWish.name}?
+                  You vouch for {done.recommended} {done.city} spot{done.recommended === 1 ? "" : "s"}. Send {done.recommended === 1 ? "it" : "them"} to {forWish.name}?
                 </p>
                 <SendSpotsButton dark wishIds={[forWish.id]} label={`Send ${forWish.name} your ${done.recommended} spot${done.recommended === 1 ? "" : "s"}`} className="w-full" />
               </div>
             ) : forWish && done.city.toLowerCase() === forWish.city.toLowerCase() && !done.shared ? (
-              <p className="mb-1 text-center text-[12.5px] text-ink-muted">Only places you recommend can be sent to {forWish.name}.</p>
+              <p className="mb-1 text-center text-[12.5px] text-ink-muted">Only places you vouch for can be sent to {forWish.name}.</p>
             ) : (
               done.city && done.unguided >= NUDGE_MIN && !putIn && <GuideNudge city={done.city} count={done.unguided} className="mb-2" />
             )}

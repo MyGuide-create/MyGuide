@@ -83,7 +83,7 @@ export default async function PickPage({ searchParams }: { searchParams: Promise
         photoUrl: s.place.photoUrl,
         photoMediaId: s.place.photoMediaId,
         area: placeArea(s.place),
-        sub: names.length > 2 ? `${names.length} ${fromFriends ? "friends" : "people"} recommend` : names.join(" & "),
+        sub: names.length > 2 ? `${names.length} ${fromFriends ? "friends" : "people"} vouch` : names.join(" & "),
       };
       byCat.set(s.place.category, [...(byCat.get(s.place.category) ?? []), item]);
     }

@@ -178,7 +178,7 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
               stashPlace
                 ? detail.viewerCanEdit
                   ? ""
-                  : `Recommended by ${detail.owner.displayName.split(" ")[0]}`
+                  : `Vouched for by ${detail.owner.displayName.split(" ")[0]}`
                 : "",
               `${stashPlace && detail.viewerCanEdit && !place.sharedAt ? "Added" : "Shared"} ${sharedLabel(freshOf(place))}`,
             ]
@@ -219,10 +219,10 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
           {mine && (
             <div className="mt-3 rounded-2xl bg-sage-tint px-3.5 py-3">
               <p className="text-[13.5px] font-semibold text-sage inline-flex items-center gap-1.5">
-                <CheckIcon size={15} /> One of your spots
+                <CheckIcon size={15} /> In your list
               </p>
               <p className="mt-0.5 text-[12.5px] text-ink-muted">
-                {mine.recommended ? "You recommend it too — friends see you both." : mine.inStash ? "It's in My spots, private for now." : "It's in one of your guides."}{" "}
+                {mine.recommended ? "You vouch for it too. Friends see you both." : mine.inStash ? "It's in My spots, private for now." : "It's in one of your guides."}{" "}
                 <Link href={`/g/${mine.slug}/p/${mine.placeId}`} className="font-semibold text-terracotta">Open yours →</Link>
               </p>
               {mine.inStash && !mine.recommended && (
@@ -268,7 +268,7 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
           )}
           {detail.viewerCanEdit && ((detail.placeSocial[place.id]?.been ?? 0) + (detail.placeSocial[place.id]?.loved ?? 0) + (detail.placeSocial[place.id]?.favourites ?? 0)) > 0 && (
             <p className="mt-2 text-[12px] text-ink-muted">
-              Readers: {detail.placeSocial[place.id].favourites} want to go · {detail.placeSocial[place.id].been} been · {detail.placeSocial[place.id].loved} loved it
+              Readers: {detail.placeSocial[place.id].favourites} saved · {detail.placeSocial[place.id].been} been · {detail.placeSocial[place.id].loved} loved it
             </p>
           )}
         </div>
@@ -276,13 +276,13 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
         {!detail.viewerCanEdit && recommenders.length > 0 && (
           <section className="flex flex-col gap-2.5">
             <h2 className="text-[15px] font-semibold">
-              Recommended by {recNames.length <= 2 ? recNames.join(" and ") : `${recNames.slice(0, -1).join(", ")} and ${recNames.at(-1)}`}
+              Vouched for by {recNames.length <= 2 ? recNames.join(" and ") : `${recNames.slice(0, -1).join(", ")} and ${recNames.at(-1)}`}
             </h2>
             {recommenders.map((r) => (
               <div key={r.placeId} className="flex gap-3 rounded-2xl border border-line bg-paper p-3">
                 <Link href={`/u/${r.user.username}`} className="shrink-0"><Avatar user={r.user} size={34} /></Link>
                 <div className="flex-1 min-w-0">
-                  {r.tip ? <p className="text-[14px] leading-relaxed italic">&ldquo;{r.tip}&rdquo;</p> : <p className="text-[13.5px] text-ink-muted">Recommends it.</p>}
+                  {r.tip ? <p className="text-[14px] leading-relaxed italic">&ldquo;{r.tip}&rdquo;</p> : <p className="text-[13.5px] text-ink-muted">Vouches for it.</p>}
                   <p className="mt-1 text-[12px] text-ink-muted">
                     <Link href={`/u/${r.user.username}`} className="font-semibold text-ink">{r.user.id === user?.id ? "You" : r.user.displayName.split(" ")[0]}</Link>
                     {" · "}

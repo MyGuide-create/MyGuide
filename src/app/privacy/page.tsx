@@ -11,7 +11,7 @@ export default function PrivacyPage() {
       <h2>What we collect</h2>
       <ul>
         <li><b>Account:</b> your name, username, email and a securely hashed password. Optional bio, photo, Instagram and website.</li>
-        <li><b>What you create:</b> places (My spots), guides, notes, tips, photos, voice notes, comments, favourites, reactions and trips. Places in My spots are private until you recommend them; recommended ones show on their city&apos;s page.</li>
+        <li><b>What you create:</b> places (My spots), guides, notes, tips, photos, voice notes, comments, favourites, reactions and trips. Places in My spots are private until you vouch for them; ones you vouch for show on their city&apos;s page.</li>
         <li><b>Location — only when you ask:</b> &ldquo;Add a place&rdquo; and &ldquo;my location&rdquo; on the map use your position once to find nearby places. We don&apos;t track you in the background or store your location history.</li>
         <li><b>Usage:</b> simple counts such as guide views, shares, saves and taps on directions, so creators can see how their guides are used and we can improve the app. Signed-out visitors get an anonymous browser id.</li>
         <li><b>Phone alerts:</b> if you turn them on, a technical address for your device so we can send notifications.</li>
@@ -27,7 +27,7 @@ export default function PrivacyPage() {
       <h2>Your choices</h2>
       <ul>
         <li>Make your account private so only approved followers see your guides.</li>
-        <li>Keep any place in My spots private, or recommend it and take it back any time.</li>
+        <li>Keep any place in My spots private, or vouch for it and take it back any time.</li>
         <li>Keep any guide private and share it with specific people.</li>
         <li>Block or report anyone.</li>
         <li>Delete your account from Settings: your guides, places, comments, favourites and photos are removed. Copies other people made of your public guides stay with them, without your name.</li>

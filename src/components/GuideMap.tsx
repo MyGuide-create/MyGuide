@@ -27,6 +27,8 @@ export interface MapPlace {
   subtitle?: string;
   /** Another branch of a place: a smaller pin with the same number. */
   small?: boolean;
+  /** My spots (19 Oct 2026): sage = you vouch for it, terracotta = saved to try, grey = private. Overrides the category colour. */
+  tone?: "vouched" | "saved" | "private";
 }
 
 const PIN_SVG = (fill: string, n: number) =>
@@ -47,7 +49,9 @@ const ME_SVG = `data:image/svg+xml;utf8,${encodeURIComponent(
   `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 22 22"><circle cx="11" cy="11" r="10" fill="#4285F4" fill-opacity="0.2"/><circle cx="11" cy="11" r="6" fill="#4285F4" stroke="white" stroke-width="2.5"/></svg>`
 )}`;
 
-const pinFill = (category: string) => (["Nature", "Sports & Wellness"].includes(category) ? "oklch(62% 0.13 150)" : "oklch(62% 0.13 45)");
+const TONE_FILL = { vouched: "oklch(58% 0.1 150)", saved: "oklch(62% 0.13 45)", private: "oklch(60% 0.015 60)" } as const;
+const pinFill = (category: string, tone?: MapPlace["tone"]) =>
+  tone ? TONE_FILL[tone] : ["Nature", "Sports & Wellness"].includes(category) ? "oklch(62% 0.13 150)" : "oklch(62% 0.13 45)";
 
 /** Hide Google's own shops, restaurants and transit icons so only the guide's pins stand out. */
 const QUIET_STYLES: google.maps.MapTypeStyle[] = [
@@ -203,7 +207,7 @@ function ClusteredPins({ places, activeId, onPick }: { places: Located[]; active
   useEffect(() => {
     pick.current = onPick;
   }, [onPick]);
-  const key = JSON.stringify(places.map((p) => [p.id, p.lat, p.lng, p.pin, p.category, p.small]));
+  const key = JSON.stringify(places.map((p) => [p.id, p.lat, p.lng, p.pin, p.category, p.small, p.tone]));
 
   useEffect(() => {
     if (!map) return;
@@ -211,8 +215,8 @@ function ClusteredPins({ places, activeId, onPick }: { places: Located[]; active
       const m = new google.maps.Marker({
         position: { lat: p.lat, lng: p.lng },
         icon: p.small
-          ? { url: PIN_SVG(pinFill(p.category), p.pin), scaledSize: new google.maps.Size(24, 30), anchor: new google.maps.Point(12, 29) }
-          : { url: PIN_SVG(pinFill(p.category), p.pin), scaledSize: new google.maps.Size(34, 42), anchor: new google.maps.Point(17, 41) },
+          ? { url: PIN_SVG(pinFill(p.category, p.tone), p.pin), scaledSize: new google.maps.Size(24, 30), anchor: new google.maps.Point(12, 29) }
+          : { url: PIN_SVG(pinFill(p.category, p.tone), p.pin), scaledSize: new google.maps.Size(34, 42), anchor: new google.maps.Point(17, 41) },
         title: p.name,
       });
       m.set("placeId", p.id);

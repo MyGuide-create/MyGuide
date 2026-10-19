@@ -149,7 +149,7 @@ export function reasonOf(c: ScoreInput, s: SpotSignals): string {
   if (kind === "stay" && s.days >= 2) bits.push(`photos over ${s.days} days`);
   else if ((kind === "food" || kind === "drinks") && share(s.hours, 18, 5) >= 0.5) bits.push("evening photos");
   else if (kind === "coffee" && share(s.hours, 6, 11) >= 0.5) bits.push("morning photos");
-  if (c.onMyGuide) bits.push(`${c.onMyGuide} on MyGuide recommend it`);
+  if (c.onMyGuide) bits.push(`${c.onMyGuide} on MyGuide vouch for it`);
   if (c.ratingCount >= 500) bits.push(`${c.ratingCount >= 1000 ? `${(c.ratingCount / 1000).toFixed(1).replace(/\.0$/, "")}k` : c.ratingCount} Google reviews`);
   return bits.join(" · ");
 }

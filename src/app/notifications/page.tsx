@@ -89,7 +89,7 @@ export default async function NotificationsPage() {
           </section>
         )}
         {rows.length === 0 && (
-          <EmptyState title="Nothing here yet" body="When someone follows you, saves or recommends your spots, claps, comments, shares a guide with you or asks you for spots, it shows up here. New spots from friends are on Home." action={<LinkButton href="/" size="sm" variant="outline">Go to Home</LinkButton>} />
+          <EmptyState title="Nothing here yet" body="When someone follows you, saves or vouches for your spots, claps, comments, shares a guide with you or asks you for spots, it shows up here. New spots from friends are on Home." action={<LinkButton href="/" size="sm" variant="outline">Go to Home</LinkButton>} />
         )}
         {rows.filter((n) => !(n.type === "user_joined" && n.actorId && hidden.has(n.actorId))).map((n) => {
           const actor = n.actorId ? actorMap.get(n.actorId) : undefined;
@@ -127,7 +127,7 @@ export default async function NotificationsPage() {
                   )}
                   {n.type === "vouched" && (
                     <>
-                      {who} went to {n.placeId && placeMap.get(n.placeId) ? <span className="font-medium">{placeMap.get(n.placeId)!.name}</span> : "your spot"} and recommends it too
+                      {who} went to {n.placeId && placeMap.get(n.placeId) ? <span className="font-medium">{placeMap.get(n.placeId)!.name}</span> : "your spot"} and vouches for it too
                       {n.note ? <span className="block text-[13px] italic text-ink/85">“{n.note}”</span> : null}
                     </>
                   )}

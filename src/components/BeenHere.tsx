@@ -12,9 +12,14 @@ import { CheckIcon, RecommendIcon, XIcon } from "./Icons";
 import { Button, Input, Spinner, Textarea, cx } from "./ui";
 
 /**
- * "Been here" on someone else's place (14 Oct 2026). Tapping it asks "Would you recommend it?":
- * yes makes it one of your spots (your own words, theirs stay theirs) so the city page shows you both
- * recommend it, and the friend hears you went; not really just marks it.
+ * Vouch for someone else's place (19 Oct 2026: Save / Vouch). Two words in the app: Save = "I want
+ * to try it" (only you see it), Vouch = "I've been and I stand by it" (friends see it). "Been here"
+ * is never a button on its own any more; it's only ever asked as a question.
+ * - "chip": the place page, "Been here? Vouch for it".
+ * - "bar": a Home post's action row, "Vouch".
+ * - "icon": a small ✓ (kept for old rows).
+ * - "madeit": a saved spot in My spots, "Made it?" → Loved it / Not for me / Not yet.
+ * Vouching makes it one of your spots (your own words, theirs stay theirs), and the friend hears you went.
  */
 export function BeenHere({
   placeId,
@@ -33,10 +38,9 @@ export function BeenHere({
   initial: boolean;
   count: number;
   signedIn: boolean;
-  /** You already have this spot (My spots or a guide): no "recommend it?" step. */
+  /** You already vouch for this spot: nothing to ask. */
   youHaveIt: boolean;
-  /** "chip": "Been here?" on a place page. "icon": a small ✓ on a city page row (14 Oct 2026). "bar": in a Home post's action row (17 Oct 2026). */
-  variant?: "chip" | "icon" | "bar";
+  variant?: "chip" | "icon" | "bar" | "madeit";
   /** Reload the page once it's yours (My spots: the saved row moves into your own spots). */
   refreshOnDone?: boolean;
 }) {
@@ -45,75 +49,98 @@ export function BeenHere({
   const [been, setBeen] = useState(initial);
   const [n, setN] = useState(count);
   const [open, setOpen] = useState(false);
-  const [step, setStep] = useState<"ask" | "words" | "done">("ask");
+  const [step, setStep] = useState<"made" | "ask" | "words" | "done">("ask");
   const [note, setNote] = useState("");
   const [tip, setTip] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<{ city: string; followOwner: string | null } | null>(null);
   const [, start] = useTransition();
+  const vouched = youHaveIt || !!done;
 
   const cls = cx(
     "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12.5px] font-medium",
-    been ? "border-sage bg-sage-tint text-sage" : "border-line bg-paper text-ink",
+    vouched || been ? "border-sage bg-sage-tint text-sage" : "border-line bg-paper text-ink",
   );
   const label = (
     <>
       <CheckIcon size={14} />
-      {been ? (youHaveIt || done ? "Recommended" : "Been here") : "Recommend"}
+      {vouched ? "You vouch for it" : been ? "Been here" : "Been here? Vouch for it"}
       {n > 0 && <span className="tabular-nums text-ink-muted font-normal">{n}</span>}
     </>
   );
 
   const barCls = cx(
     "inline-flex items-center gap-1.5 h-8 rounded-full border pl-2 pr-3 text-[12.5px] font-semibold whitespace-nowrap transition-colors",
-    been ? "border-sage-soft bg-sage-tint text-sage" : "border-line text-ink",
+    vouched || been ? "border-sage-soft bg-sage-tint text-sage" : "border-line text-ink",
   );
   const barBody = (
     <>
-      <RecommendIcon size={18} filled={been} />
-      {been ? (youHaveIt || done ? "Recommended" : "Been here") : "Recommend"}
+      <RecommendIcon size={18} filled={vouched || been} />
+      {vouched ? "Vouched" : been ? "Been" : "Vouch"}
     </>
   );
 
-  const iconCls = cx(
-    "w-9 h-9 -m-1.5 flex items-center justify-center rounded-full",
-    been ? "text-sage" : "text-ink-faint hover:text-sage",
-  );
+  const iconCls = cx("w-9 h-9 -m-1.5 flex items-center justify-center rounded-full", been ? "text-sage" : "text-ink-faint hover:text-sage");
   const iconBody = (
     <span className={cx("w-[22px] h-[22px] rounded-full border-[1.6px] flex items-center justify-center", been ? "bg-sage border-sage text-white" : "border-current")}>
       <CheckIcon size={13} />
     </span>
   );
+  const madeCls = "shrink-0 inline-flex items-center gap-1 rounded-full px-2.5 py-1.5 text-[11.5px] font-semibold border border-terracotta-soft bg-paper text-terracotta-deep";
+
   if (!signedIn)
     return (
-      <Link href={`/signup?why=save&next=${encodeURIComponent(path)}`} className={variant === "icon" ? iconCls : variant === "bar" ? barCls : cls} aria-label="Recommend">
-        {variant === "icon" ? iconBody : variant === "bar" ? barBody : label}
+      <Link href={`/signup?why=save&next=${encodeURIComponent(path)}`} className={variant === "icon" ? iconCls : variant === "bar" ? barCls : variant === "madeit" ? madeCls : cls} aria-label="Vouch">
+        {variant === "icon" ? iconBody : variant === "bar" ? barBody : variant === "madeit" ? "Made it?" : label}
       </Link>
     );
 
   const tap = () => {
-    const on = !been;
-    setBeen(on);
-    setN((c) => Math.max(0, c + (on ? 1 : -1)));
+    if (vouched) return;
+    if (variant === "madeit") {
+      setStep("made");
+      setError(null);
+      setOpen(true);
+      return;
+    }
+    // Asking "Vouch for it?" — "been" is only recorded once they answer.
+    if (!been) {
+      setStep("ask");
+      setError(null);
+      setOpen(true);
+      return;
+    }
+    // Been already (said no before): tapping again takes it back.
+    setBeen(false);
+    setN((c) => Math.max(0, c - 1));
     start(async () => {
       try {
         await toggleReaction(placeId, "been");
       } catch {
-        setBeen(!on);
+        setBeen(true);
       }
     });
-    if (on && !youHaveIt && !done) {
-      setStep("ask");
-      setError(null);
-      setOpen(true);
-    }
   };
 
-  /** Close the sheet; on a city page row, refresh once it's yours so the row shows ✓ Yours. */
+  /** Close the sheet; refresh once something changed so rows move to where they now belong. */
   const close = () => {
     setOpen(false);
     if (done && (variant !== "chip" || refreshOnDone)) router.refresh();
+  };
+
+  const notForMe = () => {
+    setOpen(false);
+    setBeen(true);
+    setN((c) => c + 1);
+    start(async () => {
+      try {
+        await beenNotForMe(placeId);
+        if (variant === "madeit" || refreshOnDone) router.refresh();
+      } catch {
+        setBeen(false);
+      }
+    });
   };
 
   const vouch = async () => {
@@ -121,10 +148,11 @@ export function BeenHere({
     setError(null);
     try {
       const r = await vouchForPlace(placeId, { note, tip });
+      setBeen(true);
       setDone({ city: r.city, followOwner: r.followOwner });
       setStep("done");
     } catch (e) {
-      setError(errorText(e, "Couldn't add it."));
+      setError(errorText(e, "Couldn't vouch for it."));
     } finally {
       setBusy(false);
     }
@@ -133,52 +161,60 @@ export function BeenHere({
   return (
     <>
       {variant === "icon" ? (
-        <button type="button" aria-pressed={been} aria-label={been ? "Recommended (tap to undo)" : "Recommend"} title="Recommend" className={iconCls} onClick={tap}>
+        <button type="button" aria-pressed={been} aria-label={vouched ? "You vouch for it" : "Vouch"} title="Vouch" className={iconCls} onClick={tap}>
           {iconBody}
         </button>
       ) : variant === "bar" ? (
-        <button type="button" aria-pressed={been} title="Been here? Recommend it too" className={barCls} onClick={tap}>
+        <button type="button" aria-pressed={vouched || been} title="Been and loved it? Vouch for it" className={barCls} onClick={tap}>
           {barBody}
         </button>
-      ) : (
-      <div className="flex flex-wrap items-center gap-2">
-        <button type="button" aria-pressed={been} className={cls} onClick={tap}>
-          {label}
+      ) : variant === "madeit" ? (
+        <button type="button" className={madeCls} onClick={tap}>
+          Made it?
         </button>
-        {done && (
-          <Link href={myPlacesHref(done.city)} className="text-[12.5px] font-medium text-sage">
-            ✓ One of your spots now
-          </Link>
-        )}
-      </div>
+      ) : (
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" aria-pressed={vouched || been} className={cls} onClick={tap}>
+            {label}
+          </button>
+          {done && (
+            <Link href={myPlacesHref(done.city)} className="text-[12.5px] font-medium text-sage">
+              In My spots →
+            </Link>
+          )}
+        </div>
       )}
       {open && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center" role="dialog" aria-modal="true" aria-label="Recommend it?">
+        <div className="fixed inset-0 z-50 flex items-end justify-center" role="dialog" aria-modal="true" aria-label={step === "made" ? `Made it to ${placeName}?` : "Vouch for it?"}>
           <button type="button" aria-label="Close" onClick={close} className="absolute inset-0 bg-ink/40" />
           <div className="relative w-full max-w-[480px] rounded-t-[28px] bg-cream px-5 pt-3 pb-8 safe-bottom max-h-[85dvh] overflow-y-auto fade-up">
             <div className="mx-auto w-10 h-1.5 rounded-full bg-line mb-3" />
             <div className="flex items-start justify-between gap-3 mb-1">
               <h2 className="font-display text-[24px] leading-tight">
-                {step === "done" ? "It's one of your spots now" : step === "words" ? "In your own words" : `Recommend ${placeName}?`}
+                {step === "done" ? "You vouch for it" : step === "words" ? "In your own words" : step === "made" ? `Made it to ${placeName}?` : `Vouch for ${placeName}?`}
               </h2>
               <button type="button" aria-label="Close" onClick={close} className="w-9 h-9 -mr-2 shrink-0 flex items-center justify-center rounded-full text-ink-muted">
                 <XIcon size={18} />
               </button>
             </div>
 
+            {step === "made" && (
+              <>
+                <p className="text-[14px] text-ink-muted leading-relaxed">How was it? Only a vouch is shared with friends.</p>
+                <div className="mt-4 flex flex-col gap-2.5">
+                  <Button size="lg" onClick={() => setStep("words")}>Loved it, vouch for it</Button>
+                  <Button size="lg" variant="outline" onClick={notForMe}>Went, not for me</Button>
+                  <Button size="lg" variant="ghost" onClick={close}>Not yet</Button>
+                </div>
+              </>
+            )}
+
             {step === "ask" && (
               <>
-                <p className="text-[14px] text-ink-muted leading-relaxed">Been and loved it? It becomes one of your spots too, and friends see you both recommend it.</p>
+                <p className="text-[14px] text-ink-muted leading-relaxed">Been and loved it? Vouch for it and it joins your spots. Friends see you both vouch for it.</p>
                 <div className="mt-4 flex flex-col gap-2.5">
-                  <Button size="lg" onClick={() => setStep("words")}>Yes, recommend it</Button>
-                  <Button
-                    size="lg"
-                    variant="outline"
-                    onClick={() => {
-                      setOpen(false);
-                      beenNotForMe(placeId).catch(() => {});
-                    }}
-                  >
+                  <Button size="lg" onClick={() => setStep("words")}>Yes, vouch for it</Button>
+                  <Button size="lg" variant="outline" onClick={notForMe}>
                     I&apos;ve been, but no
                   </Button>
                 </div>
@@ -187,7 +223,7 @@ export function BeenHere({
 
             {step === "words" && (
               <>
-                <p className="text-[13.5px] text-ink-muted leading-relaxed">Optional — add them now or later from the place. {ownerFirst}&apos;s words stay on their spot.</p>
+                <p className="text-[13.5px] text-ink-muted leading-relaxed">Optional. Add them now or later from the place. {ownerFirst ? `${ownerFirst}'s words stay on their spot.` : ""}</p>
                 <div className="mt-3 flex flex-col gap-3">
                   <div>
                     <p className="text-[12px] font-medium uppercase tracking-[0.08em] text-ink-muted mb-1.5">Description – what makes it special</p>
@@ -200,7 +236,7 @@ export function BeenHere({
                 </div>
                 {error && <p className="mt-2 text-[13px] text-danger">{error}</p>}
                 <Button size="lg" className="mt-4 w-full" onClick={vouch} disabled={busy}>
-                  {busy ? <Spinner /> : null} {note.trim() || tip.trim() ? "Add to my spots" : "Add to my spots — words later"}
+                  {busy ? <Spinner /> : null} {note.trim() || tip.trim() ? "Vouch for it" : "Vouch, words later"}
                 </Button>
               </>
             )}
@@ -208,11 +244,11 @@ export function BeenHere({
             {step === "done" && done && (
               <>
                 <p className="text-[14px] text-ink-muted leading-relaxed">
-                  It&apos;s recommended in My spots{done.city ? ` under My ${done.city}` : ""}, and on the city page with {ownerFirst}&apos;s. {ownerFirst} will hear you went.
+                  It&apos;s in My spots{done.city ? ` under My ${done.city}` : ""}, and friends see you vouch for it{ownerFirst ? ` with ${ownerFirst}` : ""}.{ownerFirst ? ` ${ownerFirst} will hear you went.` : ""}
                 </p>
-                {done.followOwner && (
+                {done.followOwner && ownerFirst && (
                   <div className="mt-3 flex items-center justify-between gap-3 rounded-2xl bg-paper border border-line/80 px-3.5 py-2.5">
-                    <span className="text-[13px] leading-snug">Follow {ownerFirst} to see their next spots on Home.</span>
+                    <span className="text-[13px] leading-snug">Follow {ownerFirst} to see their next spots on Explore.</span>
                     <FollowPill userId={done.followOwner} signedIn next={path} />
                   </div>
                 )}

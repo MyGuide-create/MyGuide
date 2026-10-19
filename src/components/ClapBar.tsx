@@ -115,7 +115,7 @@ export function ClapBar({
 
   // "Lina, Sam and 10 others love this · 2 friends recommend it too"
   const lovers = s.count > 0 ? `${clapNames(s)} ${s.count === 1 && !s.mine ? "loves" : "love"} this` : "";
-  const recs = alsoRecommend > 0 ? `${alsoRecommend} friend${alsoRecommend === 1 ? "" : "s"} recommend${alsoRecommend === 1 ? "s" : ""} it too` : "";
+  const recs = alsoRecommend > 0 ? `${alsoRecommend} friend${alsoRecommend === 1 ? "" : "s"} vouch${alsoRecommend === 1 ? "es" : ""} for it too` : "";
   const faces = (s.faces ?? []).slice(0, 3);
 
   const act = "inline-flex items-center gap-1.5 h-10 px-2 rounded-full text-[13.5px] font-medium tabular-nums transition-colors";

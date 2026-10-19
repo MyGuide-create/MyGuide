@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useSyncExternalStore } from "react";
+import { SaveToasts, SPOTS_DOT_EVENT, SPOTS_DOT_KEY } from "./SaveButton";
 import { BellIcon, CompassIcon, PinIcon, PlusIcon, UserIcon } from "./Icons";
 import { cx } from "./ui";
 
@@ -14,6 +16,16 @@ export function BottomNav({ signedIn, username, unread }: { signedIn: boolean; u
   const spotsHref = signedIn ? "/my-places" : "/signup?next=/my-places&why=save";
   const spotsActive = is("/my-places") || is("/saved");
   const exploreActive = is("/") || is("/search") || is("/cities");
+  // After a save, a small dot on My spots until you open it (19 Oct 2026): it's where the spot went.
+  const dot = useSyncExternalStore(subscribeDot, readDot, () => false);
+  useEffect(() => {
+    if (!spotsActive) return;
+    try {
+      if (localStorage.getItem(SPOTS_DOT_KEY) !== "1") return;
+      localStorage.removeItem(SPOTS_DOT_KEY);
+    } catch {}
+    window.dispatchEvent(new Event(SPOTS_DOT_EVENT));
+  }, [spotsActive]);
   const item = "flex flex-col items-center justify-center gap-0.5 w-16 h-12 rounded-2xl transition-colors";
   const label = "text-[10px] leading-none font-medium";
   // Like other apps: tapping the tab you're already on scrolls back to the top instead of reloading.
@@ -26,6 +38,7 @@ export function BottomNav({ signedIn, username, unread }: { signedIn: boolean; u
   };
   return (
     <>
+      {signedIn && <SaveToasts />}
       {/* + goes straight to Add a place (12 Oct 2026); guides are made from My spots, a city page or your profile. */}
       <nav className="fixed bottom-0 inset-x-0 z-40 flex justify-center pointer-events-none">
         <div className="pointer-events-auto w-full max-w-[480px] safe-bottom bg-paper/95 backdrop-blur border-t border-line flex items-end justify-around px-2 pt-2 pb-2">
@@ -33,8 +46,9 @@ export function BottomNav({ signedIn, username, unread }: { signedIn: boolean; u
             <CompassIcon size={22} />
             <span className={label}>Explore</span>
           </Link>
-          <Link href={spotsHref} onClick={signedIn ? toTopIfHere("/my-places") : undefined} aria-label="My spots" className={cx(item, spotsActive ? "text-ink" : "text-ink-muted")}>
+          <Link href={spotsHref} onClick={signedIn ? toTopIfHere("/my-places") : undefined} aria-label={dot ? "My spots, new saved spot" : "My spots"} className={cx(item, "relative", spotsActive ? "text-ink" : "text-ink-muted")}>
             <PinIcon size={22} />
+            {dot && !spotsActive && <span aria-hidden className="absolute top-1 right-[18px] w-2.5 h-2.5 rounded-full bg-terracotta ring-2 ring-paper" />}
             <span className={label}>My spots</span>
           </Link>
           {signedIn ? (
@@ -74,4 +88,20 @@ export function BottomNav({ signedIn, username, unread }: { signedIn: boolean; u
       </nav>
     </>
   );
+}
+
+function subscribeDot(onChange: () => void) {
+  window.addEventListener(SPOTS_DOT_EVENT, onChange);
+  window.addEventListener("storage", onChange);
+  return () => {
+    window.removeEventListener(SPOTS_DOT_EVENT, onChange);
+    window.removeEventListener("storage", onChange);
+  };
+}
+function readDot(): boolean {
+  try {
+    return localStorage.getItem(SPOTS_DOT_KEY) === "1";
+  } catch {
+    return false;
+  }
 }

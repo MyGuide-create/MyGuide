@@ -29,7 +29,7 @@ function whoRecommends(sp: CitySpot, viewerId: string, following: Set<string>): 
   const lead = friends[0] ?? rs[0];
   if (!lead) return "You";
   const name = lead.user.displayName.split(" ")[0];
-  return rs.length === 1 ? name : friends.length ? `${name} & ${rs.length - 1} other${rs.length === 2 ? "" : "s"}` : `${rs.length} people recommend it`;
+  return rs.length === 1 ? name : friends.length ? `${name} & ${rs.length - 1} other${rs.length === 2 ? "" : "s"}` : `${rs.length} people vouch for it`;
 }
 export const metadata = { title: "Trip" };
 
@@ -70,7 +70,7 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
         </div>
 
         {topFriends.length > 0 && (
-          <Section title="Spots your friends recommend" count={friendSpots.length}>
+          <Section title="Spots your friends vouch for" count={friendSpots.length}>
             <ul className="flex flex-col gap-2">
               {topFriends.map((sp) => (
                 <PlaceLine key={sp.key} href={`/g/${sp.recommenders[0].guideSlug}/p/${sp.recommenders[0].placeId}`} place={sp.place} sub={whoRecommends(sp, user.id, followingSet)} />
@@ -117,7 +117,7 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
         {nothing && (
           <EmptyState
             title={`No ${trip.city} spots yet`}
-            body="Nobody you can see has recommended any. Ask friends who know it for their spots — they come straight to you."
+            body="Nobody you can see has vouched for any. Ask friends who know it for their spots — they come straight to you."
             action={<AskForGuideButton city={{ city: trip.city, country: trip.country }} label={`Ask friends for ${trip.city} spots`} variant="primary" size="md" />}
           />
         )}

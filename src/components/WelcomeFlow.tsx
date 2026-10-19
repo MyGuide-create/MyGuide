@@ -146,7 +146,7 @@ export function WelcomeFlow({
             <p className="text-[13px] font-semibold uppercase tracking-[0.08em] text-ink-muted">Step 2 of {total}</p>
             <h1 className="mt-2 font-display text-[30px] leading-[1.15] font-semibold">Add 3 spots you love</h1>
             <p className="mt-2 text-[17px] leading-normal text-ink-muted">
-              Where you eat, drink, work out or unwind. Your own map in seconds, and friends see the ones you recommend.
+              Where you eat, drink, work out or unwind. Your own map in seconds, and friends see the ones you vouch for.
             </p>
           </div>
           <div className="flex flex-col gap-3">

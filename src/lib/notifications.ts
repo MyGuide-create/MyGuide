@@ -136,8 +136,8 @@ export async function addNotifications(rows: NewNotification[]): Promise<void> {
           case "vouched":
           case "clap": {
             if (r.type === "vouched") {
-              title = `${who} went to ${p?.name ?? "your spot"} and recommends it`;
-              body = r.note ? `“${r.note}”` : "Your recommendation worked.";
+              title = `${who} went to ${p?.name ?? "your spot"} and vouches for it`;
+              body = r.note ? `“${r.note}”` : "Your tip worked.";
               if (g) url = p ? `/g/${g.slug}/p/${p.id}` : `/g/${g.slug}`;
             } else {
               title = g ? `${who} loved your guide ${g.title}` : `${who} loved your ${r.city ? `${r.city} ` : ""}spot${n === 1 ? "" : "s"}`;

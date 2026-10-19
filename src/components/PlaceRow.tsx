@@ -80,7 +80,7 @@ export function PlaceRow({
           </div>
           {currentUser?.id !== ownerId &&
             (yours ? (
-              <span className="relative z-10 shrink-0 rounded-full bg-sage-tint px-2 py-0.5 text-[11px] font-semibold text-sage" title="One of your spots">Your spot</span>
+              <span className="relative z-10 shrink-0 rounded-full bg-sage-tint px-2 py-0.5 text-[11px] font-semibold text-sage" title="Already in your list">✓ In your list</span>
             ) : (
               <SaveButton placeId={place.id} initial={!!saved} signedIn={!!currentUser} className="relative z-10 shrink-0" />
             ))}
