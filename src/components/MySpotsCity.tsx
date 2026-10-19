@@ -245,7 +245,7 @@ export function MySpotsCity({
               })}
           {savedSpots.length > 0 && (
             <section className="flex flex-col gap-2">
-              <PartHeading title="Saved to try" sub={`${savedSpots.length} · only you see these. Been? Tell us how it was`} tone="terracotta" />
+              <PartHeading title="Saved to try" sub={`${savedSpots.length} · only you see these. Been and loved one? Vouch for it`} tone="terracotta" />
               <ul className="flex flex-col gap-2">
                 {savedSpots.map((s) => (
                   <Row key={s.id} s={s} city={city} d={null} showCat />

@@ -14,10 +14,11 @@ import { Button, Input, Spinner, Textarea, cx } from "./ui";
  * Vouch for someone else's place (19 Oct 2026: Save / Vouch). Two words in the app: Save = "I want
  * to try it" (only you see it), Vouch = "I've been and I stand by it" (friends see it). "Been here"
  * is never a button on its own any more; it's only ever asked as a question.
- * - "chip": the place page, "Been here? Vouch for it".
+ * - "chip": the place page, "Vouch for it".
  * - "bar": a Home post's action row, "Vouch".
  * - "icon": a small ✓ (kept for old rows).
- * - "madeit": a saved spot in My spots, "Made it?" → Loved it / Not for me / Not yet.
+ * - "madeit": a saved spot in My spots, "Vouch" (plus "Not for me? Remove from Saved" in the sheet).
+ * No "Been here?" step (19 Oct 2026): tapping goes straight to vouching, words optional.
  * Vouching makes it one of your spots (your own words, theirs stay theirs), and the friend hears you went.
  */
 export function BeenHere({
@@ -45,7 +46,7 @@ export function BeenHere({
   const path = usePathname();
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [step, setStep] = useState<"made" | "ask" | "words" | "done">("ask");
+  const [step, setStep] = useState<"words" | "done">("words");
   const [note, setNote] = useState("");
   const [tip, setTip] = useState("");
   const [busy, setBusy] = useState(false);
@@ -61,7 +62,7 @@ export function BeenHere({
   const label = (
     <>
       <CheckIcon size={14} />
-      {vouched ? "You vouch for it" : "Been here? Vouch for it"}
+      {vouched ? "You vouch for it" : "Vouch for it"}
     </>
   );
 
@@ -87,21 +88,13 @@ export function BeenHere({
   if (!signedIn)
     return (
       <Link href={`/signup?why=save&next=${encodeURIComponent(path)}`} className={variant === "icon" ? iconCls : variant === "bar" ? barCls : variant === "madeit" ? madeCls : cls} aria-label="Vouch">
-        {variant === "icon" ? iconBody : variant === "bar" ? barBody : variant === "madeit" ? "Made it?" : label}
+        {variant === "icon" ? iconBody : variant === "bar" ? barBody : variant === "madeit" ? "Vouch" : label}
       </Link>
     );
 
   const tap = () => {
     if (vouched) return;
-    if (variant === "madeit") {
-      setStep("made");
-      setError(null);
-      setOpen(true);
-      return;
-    }
-    // Always the question (19 Oct 2026): "been" is a quiet state the app keeps (it hides the spot
-    // from your Explore) and is never shown, so saying no before doesn't change how this looks.
-    setStep("ask");
+    setStep("words");
     setError(null);
     setOpen(true);
   };
@@ -150,7 +143,7 @@ export function BeenHere({
         </button>
       ) : variant === "madeit" ? (
         <button type="button" className={madeCls} onClick={tap}>
-          Made it?
+          Vouch
         </button>
       ) : (
         <div className="flex flex-wrap items-center gap-2">
@@ -165,45 +158,22 @@ export function BeenHere({
         </div>
       )}
       {open && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center" role="dialog" aria-modal="true" aria-label={step === "made" ? `Made it to ${placeName}?` : "Vouch for it?"}>
+        <div className="fixed inset-0 z-50 flex items-end justify-center" role="dialog" aria-modal="true" aria-label={`Vouch for ${placeName}`}>
           <button type="button" aria-label="Close" onClick={close} className="absolute inset-0 bg-ink/40" />
           <div className="relative w-full max-w-[480px] rounded-t-[28px] bg-cream px-5 pt-3 pb-8 safe-bottom max-h-[85dvh] overflow-y-auto fade-up">
             <div className="mx-auto w-10 h-1.5 rounded-full bg-line mb-3" />
             <div className="flex items-start justify-between gap-3 mb-1">
               <h2 className="font-display text-[24px] leading-tight">
-                {step === "done" ? "You vouch for it" : step === "words" ? "In your own words" : step === "made" ? `Made it to ${placeName}?` : `Vouch for ${placeName}?`}
+                {step === "done" ? "You vouch for it" : `Vouch for ${placeName}`}
               </h2>
               <button type="button" aria-label="Close" onClick={close} className="w-9 h-9 -mr-2 shrink-0 flex items-center justify-center rounded-full text-ink-muted">
                 <XIcon size={18} />
               </button>
             </div>
 
-            {step === "made" && (
-              <>
-                <p className="text-[14px] text-ink-muted leading-relaxed">How was it? Only a vouch is shared with friends.</p>
-                <div className="mt-4 flex flex-col gap-2.5">
-                  <Button size="lg" onClick={() => setStep("words")}>Loved it, vouch for it</Button>
-                  <Button size="lg" variant="outline" onClick={notForMe}>Went, not for me</Button>
-                  <Button size="lg" variant="ghost" onClick={close}>Not yet</Button>
-                </div>
-              </>
-            )}
-
-            {step === "ask" && (
-              <>
-                <p className="text-[14px] text-ink-muted leading-relaxed">Been and loved it? Vouch for it and it joins your spots. Friends see you both vouch for it.</p>
-                <div className="mt-4 flex flex-col gap-2.5">
-                  <Button size="lg" onClick={() => setStep("words")}>Yes, vouch for it</Button>
-                  <Button size="lg" variant="outline" onClick={notForMe}>
-                    I&apos;ve been, but no
-                  </Button>
-                </div>
-              </>
-            )}
-
             {step === "words" && (
               <>
-                <p className="text-[13.5px] text-ink-muted leading-relaxed">Optional. Add them now or later from the place. {ownerFirst ? `${ownerFirst}'s words stay on their spot.` : ""}</p>
+                <p className="text-[13.5px] text-ink-muted leading-relaxed">Been and loved it? It joins your spots and friends see you vouch for it. Your words are optional{ownerFirst ? `; ${ownerFirst}'s stay on their spot` : ""}.</p>
                 <div className="mt-3 flex flex-col gap-3">
                   <div>
                     <p className="text-[12px] font-medium uppercase tracking-[0.08em] text-ink-muted mb-1.5">Description – what makes it special</p>
@@ -218,6 +188,11 @@ export function BeenHere({
                 <Button size="lg" className="mt-4 w-full" onClick={vouch} disabled={busy}>
                   {busy ? <Spinner /> : null} {note.trim() || tip.trim() ? "Vouch for it" : "Vouch, words later"}
                 </Button>
+                {variant === "madeit" && (
+                  <button type="button" onClick={notForMe} className="mt-3 w-full text-center text-[13px] text-ink-muted underline underline-offset-2">
+                    Not for me? Remove from Saved
+                  </button>
+                )}
               </>
             )}
 
