@@ -186,7 +186,7 @@ export function BeenHere({
                 </div>
                 {error && <p className="mt-2 text-[13px] text-danger">{error}</p>}
                 <Button size="lg" className="mt-4 w-full" onClick={vouch} disabled={busy}>
-                  {busy ? <Spinner /> : null} {note.trim() || tip.trim() ? "Vouch for it" : "Vouch, words later"}
+                  {busy ? <Spinner /> : null} Vouch
                 </Button>
                 {variant === "madeit" && (
                   <button type="button" onClick={notForMe} className="mt-3 w-full text-center text-[13px] text-ink-muted underline underline-offset-2">
