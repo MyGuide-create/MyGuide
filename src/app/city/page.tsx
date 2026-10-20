@@ -3,7 +3,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { AppShell, TopBar } from "@/components/AppShell";
 import { GuideCover } from "@/components/GuideCover";
-import { BookmarkIcon, ChevronDown, ListIcon, LockIcon, MapIcon, SparkleIcon } from "@/components/Icons";
+import { BookmarkIcon, ChevronDown, LockIcon, MapIcon, SparkleIcon } from "@/components/Icons";
 import { WhoPicker, type WhoOption } from "@/components/WhoPicker";
 import { findCity, metroOfDistrict } from "@/lib/places/cities";
 import { placeArea } from "@/lib/places/neighbourhood";
@@ -72,6 +72,7 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
   if (user && city && (one(sp.list) === "want" || (friendParam && friendParam === user.username.toLowerCase()))) redirect(`/my-places?city=${encodeURIComponent(city)}`);
   const wantParam = false;
   // Every spot is listed now; old ?all=1 / ?more=1 links still open the page and are ignored.
+  // Map and list together (20 Oct 2026), like My spots: ?view=map only makes the map taller.
   const mapView = one(sp.view) === "map";
 
   const [mine, everyone, wanted] = city
@@ -157,6 +158,26 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
   const friendGuides = isMe ? ownGuides : picked ? mine.filter((g) => g.owner.id === picked.id) : mine.filter((g) => g.owner.id !== viewerId);
 
   const centre = findCity(city);
+  // The map shows exactly what the list shows: friends' (or the picked person's) spots, then More from MyGuide in grey.
+  const pinOf = (s: CitySpot, more: boolean) => {
+    const r = leadFor(s, more ? null : picked, viewerId);
+    return {
+      id: s.key,
+      name: s.place.name,
+      lat: s.place.lat,
+      lng: s.place.lng,
+      category: s.place.category,
+      n: 0,
+      href: `/g/${r.guideSlug}/p/${r.placeId}`,
+      photoUrl: s.place.photoUrl,
+      photoMediaId: s.place.photoMediaId,
+      subtitle: [recommendLabel(s, more ? null : picked, more ? false : fromFriends, viewerId), s.place.category].filter(Boolean).join(" · "),
+      tone: more ? ("private" as const) : ("saved" as const),
+    };
+  };
+  const mapPins = [...shownSpots.map((s) => pinOf(s, false)), ...moreAll.map((s) => pinOf(s, true))]
+    .filter((p) => p.lat != null && p.lng != null)
+    .slice(0, 200);
   // Already asking friends for spots here (on your list)?
   const asking =
     !!user && !!city && (await (await getDb()).select({ city: guideWishes.city }).from(guideWishes).where(eq(guideWishes.userId, user.id))).some((w) => cityKey(w.city) === cityKey(city));
@@ -198,18 +219,6 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
       <TopBar
         back="/"
         title={null}
-        right={
-          city && spots.length > 0 ? (
-            <div role="group" aria-label="List or map" className="flex rounded-full bg-cream-deep/70 p-[3px] mr-1">
-              <Link href={cityHref({ view: "" })} replace scroll={false} aria-current={!mapView ? "true" : undefined} className={cx("inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px]", !mapView ? "bg-paper font-semibold shadow-sm" : "text-ink-muted")}>
-                <ListIcon size={14} /> List
-              </Link>
-              <Link href={cityHref({ view: "map" })} replace scroll={false} aria-current={mapView ? "true" : undefined} className={cx("inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px]", mapView ? "bg-paper font-semibold shadow-sm" : "text-ink-muted")}>
-                <MapIcon size={14} /> Map
-              </Link>
-            </div>
-          ) : null
-        }
       />
       <header className="px-5 pt-2 pb-4">
         <h1 className="font-display text-[38px] leading-[1.02]">{city || "Pick a city"}</h1>
@@ -316,37 +325,30 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
         {(newSpots.length > 0 || moreAll.length > 0) && (
           <section className="pt-7 flex flex-col gap-3">
 
-            {mapView && shownSpots.some((s) => s.place.lat != null && s.place.lng != null) && (
-              <div className="px-4 flex flex-col gap-2">
-                <GuideMap
-                  height="calc(100dvh - 230px)"
-                  locate
-                  center={centre ? { lat: centre.lat, lng: centre.lng } : null}
-                  places={shownSpots
-                    .filter((s) => s.place.lat != null && s.place.lng != null)
-                    .slice(0, 150)
-                    .map((s) => {
-                      const r = leadFor(s, picked, viewerId);
-                      return {
-                        id: s.key,
-                        name: s.place.name,
-                        lat: s.place.lat,
-                        lng: s.place.lng,
-                        category: s.place.category,
-                        // A number only when several people recommend it (2, 3…); one person's spot is a plain pin.
-                        n: s.recommenders.length > 1 ? s.recommenders.length : 0,
-                        href: `/g/${r.guideSlug}/p/${r.placeId}`,
-                        photoUrl: s.place.photoUrl,
-                        photoMediaId: s.place.photoMediaId,
-                        subtitle: recommendLabel(s, picked, fromFriends, viewerId),
-                      };
-                    })}
-                />
+            {/* One map above the list (20 Oct 2026): the same spots as the list below, with the same
+                filters. Plain pins, no numbers — who vouches is on each row and on the pin card.
+                Friends' spots in colour, "More from MyGuide" in grey. */}
+            {mapPins.length > 0 && (
+              <div className="px-4 flex flex-col gap-1.5">
+                <GuideMap height={mapView ? "calc(100dvh - 230px)" : 260} locate center={centre ? { lat: centre.lat, lng: centre.lng } : null} places={mapPins} />
+                <div className="flex items-center justify-between gap-3 px-1 text-[12px] text-ink-muted">
+                  <span className="flex items-center gap-3 min-w-0">
+                    {moreAll.length > 0 && shownSpots.length > 0 ? (
+                      <>
+                        <span className="inline-flex items-center gap-1.5"><span aria-hidden className="h-2.5 w-2.5 rounded-full bg-terracotta" />{picked ? first(picked) : fromFriends ? "Friends" : "MyGuide"}</span>
+                        <span className="inline-flex items-center gap-1.5"><span aria-hidden className="h-2.5 w-2.5 rounded-full bg-ink-faint" />More from MyGuide</span>
+                      </>
+                    ) : (
+                      <span>Tap a pin to see the spot</span>
+                    )}
+                  </span>
+                  <Link href={cityHref({ view: mapView ? "" : "map" })} replace scroll={false} className="shrink-0 inline-flex items-center gap-1 font-semibold text-terracotta-deep">
+                    <MapIcon size={13} /> {mapView ? "Smaller map" : "Bigger map"}
+                  </Link>
+                </div>
               </div>
             )}
 
-            {!mapView && (
-              <>
             {newSpots.length > 0 && (
             <div className="px-4 flex flex-col gap-2.5">
               <div className="flex items-baseline justify-between px-1">
@@ -392,8 +394,6 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
               <Link href={myCityHref} className="mx-4 mt-4 rounded-2xl border border-dashed border-cream-line px-4 py-3 text-center text-[13px] text-ink-muted">
                 {haveVouched + haveSaved} more already in your list · <span className="font-semibold text-terracotta-deep">Open My spots</span>
               </Link>
-            )}
-              </>
             )}
           </section>
         )}
