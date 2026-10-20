@@ -1,6 +1,6 @@
 import { and, desc, eq, isNotNull, sql } from "drizzle-orm";
 import { getDb } from "./db";
-import { follows, guides, pushSubscriptions, users, userVisits } from "./db/schema";
+import { follows, guides, places, pushSubscriptions, users, userVisits } from "./db/schema";
 import { dayKey } from "./visits";
 import { toPublicUser, type PublicUser } from "./auth";
 import { signUpInfo, type SignUpInfo } from "./oauthUsers";
@@ -14,6 +14,8 @@ export interface AdminUserRow {
   signUp: SignUpInfo;
   /** Guides with a publish date (public or private). */
   guidesPublished: number;
+  /** Spots they vouched for on their own (shared_at set). */
+  spotsVouched: number;
   followers: number;
   following: number;
   /** Last time they opened the app signed in (null before visit tracking, if they never opened a guide). */
@@ -39,6 +41,11 @@ export interface RetentionSummary {
   active7d: number;
   homeScreen: number;
   alertsOn: number;
+  /** "Came back", split by whether they ever opened it from the home-screen app (people who joined before today). */
+  cameBackHome: number;
+  cameBackHomeOf: number;
+  cameBackBrowser: number;
+  cameBackBrowserOf: number;
 }
 
 /** Per-person visit facts and the pilot's retention numbers, from user_visits (+ push subscriptions). */
@@ -60,7 +67,7 @@ export async function retention(): Promise<{ summary: RetentionSummary; perUser:
   const DAY = 86_400_000;
   const today = dayKey();
   const weekAgoDay = dayKey(new Date(Date.now() - 6 * DAY));
-  const summary: RetentionSummary = { cameBack: 0, cameBackOf: 0, weekLater: 0, weekLaterOf: 0, active7d: 0, homeScreen: 0, alertsOn: 0 };
+  const summary: RetentionSummary = { cameBack: 0, cameBackOf: 0, weekLater: 0, weekLaterOf: 0, active7d: 0, homeScreen: 0, alertsOn: 0, cameBackHome: 0, cameBackHomeOf: 0, cameBackBrowser: 0, cameBackBrowserOf: 0 };
   const perUser = new Map<string, { days: number; cameBack: boolean; homeScreen: boolean; alertsOn: boolean }>();
   for (const u of people) {
     const e = byUser.get(u.id) ?? { days: [], standalone: false };
@@ -71,6 +78,13 @@ export async function retention(): Promise<{ summary: RetentionSummary; perUser:
     if (signupDay < today) {
       summary.cameBackOf++;
       if (cameBack) summary.cameBack++;
+      if (e.standalone) {
+        summary.cameBackHomeOf++;
+        if (cameBack) summary.cameBackHome++;
+      } else {
+        summary.cameBackBrowserOf++;
+        if (cameBack) summary.cameBackBrowser++;
+      }
     }
     if (weekDay <= today) {
       summary.weekLaterOf++;
@@ -90,6 +104,8 @@ export interface AdminUsersSummary {
   newThisWeek: number;
   /** People with at least one published guide. */
   publishers: number;
+  /** People who published a guide or vouched for at least one spot. */
+  posters: number;
 }
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
@@ -107,13 +123,16 @@ export function startOfToday(now = new Date()): Date {
 /** Everyone, newest first, with what the Users tab shows. Small pilot: one pass, filtered in memory. */
 export async function adminUsers(filter: AdminUserFilter = "all"): Promise<{ summary: AdminUsersSummary; retention: RetentionSummary; rows: AdminUserRow[] }> {
   const db = await getDb();
-  const [all, published, followerCounts, followingCounts] = await Promise.all([
+  const [all, published, vouched, followerCounts, followingCounts] = await Promise.all([
     db.select().from(users).orderBy(desc(users.createdAt)),
     db.select({ id: guides.ownerId, n: sql<number>`count(*)` }).from(guides).where(isNotNull(guides.publishedAt)).groupBy(guides.ownerId),
+    db.select({ id: guides.ownerId, n: sql<number>`count(*)` }).from(places).innerJoin(guides, eq(places.guideId, guides.id)).where(isNotNull(places.sharedAt)).groupBy(guides.ownerId),
     db.select({ id: follows.followingId, n: sql<number>`count(*)` }).from(follows).where(eq(follows.status, "accepted")).groupBy(follows.followingId),
     db.select({ id: follows.followerId, n: sql<number>`count(*)` }).from(follows).where(and(eq(follows.status, "accepted"))).groupBy(follows.followerId),
   ]);
   const pub = new Map(published.map((r) => [r.id, Number(r.n)]));
+  const vch = new Map(vouched.map((r) => [r.id, Number(r.n)]));
+  const posted = (id: string) => (pub.get(id) ?? 0) + (vch.get(id) ?? 0) > 0;
   const fers = new Map(followerCounts.map((r) => [r.id, Number(r.n)]));
   const fing = new Map(followingCounts.map((r) => [r.id, Number(r.n)]));
   const [methods, ret] = await Promise.all([signUpInfo(all), retention()]);
@@ -126,13 +145,14 @@ export async function adminUsers(filter: AdminUserFilter = "all"): Promise<{ sum
     newToday: all.filter((u) => u.createdAt.getTime() >= today).length,
     newThisWeek: all.filter((u) => u.createdAt.getTime() >= weekAgo).length,
     publishers: all.filter((u) => (pub.get(u.id) ?? 0) > 0).length,
+    posters: all.filter((u) => posted(u.id)).length,
   };
   const rows = all
     .filter((u) =>
       filter === "new"
         ? u.createdAt.getTime() >= weekAgo
         : filter === "never"
-          ? !(pub.get(u.id) ?? 0)
+          ? !posted(u.id)
           : filter === "gone"
             ? !visitOf(u.id).cameBack && u.createdAt.getTime() < today
             : true,
@@ -143,6 +163,7 @@ export async function adminUsers(filter: AdminUserFilter = "all"): Promise<{ sum
       createdAt: u.createdAt,
       signUp: methods.get(u.id) ?? { method: "email" as const, linked: [] },
       guidesPublished: pub.get(u.id) ?? 0,
+      spotsVouched: vch.get(u.id) ?? 0,
       followers: fers.get(u.id) ?? 0,
       following: fing.get(u.id) ?? 0,
       lastSeenAt: u.lastSeenAt ?? null,

@@ -22,7 +22,7 @@ export default async function AdminPage({ searchParams }: PageProps<"/admin">) {
   if (!isAdmin(user)) notFound();
   const sp = await searchParams;
   const tab = sp.tab === "users" ? "users" : sp.tab === "cities" ? "cities" : "stats";
-  const filter: AdminUserFilter = sp.filter === "new" || sp.filter === "never" ? sp.filter : "all";
+  const filter: AdminUserFilter = sp.filter === "new" || sp.filter === "never" || sp.filter === "gone" ? sp.filter : "all";
   return (
     <AppShell>
       <TopBar back="/me" title="Admin" avatarUser={toPublicUser(user)} />
@@ -112,7 +112,7 @@ async function UsersTab({ filter }: { filter: AdminUserFilter }) {
         <Tile label="Users" value={summary.total} />
         <Tile label="New today" value={summary.newToday} hint="Since midnight, UAE time" />
         <Tile label="This week" value={summary.newThisWeek} hint="Last 7 days" />
-        <Tile label="Published a guide" value={summary.publishers} />
+        <Tile label="Posted" value={summary.posters} hint="Vouched for a spot or published a guide" note={`${summary.publishers} with a guide`} />
       </div>
       <RetentionTiles r={ret} />
       <div className="flex gap-2 overflow-x-auto no-scrollbar">
@@ -128,7 +128,7 @@ async function UsersTab({ filter }: { filter: AdminUserFilter }) {
         ))}
       </div>
       {rows.length === 0 ? (
-        <p className="px-1 text-[12.5px] text-ink-faint">{filter === "new" ? "Nobody new in the last 7 days." : filter === "never" ? "Everyone has published a guide." : "No users yet."}</p>
+        <p className="px-1 text-[12.5px] text-ink-faint">{filter === "new" ? "Nobody new in the last 7 days." : filter === "never" ? "Everyone has vouched for a spot or published a guide." : filter === "gone" ? "Everyone who joined before today came back." : "No users yet."}</p>
       ) : (
         <ul className="flex flex-col gap-2">
           {rows.map((r) => {
@@ -154,7 +154,7 @@ async function UsersTab({ filter }: { filter: AdminUserFilter }) {
                       {r.alertsOn ? " · alerts on" : ""}
                     </span>
                     <span className="block text-[12px] text-ink-muted tabular-nums">
-                      <b className={cx("font-semibold", r.guidesPublished ? "text-ink" : "text-ink-faint")}>{r.guidesPublished}</b> {r.guidesPublished === 1 ? "guide" : "guides"} published · {r.followers} {r.followers === 1 ? "follower" : "followers"} · {r.following} following
+                      <b className={cx("font-semibold", r.guidesPublished ? "text-ink" : "text-ink-faint")}>{r.guidesPublished}</b> {r.guidesPublished === 1 ? "guide" : "guides"} published · <b className={cx("font-semibold", r.spotsVouched ? "text-ink" : "text-ink-faint")}>{r.spotsVouched}</b> {r.spotsVouched === 1 ? "spot" : "spots"} vouched · {r.followers} {r.followers === 1 ? "follower" : "followers"} · {r.following} following
                     </span>
                   </span>
                 </Link>
@@ -190,6 +190,10 @@ function RetentionTiles({ r }: { r: RetentionSummary }) {
         <Tile label="Home-screen app" value={r.homeScreen} hint="Opened it from the home screen" />
         <Tile label="Alerts on" value={r.alertsOn} hint="Push notifications allowed" />
       </div>
+      <p className="px-1 mt-2 text-[12.5px] text-ink-muted tabular-nums">
+        Came back · <b className="font-semibold text-ink">home-screen app {pct(r.cameBackHome, r.cameBackHomeOf)}</b> ({r.cameBackHome} of {r.cameBackHomeOf})
+        {" · "}<b className="font-semibold text-ink">browser only {pct(r.cameBackBrowser, r.cameBackBrowserOf)}</b> ({r.cameBackBrowser} of {r.cameBackBrowserOf})
+      </p>
       <p className="px-1 mt-1.5 text-[11px] text-ink-faint">Counted from 6 Oct 2026; earlier days only show if they opened a guide or place.</p>
     </section>
   );
