@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNotNull, like, notInArray, or, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNotNull, like, notInArray, or, sql, type SQL } from "drizzle-orm";
 import { creditedNotesFor, type CreditedNote } from "./reuse";
 import { getDb } from "./db";
 import { follows, guideCollaborators, guideShares, guides, placeComments, placeLocations, placePhotos, placeReactions, placeTips, places, savedGuides, savedPlaces, users, type Guide, type Place, type PlaceComment, type PlacePhoto, type PlaceLocation, type PlaceTip, type User } from "./db/schema";
@@ -213,6 +213,25 @@ export async function listFeed(opts: { viewerId?: string | null; scope?: "public
   const now = Date.now();
   const rows = rankFeed(pool, (g) => feedScore(stats.get(g.id)!, now), (g) => g.ownerId).slice(0, opts.limit ?? 40);
   return filterVisibleCards(await hydrateCards(rows), opts.viewerId);
+}
+
+/**
+ * Published, public guides for Discoveries (20 Oct 2026): by these owners since `since`, plus these
+ * guide ids (hearted by people you follow), whenever they were published. Same visibility as the feed.
+ */
+export async function discoveryGuides(opts: { viewerId?: string | null; ownerIds: string[]; ids: string[]; since: Date }): Promise<GuideCard[]> {
+  const db = await getDb();
+  const either: SQL[] = [];
+  if (opts.ownerIds.length) either.push(and(inArray(guides.ownerId, opts.ownerIds), gte(guides.publishedAt, opts.since))!);
+  if (opts.ids.length) either.push(inArray(guides.id, opts.ids.slice(0, 900)));
+  if (!either.length) return [];
+  const rows = await db
+    .select()
+    .from(guides)
+    .where(and(publicPublished(), or(...either)))
+    .orderBy(desc(guides.publishedAt))
+    .limit(120);
+  return filterVisibleCards(await hydrateCards(rows.filter((g) => !isStash(g))), opts.viewerId);
 }
 
 export async function listFeedCities(): Promise<string[]> {

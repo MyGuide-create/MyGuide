@@ -140,9 +140,10 @@ export async function addNotifications(rows: NewNotification[]): Promise<void> {
               body = r.note ? `“${r.note}”` : "Your tip worked.";
               if (g) url = p ? `/g/${g.slug}/p/${p.id}` : `/g/${g.slug}`;
             } else {
-              title = g ? `${who} loved your guide ${g.title}` : `${who} loved your ${r.city ? `${r.city} ` : ""}spot${n === 1 ? "" : "s"}`;
+              // A heart on one spot (Discoveries, 20 Oct 2026) carries the place; older ones a guide or a city.
+              title = p ? `${who} loved your spot ${p.name}` : g ? `${who} loved your guide ${g.title}` : `${who} loved your ${r.city ? `${r.city} ` : ""}spot${n === 1 ? "" : "s"}`;
               body = r.note ?? "";
-              if (g) url = `/g/${g.slug}`;
+              if (g) url = p ? `/g/${g.slug}/p/${p.id}` : `/g/${g.slug}`;
             }
             // Not following them yet: "Follow back" on the alert itself (15 Oct 2026).
             if (a) {

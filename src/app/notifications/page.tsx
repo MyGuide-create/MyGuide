@@ -138,7 +138,7 @@ export default async function NotificationsPage() {
                   )}
                   {n.type === "clap" && (
                     <>
-                      {who} loved {rawGuide ? <>your guide <span className="font-display text-[16px]">“{rawGuide.title}”</span></> : <>your {n.city ? <b className="font-semibold">{n.city}</b> : null} spot{n.count === 1 ? "" : "s"}</>}
+                      {who} loved {n.placeId && placeMap.get(n.placeId) ? <>your spot <span className="font-medium">{placeMap.get(n.placeId)!.name}</span></> : rawGuide ? <>your guide <span className="font-display text-[16px]">“{rawGuide.title}”</span></> : <>your {n.city ? <b className="font-semibold">{n.city}</b> : null} spot{n.count === 1 ? "" : "s"}</>}
                       {n.note ? <span className="block text-[13px] italic text-ink/85">“{n.note}”</span> : null}
                     </>
                   )}
@@ -238,6 +238,9 @@ export default async function NotificationsPage() {
                     <Link href={`/g/${rawGuide.slug}/p/${n.placeId}`} className="font-medium text-terracotta">See the place →</Link>
                   )}
                   {n.type === "vouched" && rawGuide && n.placeId && (
+                    <Link href={`/g/${rawGuide.slug}/p/${n.placeId}`} className="font-medium text-terracotta">See the place →</Link>
+                  )}
+                  {n.type === "clap" && n.placeId && rawGuide && (
                     <Link href={`/g/${rawGuide.slug}/p/${n.placeId}`} className="font-medium text-terracotta">See the place →</Link>
                   )}
                   {n.type === "clap" && !rawGuide && n.city && (

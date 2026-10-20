@@ -77,9 +77,10 @@ export interface Recommendation {
  * places. Filtered for blocks and private accounts; places copied from someone else (or in a
  * copied guide) only count once the person adds their own words. Optional `city` / `ownerIds`.
  */
-export async function loadRecommendations(opts: { viewerId?: string | null; ownerIds?: string[]; city?: string }): Promise<Recommendation[]> {
-  const { viewerId, ownerIds, city } = opts;
+export async function loadRecommendations(opts: { viewerId?: string | null; ownerIds?: string[]; city?: string; placeIds?: string[] }): Promise<Recommendation[]> {
+  const { viewerId, ownerIds, city, placeIds } = opts;
   if (ownerIds && !ownerIds.length) return [];
+  if (placeIds && !placeIds.length) return [];
   const db = await getDb();
   const conds: SQL[] = [or(and(eq(guides.visibility, "public"), isNotNull(guides.publishedAt)), isNotNull(places.sharedAt))!];
   if (city) {
@@ -87,6 +88,8 @@ export async function loadRecommendations(opts: { viewerId?: string | null; owne
     conds.push(or(inArray(sql`lower(trim(${places.city}))`, variants), inArray(sql`lower(trim(${guides.city}))`, variants))!);
   }
   if (ownerIds) conds.push(inArray(guides.ownerId, ownerIds));
+  // Only these places (Discoveries, 20 Oct 2026: spots someone hearted or commented on).
+  if (placeIds) conds.push(inArray(places.id, placeIds.slice(0, 900)));
   const rows = await db
     .select({
       place: places,

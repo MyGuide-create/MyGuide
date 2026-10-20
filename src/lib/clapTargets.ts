@@ -1,6 +1,7 @@
 /** Claps (14 Oct 2026): what a clap points at. Plain module, used by the page, the button and the actions. */
 
-export type ClapKind = "spots" | "guide";
+/** "place" (20 Oct 2026): a heart on one spot in Discoveries; target = the place id. "spots" = the old one-day posts. */
+export type ClapKind = "spots" | "guide" | "place";
 
 /** One-tap notes that can come with a clap. */
 export const CLAP_NOTES = ["Looks great!", "Must try", "Saving for my trip"] as const;

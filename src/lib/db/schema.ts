@@ -39,6 +39,8 @@ export const users = sqliteTable("users", {
   onboardedAt: integer("onboarded_at", { mode: "timestamp_ms" }),
   /** Last time the app was opened while signed in (updated at most every ~30 min). */
   lastSeenAt: integer("last_seen_at", { mode: "timestamp_ms" }),
+  /** Featured (migration 0037, 20 Oct 2026): what they publish, vouch, heart or comment shows in everyone's Discoveries. */
+  isFeatured: integer("is_featured", { mode: "boolean" }).notNull().default(false),
   createdAt: integer("created_at", { mode: "timestamp_ms" })
     .notNull()
     .default(sql`(unixepoch() * 1000)`),
@@ -236,7 +238,7 @@ export const placeComments = sqliteTable(
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
     editedAt: integer("edited_at", { mode: "timestamp_ms" }),
   },
-  (t) => [index("place_comments_place_idx").on(t.placeId, t.createdAt)],
+  (t) => [index("place_comments_place_idx").on(t.placeId, t.createdAt), index("place_comments_author_idx").on(t.authorId, t.createdAt)],
 );
 
 export const follows = sqliteTable(
@@ -326,7 +328,7 @@ export const claps = sqliteTable(
     note: text("note"),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   },
-  (t) => [uniqueIndex("claps_user_target").on(t.userId, t.kind, t.target), index("claps_target_idx").on(t.kind, t.target)],
+  (t) => [uniqueIndex("claps_user_target").on(t.userId, t.kind, t.target), index("claps_target_idx").on(t.kind, t.target), index("claps_user_created_idx").on(t.userId, t.createdAt)],
 );
 
 /** People someone hid from follow suggestions (✕ on the Home spotlight, 15 Oct 2026). */

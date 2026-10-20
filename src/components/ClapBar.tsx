@@ -30,6 +30,9 @@ export function ClapBar({
   save,
   alsoRecommend = 0,
   me,
+  alsoTargets,
+  firstHeart = false,
+  hideProof = false,
 }: {
   kind: ClapKind;
   target: string;
@@ -54,12 +57,19 @@ export function ClapBar({
   alsoRecommend?: number;
   /** The viewer, for their face when they tap the heart. */
   me?: ClapFace;
+  /** Old one-day post hearts on this spot, cleared too when the heart is taken back. */
+  alsoTargets?: string[];
+  /** The viewer has never given a heart: the first one shows "Your friends see what you like." once. */
+  firstHeart?: boolean;
+  /** The card already names everyone who hearted it (Discoveries' reason line): skip the faces line until you heart it too. */
+  hideProof?: boolean;
 }) {
   const [s, setS] = useState<ClapSummary>(initial ?? { count: 0, mine: false, myNote: null, names: [], faces: [] });
   const [justClapped, setJustClapped] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const input = { kind, target, ownerId, city, count };
+  const [heartNote, setHeartNote] = useState(false);
+  const input = { kind, target, ownerId, city, count, alsoTargets };
 
   const toggle = async () => {
     const on = !s.mine;
@@ -72,6 +82,15 @@ export function ClapBar({
     );
     setJustClapped(on);
     setError(null);
+    // First heart ever (20 Oct 2026): say once that friends see it.
+    if (on && firstHeart) {
+      let seen = false;
+      try {
+        seen = localStorage.getItem("mg_heart_note_seen") === "1";
+        localStorage.setItem("mg_heart_note_seen", "1");
+      } catch {}
+      if (!seen) setHeartNote(true);
+    }
     try {
       await setClap({ ...input, on });
     } catch (e) {
@@ -128,7 +147,7 @@ export function ClapBar({
 
   return (
     <div className="flex flex-col gap-2">
-      {(lovers || recs) && (
+      {(lovers || recs) && !(hideProof && !s.mine) && (
         <div className="flex items-center gap-2 text-[12.5px] text-ink-muted leading-snug">
           {faces.length > 0 && (
             <span className="flex shrink-0">
@@ -169,6 +188,11 @@ export function ClapBar({
         <span className="flex-1" />
         {save && <span className="pr-1.5">{save}</span>}
       </div>
+      {heartNote && s.mine && (
+        <p role="status" className="flex items-center gap-1.5 rounded-xl bg-terracotta-tint px-3 py-2 text-[12.5px] text-terracotta-deep">
+          <HeartIcon size={14} filled className="shrink-0" /> Your friends see what you like.
+        </p>
+      )}
       {s.mine && !justClapped && s.myNote && <p className="text-[12px] text-ink-muted">You said “{s.myNote}”</p>}
       {s.mine && justClapped && (
         <div className="flex flex-wrap items-center gap-1.5">
