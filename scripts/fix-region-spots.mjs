@@ -5,8 +5,10 @@
 //   npx tsx scripts/fix-region-spots.mjs
 //       Report every saved place Google says is a city/region (locality, admin area, country, postcode…):
 //       owner, name, city, guide or My spots, vouched/private, start of the description. Writes nothing.
-//       Places the database can't be a city for (they have hours, a phone or a website) aren't looked up;
+//       Places the database can't be a city for (they have opening hours or a phone) aren't looked up
+//       (a city can have a website on Google, e.g. the city council's);
 //       add --all to look up every place anyway.
+//   Add --user <username> to list only one person's.
 //   npx tsx scripts/fix-region-spots.mjs --place <placeId> --to "<venue search>"
 //       Look the venue up on Google and show what would change. Writes nothing.
 //   npx tsx scripts/fix-region-spots.mjs --place <placeId> --to "<venue search>" --apply
@@ -64,8 +66,8 @@ if (!placeId) {
       where p.google_place_id is not null and p.google_place_id not like 'mock:%'
       order by u.username, p.city, p.name`)
   ).rows;
-  // A city has no hours, phone or website on Google, so those rows can't be one (unless --all).
-  const check = flag("--all") ? rows : rows.filter((r) => r.hours_json == null && r.phone == null && r.website == null);
+  // A city has no opening hours or phone on Google, so those rows can't be one (unless --all).
+  const check = flag("--all") ? rows : rows.filter((r) => r.hours_json == null && r.phone == null);
   const ids = [...new Set(check.map((r) => r.google_place_id))];
   console.log(`${rows.length} places with a Google listing; looking up ${ids.length} listing${ids.length === 1 ? "" : "s"} (${check.length} places)…`);
   const types = new Map();
@@ -76,6 +78,8 @@ if (!placeId) {
   }
   const failed = ids.filter((id) => types.get(id) == null).length;
   const found = check.filter((r) => isRegionResult(types.get(r.google_place_id)));
+  const who = opt("--user");
+  if (who) found.splice(0, found.length, ...found.filter((r) => r.username === who.replace(/^@/, "")));
   if (!found.length) console.log("No city or region spots found.");
   else {
     console.log(`\n${found.length} spot${found.length === 1 ? " is" : "s are"} really a city or region:\n`);
