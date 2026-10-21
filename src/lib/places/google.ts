@@ -71,8 +71,12 @@ function key(): string {
 function toResult(p: GooglePlace): PlaceResult {
   const comp = (type: string) => p.addressComponents?.find((c) => c.types?.includes(type))?.longText ?? "";
   // Districts Google calls their own town (Üsküdar, Etterbeek, Shibuya City) go under the main city; the district becomes the area.
+  // No town in the US (a township): the township (level 3) before the county (level 2) — "Liberty Township", which
+  // then settles under Cincinnati, not "Butler County" (22 Oct 2026). US only: elsewhere level 3 can be a small
+  // district (an Indonesian kecamatan) where the level-2 name is the better area ("Badung" → Bali).
+  const us = comp("country") === "United States";
   const grouped = groupUnderCity(
-    tidyCity(comp("locality") || comp("postal_town") || comp("administrative_area_level_2") || comp("administrative_area_level_1")),
+    tidyCity(comp("locality") || comp("postal_town") || (us ? comp("administrative_area_level_3") : "") || comp("administrative_area_level_2") || comp("administrative_area_level_1")),
     [comp("administrative_area_level_1"), comp("administrative_area_level_2")],
     comp("country"),
   );
@@ -427,7 +431,7 @@ export async function reverseGeocode(lat: number, lng: number): Promise<{ area: 
     const comps = data.results.flatMap((r) => r.address_components);
     const find = (...types: string[]) => comps.find((c) => types.some((t) => c.types.includes(t)))?.long_name ?? "";
     const grouped = groupUnderCity(
-      tidyCity(find("locality", "postal_town") || find("administrative_area_level_2") || find("administrative_area_level_1")),
+      tidyCity(find("locality", "postal_town") || (find("country") === "United States" ? find("administrative_area_level_3") : "") || find("administrative_area_level_2") || find("administrative_area_level_1")),
       [find("administrative_area_level_1"), find("administrative_area_level_2")],
       find("country"),
     );

@@ -43,9 +43,10 @@ const REGION_KM = 80;
  * gives in the local language (Genève → Geneva, Zürich, München). v5: a guide with no centre (The Cotswolds)
  * is centred on its places, so its villages count as its area. v6: Greater Copenhagen's areas and suburbs
  * (Ishøj, Frederiksberg, Hellerup, up the coast to Humlebæk) settle into Copenhagen. v7: towns within 40 km (same
- * country) join, lone towns in a guide follow its main city, Admin › Cities merges. Each bump re-runs over everything.
+ * country) join, lone towns in a guide follow its main city, Admin › Cities merges. v8: Cincinnati is a known city, so
+ * spots Google filed under a county (Son of a Butcher, "Butler County") settle into it. Each bump re-runs over everything.
  */
-export const SETTLE_JOB = "settle-cities-v7";
+export const SETTLE_JOB = "settle-cities-v8";
 
 type Row = {
   id: string;
