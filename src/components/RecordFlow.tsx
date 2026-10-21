@@ -90,15 +90,9 @@ export function RecordFlow({
   const [tips, setTips] = useState<string[]>([]);
   const [tipDraft, setTipDraft] = useState("");
   const [photoIds, setPhotoIds] = useState<string[]>([]);
-  /** Recommend to friends: on by default, remembers your last choice (16 Oct 2026). */
-  const [recommend, setRecommend] = useState(true);
-  useEffect(() => {
-    try {
-      if (localStorage.getItem("mg_recommend_default") === "0") queueMicrotask(() => setRecommend(false));
-    } catch {
-      /* storage blocked: default on */
-    }
-  }, []);
+  /** Vouched (friends see it) unless you tick "Keep it private" for this one spot. Never remembered (21 Oct 2026). */
+  const [keepPrivate, setKeepPrivate] = useState(false);
+  const recommend = !keepPrivate;
 
   /** Where the place is, once Google has told us (dropped pins don't say). */
   const placeCity = shownInfo?.city?.trim() ?? "";
@@ -406,26 +400,19 @@ export function RecordFlow({
             {!intoGuide && (
               <label className="flex items-center justify-between gap-4 rounded-2xl border border-line bg-paper px-4 py-3 cursor-pointer">
                 <span className="min-w-0">
-                  <span className="block text-[14.5px] font-semibold">Vouch for it</span>
+                  <span className="block text-[14.5px] font-semibold">Keep it private</span>
                   <span className="block text-[12.5px] text-ink-muted leading-snug">
-                    {recommend ? `You've been and love it. Friends see it on the ${placeCity || "city"} page` : "Only you see it. You can vouch for it later."}
+                    {keepPrivate ? "Only in your My spots. You can vouch for it later." : `You're vouching for it. Friends see it on the ${placeCity || "city"} page`}
                   </span>
                 </span>
                 <input
                   type="checkbox"
                   role="switch"
-                  checked={recommend}
-                  onChange={(e) => {
-                    setRecommend(e.target.checked);
-                    try {
-                      localStorage.setItem("mg_recommend_default", e.target.checked ? "1" : "0");
-                    } catch {
-                      /* storage blocked: just this time */
-                    }
-                  }}
+                  checked={keepPrivate}
+                  onChange={(e) => setKeepPrivate(e.target.checked)}
                   className="peer sr-only"
                 />
-                <span aria-hidden className="relative w-12 h-7 shrink-0 rounded-full bg-line transition-colors peer-checked:bg-sage peer-focus-visible:ring-2 peer-focus-visible:ring-terracotta after:absolute after:top-[3px] after:left-[3px] after:w-[22px] after:h-[22px] after:rounded-full after:bg-white after:shadow after:transition-transform peer-checked:after:translate-x-5" />
+                <span aria-hidden className="relative w-12 h-7 shrink-0 rounded-full bg-line transition-colors peer-checked:bg-ink peer-focus-visible:ring-2 peer-focus-visible:ring-terracotta after:absolute after:top-[3px] after:left-[3px] after:w-[22px] after:h-[22px] after:rounded-full after:bg-white after:shadow after:transition-transform peer-checked:after:translate-x-5" />
               </label>
             )}
           </div>
