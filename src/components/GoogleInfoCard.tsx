@@ -18,6 +18,8 @@ export interface GoogleInfo {
   city?: string;
   lng: number | null;
   businessStatus?: string | null;
+  /** Set when Google says this is a city or region, not a spot (see isRegionResult). */
+  region?: { name: string; country: string; lat: number; lng: number } | null;
 }
 
 /**

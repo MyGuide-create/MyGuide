@@ -581,14 +581,21 @@ function EditablePlace({
   noteRev: number;
 }) {
   const [fixing, setFixing] = useState(false);
+  const [fixError, setFixError] = useState<string | null>(null);
   const [open, setOpen] = useState(!place.note && !place.noteClipMediaId);
   const unresolved = place.lat == null;
 
   const onFix = async (pick: { providerId?: string; name: string }) => {
     if (!pick.providerId) { await onPatch({ name: pick.name }); setFixing(false); return; }
-    const np = await replacePlace(guideId, place.id, pick.providerId);
-    if (np) onReplaced(np);
-    setFixing(false);
+    setFixError(null);
+    try {
+      const np = await replacePlace(guideId, place.id, pick.providerId);
+      if (np) onReplaced(np);
+      setFixing(false);
+    } catch (e) {
+      // e.g. a city picked as the place: "That's a city, not a spot…"
+      setFixError(errorText(e, "Couldn't change the place."));
+    }
   };
 
   return (
@@ -634,7 +641,8 @@ function EditablePlace({
       </div>
       {fixing && (
         <div className="mt-3">
-          <PlaceSearch cityHint={cityHint || undefined} onPick={onFix} placeholder={`Search for ${place.name}…`} autoFocus />
+          <PlaceSearch placesOnly cityHint={cityHint || undefined} onPick={onFix} placeholder={`Search for ${place.name}…`} autoFocus />
+          {fixError && <p className="mt-2 text-[12.5px] text-danger">{fixError}</p>}
           <button type="button" onClick={() => { setFixing(false); onPin(); }} className="mt-2 inline-flex items-center gap-1.5 text-[12.5px] font-medium text-terracotta-deep">
             <PinIcon size={15} /> Not on Google? Drop a pin on the map instead
           </button>

@@ -26,6 +26,8 @@ export interface PlaceResult {
   businessStatus: "OPERATIONAL" | "CLOSED_TEMPORARILY" | "CLOSED_PERMANENTLY" | null;
   /** "pin" = a dropped pin with no listing (no provider id). */
   source: "google" | "mock" | "pin";
+  /** Google's types ("restaurant", "locality"…), when known. Used to tell a city from a spot (isRegionResult). */
+  types?: string[];
 }
 
 export interface NearbyPlaceResult extends PlaceResult {
@@ -37,6 +39,8 @@ export interface PlaceSuggestion {
   mainText: string;
   secondaryText: string;
   source: "google" | "mock";
+  /** Google's types for the suggestion, when known ("locality" = a city, not a spot). */
+  types?: string[];
 }
 
 /** A city or region from the city picker ("Tashkent" · "Uzbekistan"). */
@@ -55,7 +59,11 @@ export interface CityInfo {
 
 export interface PlacesProvider {
   readonly name: "google" | "mock";
-  autocomplete(input: string, cityHint?: string, near?: { lat: number; lng: number } | null): Promise<PlaceSuggestion[]>;
+  /**
+   * Suggestions with their types. `placesOnly`: cities and regions don't count when deciding whether to fall back
+   * to a text search (the caller filters them out with isRegionResult).
+   */
+  autocomplete(input: string, cityHint?: string, near?: { lat: number; lng: number } | null, opts?: { placesOnly?: boolean }): Promise<PlaceSuggestion[]>;
   /** Cities and regions only, for "Going somewhere?" and a guide's city. */
   cities(input: string): Promise<CitySuggestion[]>;
   city(id: string): Promise<CityInfo | null>;

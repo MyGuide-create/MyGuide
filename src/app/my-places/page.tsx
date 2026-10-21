@@ -43,6 +43,8 @@ export default async function MyPlacesPage({ searchParams }: { searchParams: Pro
   // Just imported: say what happened (and link the guide if one was made).
   const imported = Number(one("imported") || NaN);
   const already = Number(one("already") || 0);
+  // Rows that were a city, not a place (21 Oct 2026): named so nothing silently disappears.
+  const notCities = one("notcity").split("|").map((x) => x.trim()).filter(Boolean).slice(0, 20);
   const madeSlug = one("guide");
   const made = madeSlug ? await (await getDb()).query.guides.findFirst({ where: (g, { and, eq }) => and(eq(g.slug, madeSlug), eq(g.ownerId, user.id)) }) : undefined;
 
@@ -60,6 +62,11 @@ export default async function MyPlacesPage({ searchParams }: { searchParams: Pro
     <div className="mb-2.5 rounded-2xl bg-sage-tint px-3.5 py-2.5 text-[13px] leading-snug" role="status">
       <b className="font-semibold">Added {imported} place{imported === 1 ? "" : "s"}.</b>
       {already > 0 && <> {already} {already === 1 ? "was" : "were"} already here.</>}
+      {notCities.length > 0 && (
+        <span className="block mt-0.5 text-ink-muted">
+          Not added: {notCities.map((c) => `${c} (a city, not a place)`).join(", ")}
+        </span>
+      )}
       {made && (
         <>
           {" "}Your guide <Link href={`/g/${made.slug}/edit`} className="font-semibold underline underline-offset-2">{made.title}</Link> is ready as a draft.

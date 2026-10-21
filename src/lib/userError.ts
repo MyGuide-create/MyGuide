@@ -6,7 +6,10 @@
  * message there too ("MGU|code|message"), and errorText() on the client reads it back.
  * Usable on the server and in the browser.
  */
-export type UserErrorCode = "auth" | "forbidden" | "gone" | "invalid" | "google" | "upload" | "user";
+export type UserErrorCode = "auth" | "forbidden" | "gone" | "invalid" | "google" | "upload" | "user" | "region";
+
+/** A city or region picked as if it were a spot (21 Oct 2026). Code "region". */
+export const REGION_SPOT_TEXT = "That’s a city, not a spot. What’s the place called?";
 
 export const USER_ERROR_PREFIX = "MGU|";
 

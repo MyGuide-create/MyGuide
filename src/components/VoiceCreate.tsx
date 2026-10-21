@@ -236,6 +236,7 @@ export function VoiceCreate({
       const res = await importToMyPlaces({ places: placesIn, share, cityHint: city || result?.city || undefined, guideTitle: alsoGuide ? title.trim() : undefined });
       const qs = new URLSearchParams({ imported: String(res.added) });
       if (res.skipped) qs.set("already", String(res.skipped));
+      if (res.notAdded.length) qs.set("notcity", res.notAdded.join("|"));
       if (res.guideSlug) qs.set("guide", res.guideSlug);
       if (res.city) qs.set("city", res.city);
       const href = myPlacesHref(res.city);

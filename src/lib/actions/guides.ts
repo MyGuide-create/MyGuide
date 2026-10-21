@@ -1,6 +1,6 @@
 "use server";
 
-import { UserError } from "../userError";
+import { REGION_SPOT_TEXT, UserError } from "../userError";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { SQLiteUpdateSetSource } from "drizzle-orm/sqlite-core";
 import { tidyCity } from "@/lib/places/cityName";
@@ -15,7 +15,7 @@ import { sendWishGrants, wishesForMaking } from "../wishes";
 import { getPlacesProvider, isCategory, resolvePlaceByName, type PlaceResult } from "../places";
 import { canonicalCity, findCity } from "../places/cities";
 import { correctTypedCity } from "../places/correctCity";
-import { getPlacePhotos, reverseGeocode } from "../places/google";
+import { getPlacePhotos, isRegionResult, reverseGeocode } from "../places/google";
 import { validPin } from "../places/pins";
 import type { BranchCandidate } from "../places/branches";
 import { claimUnsplashPhoto } from "../covers/unsplash";
@@ -125,7 +125,7 @@ export async function createGuide(input: {
     updatedAt: now,
   });
 
-  const rows = await resolveDrafts(id, input.places ?? [], user.id, input.city, known);
+  const { rows } = await resolveDrafts(id, input.places ?? [], user.id, input.city, known);
   // Insert in chunks to keep each statement a reasonable size.
   for (let i = 0; i < rows.length; i += 50) await db.insert(places).values(rows.slice(i, i + 50));
   // If the guide city was unknown, borrow it from the first place (in list order) that has one.
@@ -167,7 +167,7 @@ export async function importToMyPlaces(input: {
   share: boolean;
   cityHint?: string;
   guideTitle?: string;
-}): Promise<{ added: number; skipped: number; city: string; guideSlug: string | null }> {
+}): Promise<{ added: number; skipped: number; city: string; guideSlug: string | null; notAdded: string[] }> {
   const user = await getCurrentUser();
   if (!user) redirect("/login?next=/create%3Fimport%3D1");
   const drafts = (input.places ?? []).slice(0, 300);
@@ -177,7 +177,10 @@ export async function importToMyPlaces(input: {
   if (guideTitle && isReservedTitle(guideTitle)) throw new UserError("“My places” is the name of your own list — give the guide another title.", "invalid");
   const db = await getDb();
   const known = findCity(input.cityHint);
-  const rows = await resolveDrafts("", drafts, user.id, input.cityHint, known);
+  const { rows, notAdded } = await resolveDrafts("", drafts, user.id, input.cityHint, known);
+  if (!rows.length && notAdded.length) {
+    throw new UserError(`Not added: ${notAdded.join(", ")} (${notAdded.length === 1 ? "a city" : "cities"}, not ${notAdded.length === 1 ? "a place" : "places"}).`, "invalid");
+  }
   const { stash, skipped } = await addToStash(user.id, rows, { share: input.share });
 
   // The most common city among them: where they land on My places, and the guide's city.
@@ -217,11 +220,20 @@ export async function importToMyPlaces(input: {
   revalidatePath(`/g/${stash.slug}`);
   revalidatePath("/my-places");
   revalidatePath("/me");
-  return { added: rows.length - skipped, skipped, city: main.city, guideSlug };
+  return { added: rows.length - skipped, skipped, city: main.city, guideSlug, notAdded };
 }
 
-/** Look up imported/typed places on Google (or keep dropped pins) as rows for `guideId`, in list order. */
-async function resolveDrafts(guideId: string, drafts: DraftPlaceInput[], userId: string, cityHint: string | undefined, known: ReturnType<typeof findCity>): Promise<(typeof places.$inferInsert)[]> {
+/**
+ * Look up imported/typed places on Google (or keep dropped pins) as rows for `guideId`, in list order.
+ * Rows Google says are a city or region ("Lisbon" in a saved list) are left out and named in `notAdded`.
+ */
+async function resolveDrafts(
+  guideId: string,
+  drafts: DraftPlaceInput[],
+  userId: string,
+  cityHint: string | undefined,
+  known: ReturnType<typeof findCity>,
+): Promise<{ rows: (typeof places.$inferInsert)[]; notAdded: string[] }> {
   const id = guideId;
   const user = { id: userId };
   const input = { city: cityHint };
@@ -250,9 +262,18 @@ async function resolveDrafts(guideId: string, drafts: DraftPlaceInput[], userId:
     } catch (e) {
       console.warn("[createGuide] resolve failed", e);
     }
+    if (resolved && isRegionResult(resolved.types)) return { region: resolved.name || name };
     return { ...placeValues(id, position, name, resolved, user.id), note };
   });
-  return rows;
+  const kept: (typeof places.$inferInsert)[] = [];
+  const notAdded: string[] = [];
+  for (const r of rows) {
+    if ("region" in r && typeof r.region === "string") notAdded.push(r.region);
+    else kept.push(r as typeof places.$inferInsert);
+  }
+  // Keep positions in list order with no gaps.
+  kept.forEach((r, i) => (r.position = i));
+  return { rows: kept, notAdded };
 }
 
 function placeValues(guideId: string, position: number, fallbackName: string, r: PlaceResult | null, authorId: string): typeof places.$inferInsert {
@@ -461,7 +482,7 @@ export async function addPinnedPlace(guideId: string, input: { name: string; lat
 }
 
 /** Turn an existing place into a dropped pin (e.g. it couldn't be matched, or Google has it in the wrong spot). */
-export async function setPlacePin(guideId: string, placeId: string, input: { lat: number; lng: number }): Promise<Place> {
+export async function setPlacePin(guideId: string, placeId: string, input: { lat: number; lng: number; name?: string; category?: string }): Promise<Place> {
   const { guide, userId } = await requireOwner(guideId);
   if (!validPin(input.lat, input.lng)) throw new UserError("That pin isn't on the map.", "invalid");
   const db = await getDb();
@@ -477,6 +498,9 @@ export async function setPlacePin(guideId: string, placeId: string, input: { lat
     area: where?.hood ?? "",
     // A new town: settle it again from scratch (it may join an area, like North Vancouver → Vancouver).
     ...(where?.city ? { city: where.city, sourceCity: "", country: where.country } : {}),
+    // A city saved as a spot, pinned at the real place: it gets the place's name and category too.
+    ...(input.name?.trim() ? { name: input.name.trim().slice(0, 120) } : {}),
+    ...(isCategory(input.category) ? { category: input.category } : {}),
   });
   return (await db.query.places.findFirst({ where: eq(places.id, placeId) }))!;
 }
@@ -670,6 +694,11 @@ export async function replacePlace(guideId: string, placeId: string, providerId:
   const before = await getPlaceInGuide(guideId, placeId);
   const resolved = await getPlacesProvider().details(providerId);
   if (!resolved) return null;
+  // Fixing a spot to a city makes it a city spot again (21 Oct 2026).
+  if (isRegionResult(resolved.types)) throw new UserError(REGION_SPOT_TEXT, "region");
+  // Name and category always come from the new match: that's what turns a city saved as a spot
+  // ("Cincinnati", Scenic Spots) into the real place ("Son of a Butcher", Food & Drinks). Words,
+  // tips, photos, vouch and dates aren't touched.
   await applyLocationFix(db, userId, before, guide, {
     name: resolved.name,
     address: resolved.address,

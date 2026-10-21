@@ -41,6 +41,7 @@ import { BeenHere } from "@/components/BeenHere";
 import { AddToGuideButton } from "@/components/AddToGuideButton";
 import { isReusable, reuseTargets } from "@/lib/reuse";
 import { namesSentence } from "@/lib/utils";
+import { citySpotOf } from "@/lib/places/regionHint";
 import { instagramHref, websiteLabel, whatsappHref } from "@/lib/placeLinks";
 
 export const dynamic = "force-dynamic";
@@ -214,6 +215,7 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
               cityHint={stashPlace ? undefined : tidyCity(guide.city) || undefined}
               droppedPin={isDroppedPin(place)}
               at={place.lat != null && place.lng != null ? { lat: place.lat, lng: place.lng } : null}
+              citySpot={citySpotOf(place)}
             />
           )}
           {mine && (
@@ -235,6 +237,7 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
                 droppedPin={mine.droppedPin}
                 at={mine.lat != null && mine.lng != null ? { lat: mine.lat, lng: mine.lng } : null}
                 label="Wrong place? Fix yours"
+                citySpot={citySpotOf(place)}
               />
             </div>
           )}

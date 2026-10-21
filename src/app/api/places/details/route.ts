@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { getPlacesProvider } from "@/lib/places";
+import { isRegionResult } from "@/lib/places/google";
 
 /** What Google knows about a place, for the "Filled in from Google" preview while recording it. */
 export async function GET(req: Request) {
@@ -23,6 +24,8 @@ export async function GET(req: Request) {
         city: p.city,
         lng: p.lng,
         businessStatus: p.businessStatus,
+        // A city or region, not a spot: Add a spot asks for the place itself, searching in this city.
+        region: isRegionResult(p.types) ? { name: p.name, country: p.country, lat: p.lat, lng: p.lng } : null,
       },
     });
   } catch (e) {

@@ -263,6 +263,7 @@ export function PhotoPlacesFlow() {
       const res = await importToMyPlaces({ places: chosen.map((r) => ({ name: r.name, providerId: r.providerId, cityHint: r.city })), share: true });
       const qs = new URLSearchParams({ imported: String(res.added) });
       if (res.skipped) qs.set("already", String(res.skipped));
+      if (res.notAdded.length) qs.set("notcity", res.notAdded.join("|"));
       if (res.city) qs.set("city", res.city);
       const href = myPlacesHref(res.city);
       const [path, hash] = href.split("#");

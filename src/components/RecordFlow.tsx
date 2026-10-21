@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { errorText } from "@/lib/errorText";
+import { REGION_SPOT_TEXT, readUserError } from "@/lib/userError";
+import type { TypedCity } from "@/lib/places/regionHint";
 import { useEffect, useState, useTransition } from "react";
 import { useExitFlow } from "./BackButton";
 import { putPlaceInGuide, saveRecordedPlace, type RecordedPlace } from "@/lib/actions/record";
@@ -83,6 +85,19 @@ export function RecordFlow({
     return () => { live = false; };
   }, [pickedId]);
   const shownInfo = pickedId && googleInfo?.id === pickedId ? googleInfo.info : null;
+  /**
+   * A city was picked as the spot (21 Oct 2026): back to search with "That's a city, not a spot", searching in
+   * that city. The tip, photos and Keep it private stay as typed.
+   */
+  const [cityNotSpot, setCityNotSpot] = useState<{ city: TypedCity | null; n: number } | null>(null);
+  const backToSearchIn = (city: TypedCity | null) => {
+    setCityNotSpot((c) => ({ city, n: (c?.n ?? 0) + 1 }));
+    setSelected(null);
+    setGoogleInfo(null);
+    setError(null);
+    setStep("confirm");
+    window.scrollTo({ top: 0 });
+  };
 
   const [special, setSpecial] = useState("");
   /** The description box, before Add (works like the tip box; Continue keeps it too). */
@@ -159,6 +174,11 @@ export function RecordFlow({
   const save = (share: boolean) => {
     if (!selected) return;
     setError(null);
+    // Google says it's a city (an old link, or a city that slipped through): ask for the place itself.
+    if (shownInfo?.region) {
+      backToSearchIn(shownInfo.region);
+      return;
+    }
     startSaving(async () => {
       try {
         const res = await saveRecordedPlace({
@@ -181,6 +201,20 @@ export function RecordFlow({
         setStep("done");
         window.scrollTo({ top: 0 });
       } catch (e) {
+        if (readUserError(e)?.code === "region") {
+          // The server caught it (typed "as named", or Google's details hadn't loaded): find the city to search in.
+          let city: TypedCity | null = shownInfo?.region ?? null;
+          if (!city) {
+            try {
+              const r = await fetch(`/api/places/autocomplete?places=1&q=${encodeURIComponent(selected.name)}`);
+              city = ((await r.json()) as { city?: TypedCity | null }).city ?? null;
+            } catch {
+              /* search without the city chip */
+            }
+          }
+          backToSearchIn(city);
+          return;
+        }
         setError(errorText(e, "Couldn't save that place."));
       }
     });
@@ -201,6 +235,7 @@ export function RecordFlow({
     setGuideSheet(false);
     setNewTitle("");
     setError(null);
+    setCityNotSpot(null);
     setStep("confirm");
     window.scrollTo({ top: 0 });
   };
@@ -254,7 +289,20 @@ export function RecordFlow({
           <div className="px-5 pt-4">
             {locate === "denied" && <p className="mb-2 text-[12px] text-ink-muted">We couldn&apos;t get your location, so search for the place instead.</p>}
             {locate === "empty" && <p className="mb-2 text-[12px] text-ink-muted">Nothing nearby matched — search for the place instead.</p>}
-            <PlaceSearch onPick={pickManual} placeholder="Search for the place you're at…" autoFocus={locate === "denied" || locate === "empty"} />
+            {cityNotSpot && (
+              <div role="alert" className="mb-2.5 rounded-2xl bg-terracotta-tint/70 px-3.5 py-2.5 text-[13px] leading-snug">
+                <b className="font-semibold">{REGION_SPOT_TEXT}</b>
+                {(specialDraft.trim() || special.trim()) && <span className="block text-[12px] text-ink-muted mt-0.5">Your tip is kept.</span>}
+              </div>
+            )}
+            <PlaceSearch
+              key={cityNotSpot ? `city-${cityNotSpot.n}` : "search"}
+              placesOnly
+              initialInCity={cityNotSpot?.city ?? null}
+              onPick={(pick) => { setCityNotSpot(null); pickManual(pick); }}
+              placeholder="Search for the place you're at…"
+              autoFocus={!!cityNotSpot || locate === "denied" || locate === "empty"}
+            />
             <div className="mt-2.5 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
               {locate !== "locating" && (
                 <button type="button" onClick={() => setPinning(true)} className="inline-flex items-center gap-1.5 text-[12.5px] font-medium text-terracotta-deep">

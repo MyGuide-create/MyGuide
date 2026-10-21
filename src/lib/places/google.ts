@@ -44,6 +44,26 @@ interface GooglePlace {
   websiteUri?: string;
 }
 
+/**
+ * Google types that mean "a city or region", not a spot you can go to (21 Oct 2026: Margit's "Cincinnati" and
+ * "Istanbul" spots). Neighbourhoods (sublocality, neighborhood) stay allowed: Alfama is a fine spot.
+ */
+export const REGION_TYPES = [
+  "locality",
+  "administrative_area_level_1",
+  "administrative_area_level_2",
+  "administrative_area_level_3",
+  "country",
+  "postal_code",
+  "postal_town",
+  "colloquial_area",
+] as const;
+
+/** True when Google's types say this result is a city, region, country or postcode rather than a place. */
+export function isRegionResult(types?: readonly string[] | null): boolean {
+  return !!types?.some((t) => (REGION_TYPES as readonly string[]).includes(t));
+}
+
 function key(): string {
   return process.env.GOOGLE_MAPS_API_KEY?.trim() ?? "";
 }
@@ -78,6 +98,7 @@ function toResult(p: GooglePlace): PlaceResult {
     businessStatus:
       status === "OPERATIONAL" || status === "CLOSED_TEMPORARILY" || status === "CLOSED_PERMANENTLY" ? status : null,
     source: "google",
+    types: p.types ?? (p.primaryType ? [p.primaryType] : []),
   };
 }
 
@@ -118,8 +139,8 @@ function locationBias(cityHint?: string, near?: { lat: number; lng: number } | n
 export const googleProvider: PlacesProvider = {
   name: "google",
 
-  async autocomplete(input, cityHint, near) {
-    const data = await gfetch<{ suggestions?: Array<{ placePrediction?: { placeId: string; text?: { text: string }; structuredFormat?: { mainText?: { text: string }; secondaryText?: { text: string } } } }> }>(
+  async autocomplete(input, cityHint, near, opts) {
+    const data = await gfetch<{ suggestions?: Array<{ placePrediction?: { placeId: string; text?: { text: string }; structuredFormat?: { mainText?: { text: string }; secondaryText?: { text: string } }; types?: string[] } }> }>(
       "/places:autocomplete",
       { method: "POST", body: JSON.stringify({ input, locationBias: locationBias(cityHint, near) }) },
     );
@@ -131,20 +152,25 @@ export const googleProvider: PlacesProvider = {
         mainText: p.structuredFormat?.mainText?.text ?? p.text?.text ?? "",
         secondaryText: p.structuredFormat?.secondaryText?.text ?? "",
         source: "google",
+        types: p.types ?? [],
       }));
-    if (suggestions.length || input.trim().split(/\s+/).length < 2) return suggestions;
+    const usable = opts?.placesOnly ? suggestions.filter((s) => !isRegionResult(s.types)) : suggestions;
+    if (usable.length || input.trim().split(/\s+/).length < 2) return suggestions;
     // Autocomplete gives up on "name + area" ("Nightjar Coffee Alserkal"); a text search handles it.
-    const found = await gfetch<{ places?: Array<{ id: string; displayName?: { text: string }; formattedAddress?: string }> }>("/places:searchText", {
+    const found = await gfetch<{ places?: Array<{ id: string; displayName?: { text: string }; formattedAddress?: string; types?: string[] }> }>("/places:searchText", {
       method: "POST",
-      fieldMask: "places.id,places.displayName,places.formattedAddress",
+      fieldMask: "places.id,places.displayName,places.formattedAddress,places.types",
       body: JSON.stringify({ textQuery: input, pageSize: 5, locationBias: locationBias(cityHint, near) }),
     });
-    return (found?.places ?? []).map<PlaceSuggestion>((p) => ({
+    const more = (found?.places ?? []).map<PlaceSuggestion>((p) => ({
       providerId: p.id,
       mainText: p.displayName?.text ?? input,
       secondaryText: p.formattedAddress ?? "",
       source: "google",
+      types: p.types ?? [],
     }));
+    // Keep the region suggestions too (the caller uses them for the "Looking for a place in …?" hint).
+    return [...suggestions.filter((s) => !more.some((m) => m.providerId === s.providerId)), ...more];
   },
 
   async searchText(query, cityHint) {

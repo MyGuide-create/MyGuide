@@ -1,6 +1,6 @@
 "use server";
 
-import { UserError } from "../userError";
+import { REGION_SPOT_TEXT, UserError } from "../userError";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -11,7 +11,7 @@ import { findOrCreateStash, findStash, loadMyPlaces, unguidedByCity } from "../m
 import { canonicalCity } from "../places/cities";
 import { getGuideById } from "../guides";
 import { getPlacesProvider, isCategory, resolvePlaceByName, type PlaceResult } from "../places";
-import { reverseGeocode } from "../places/google";
+import { isRegionResult, reverseGeocode } from "../places/google";
 import { validPin } from "../places/pins";
 import { notifyPlacesAdded } from "../notify";
 import { fileSavedPlaces } from "./fileSaved";
@@ -87,6 +87,8 @@ export async function saveRecordedPlace(input: RecordPlaceInput): Promise<Record
   } catch (e) {
     console.warn("[saveRecordedPlace] resolve failed", e);
   }
+  // A city or region isn't a spot (Margit's "Cincinnati", 21 Oct 2026): ask for the place itself.
+  if (resolved && isRegionResult(resolved.types)) throw new UserError(REGION_SPOT_TEXT, "region");
 
   let guide: Guide;
   let toStash = false;

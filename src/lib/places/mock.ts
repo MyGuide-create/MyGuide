@@ -1,6 +1,7 @@
 import { guessCategoryFromName } from "./categories";
 import { sameBrand } from "./branches";
 import { CITIES, detectCityInText, findCity } from "./cities";
+import { MOCK_REGIONS, type MockRegion } from "./mock-regions";
 import { haversineMeters } from "./geo";
 import { MOCK_PLACES, type MockPlace } from "./mock-data";
 import type { CitySuggestion, NearbyPlaceResult, PlaceResult, PlaceSuggestion, PlacesProvider } from "./types";
@@ -32,6 +33,7 @@ function toResult(p: MockPlace): PlaceResult {
     hours: p.hours,
     businessStatus: "OPERATIONAL",
     source: "mock",
+    types: ["establishment"],
   };
 }
 
@@ -103,6 +105,40 @@ function synthesize(rawName: string, cityHint?: string): PlaceResult | null {
   };
 }
 
+/** Cities, regions and neighbourhoods matching what was typed, like Google's autocomplete returns them. */
+function regionsFor(q: string): MockRegion[] {
+  const n = norm(q);
+  if (n.length < 3) return [];
+  return MOCK_REGIONS.filter((r) => norm(r.name).startsWith(n) || n.startsWith(norm(r.name))).slice(0, 2);
+}
+
+function regionResult(r: MockRegion): PlaceResult {
+  return {
+    providerId: `mock:region:${r.name}|${r.country}|${r.lat}|${r.lng}|${r.types.join(",")}`,
+    name: r.name,
+    address: r.name === r.country ? r.country : `${r.name}, ${r.country}`,
+    city: r.city ?? r.name,
+    country: r.country,
+    lat: r.lat,
+    lng: r.lng,
+    category: "Scenic Spots",
+    photoUrl: null,
+    photoUrls: [],
+    phone: null,
+    website: null,
+    instagram: null,
+    hours: null,
+    businessStatus: null,
+    source: "mock",
+    types: r.types,
+  };
+}
+
+function parseRegionId(id: string): MockRegion | null {
+  const [name, country, lat, lng, types] = id.replace(/^mock:region:/, "").split("|");
+  return MOCK_REGIONS.find((r) => r.name === name && r.country === country) ?? (name && lat ? { name, country, lat: Number(lat), lng: Number(lng), types: (types ?? "locality").split(",") } : null);
+}
+
 export const mockProvider: PlacesProvider = {
   name: "mock",
 
@@ -110,6 +146,10 @@ export const mockProvider: PlacesProvider = {
     const q = strip(input);
     if (q.length < 2) return [];
     const hint = findCity(cityHint);
+    const regions = regionsFor(q).map<PlaceSuggestion>((r) => {
+      const res = regionResult(r);
+      return { providerId: res.providerId, mainText: r.name, secondaryText: r.name === r.country ? "" : r.country, source: "mock", types: r.types };
+    });
     const ranked = MOCK_PLACES.map((p) => ({ p, s: score(q, p) + (hint && p.city === hint.city ? 5 : 0) }))
       .filter((x) => x.s > 0)
       .sort((a, b) => b.s - a.s)
@@ -119,17 +159,19 @@ export const mockProvider: PlacesProvider = {
         mainText: p.name,
         secondaryText: `${p.address}`,
         source: "mock",
+        types: ["establishment"],
       }));
-    const synth = synthesize(q, cityHint);
+    const synth = regions.some((r) => norm(r.mainText) === norm(q)) ? null : synthesize(q, cityHint);
     if (synth && !ranked.some((r) => norm(r.mainText) === norm(synth.name))) {
       ranked.push({
         providerId: synth.providerId,
         mainText: synth.name,
         secondaryText: `${synth.city}, ${synth.country} · add as named`,
         source: "mock",
+        types: ["establishment"],
       });
     }
-    return ranked;
+    return [...regions, ...ranked];
   },
 
   async searchText(query, cityHint) {
@@ -141,6 +183,9 @@ export const mockProvider: PlacesProvider = {
       if (s > 0 && (!best || s > best.s)) best = { p, s };
     }
     if (best && best.s >= 50) return toResult(best.p);
+    // Like Google: searching a bare city name finds the city itself.
+    const region = MOCK_REGIONS.find((r) => norm(r.name) === norm(q));
+    if (region) return regionResult(region);
     return synthesize(q, cityHint);
   },
 
@@ -167,12 +212,20 @@ export const mockProvider: PlacesProvider = {
   },
 
   async city(id) {
+    if (id.startsWith("mock:region:")) {
+      const r = parseRegionId(id);
+      return r ? { city: r.city ?? r.name, country: r.country, lat: r.lat, lng: r.lng } : null;
+    }
     const [city, country, lat, lng] = id.replace(/^city:/, "").split("|");
     if (!city || !lat) return null;
     return { city, country: country ?? "", lat: Number(lat), lng: Number(lng) };
   },
 
   async details(providerId) {
+    if (providerId.startsWith("mock:region:")) {
+      const r = parseRegionId(providerId);
+      return r ? regionResult(r) : null;
+    }
     if (providerId.startsWith("mock:new:")) {
       const [, , nameSlug, citySlug] = providerId.split(":");
       const city = findCity(citySlug?.replace(/-/g, " "));
