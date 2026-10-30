@@ -70,7 +70,7 @@ export const MAPS_LIST_FALLBACK =
   "We couldn't read that Google Maps list automatically. Try one of these instead: take screenshots of the list and use Add screenshots above; or on a computer, open the list in Google Maps, select it (click the first place, then shift-click the last, or Cmd/Ctrl+A), copy and paste it here; or download your lists from Google Takeout (Saved) and paste the CSV.";
 
 const LIST_LINK_RE =
-  /https?:\/\/(?:maps\.app\.goo\.gl\/[A-Za-z0-9_-]+|goo\.gl\/maps\/[A-Za-z0-9_-]+|(?:www\.)?google\.[a-z.]+\/maps\/placelists\/list\/[A-Za-z0-9_-]+)[^\s<>"')]*/i;
+  /https?:\/\/(?:maps\.app\.goo\.gl\/[A-Za-z0-9_-]+|goo\.gl\/maps\/[A-Za-z0-9_-]+|(?:www\.)?google\.[a-z.]+\/maps\/placelists\/list\/[A-Za-z0-9_-]+|(?:www\.)?google\.[a-z.]+\/maps\/d\/[^\s<>"')?]*\?(?:[^\s<>"')]*&)?mid=[A-Za-z0-9_-]+)[^\s<>"')]*/i;
 const MAPS_LINK_RE = /https?:\/\/(?:maps\.app\.goo\.gl|goo\.gl\/maps|(?:www\.|maps\.)?google\.[a-z.]+\/maps|maps\.google\.[a-z.]+)/i;
 
 /**
@@ -99,7 +99,7 @@ export function listTitleFromCaption(caption: string): string {
 
 /** A Google Maps link to a whole saved list (not a single place). */
 export function isMapsListUrl(url: string): boolean {
-  return /\/maps\/(?:placelists|@[^/]*\/data=[^?]*!11m1)/.test(url) || /\/maps\/placelists\//.test(url);
+  return /\/maps\/(?:placelists|@[^/]*\/data=[^?]*!11m1)/.test(url) || /\/maps\/placelists\//.test(url) || /\/maps\/d\/[^?]*\?(?:.*&)?mid=/.test(url);
 }
 
 /** Lines Google Maps adds when you copy a list page: ratings, prices, categories, buttons. */

@@ -1,5 +1,6 @@
 // src/lib/places/googleMapsList.ts
-// Reads a shared/public Google Maps saved list (maps.app.goo.gl/… or /maps/placelists/list/<id>).
+// Reads a shared/public Google Maps saved list (maps.app.goo.gl/… or /maps/placelists/list/<id>),
+// or a Google My Maps map (google.com/maps/d/edit|viewer?mid=<id>) via its public KML export.
 // Uses Google's UNDOCUMENTED internal endpoint — best-effort only. It can change or be blocked
 // at any time, so callers must fall back to the existing "copy the list text / Takeout / screenshot" message.
 
@@ -13,7 +14,7 @@ export type MapsListPlace = {
 
 export type MapsListResult = { title?: string; places: MapsListPlace[] };
 
-export type MapsListErrorCode = "not_a_list" | "fetch_failed" | "parse_failed" | "empty";
+export type MapsListErrorCode = "not_a_list" | "fetch_failed" | "parse_failed" | "empty" | "private";
 
 export class MapsListError extends Error {
   constructor(public code: MapsListErrorCode, message?: string) {
@@ -30,10 +31,24 @@ const HEADERS: Record<string, string> = {
 
 const SHORT_RE = /^https?:\/\/(maps\.app\.goo\.gl|goo\.gl\/maps)\//i;
 const LIST_RE = /\/maps\/placelists\/list\/([A-Za-z0-9_-]+)/;
+/** Google My Maps: /maps/d/edit?mid=…, /maps/d/viewer?mid=…, /maps/d/u/0/embed?mid=… */
+const MYMAPS_RE = /\/maps\/d\/[^?#\s]*\?(?:[^#\s]*&)?mid=([A-Za-z0-9_-]+)/;
 const MAX_PLACES = 500;
 
+type ListRef = { kind: "list" | "mymaps"; id: string };
+
+function matchRef(s: string): ListRef | null {
+  for (const v of [s, safeDecode(s)]) {
+    const my = v.match(MYMAPS_RE);
+    if (my) return { kind: "mymaps", id: my[1] };
+    const l = v.match(LIST_RE);
+    if (l) return { kind: "list", id: l[1] };
+  }
+  return null;
+}
+
 export function looksLikeMapsList(url: string): boolean {
-  return LIST_RE.test(url) || SHORT_RE.test(url);
+  return LIST_RE.test(url) || MYMAPS_RE.test(url) || SHORT_RE.test(url);
 }
 
 function safeDecode(s: string): string {
@@ -44,9 +59,9 @@ function safeDecode(s: string): string {
   }
 }
 
-async function resolveListId(url: string): Promise<string> {
-  const direct = url.match(LIST_RE);
-  if (direct) return direct[1];
+async function resolveListRef(url: string): Promise<ListRef> {
+  const direct = matchRef(url);
+  if (direct) return direct;
   if (!SHORT_RE.test(url)) throw new MapsListError("not_a_list");
 
   // A browser User-Agent gets a JavaScript redirect page; a plain request gets a normal 302,
@@ -67,13 +82,13 @@ async function resolveListId(url: string): Promise<string> {
     if (!location && res.status >= 400) throw new MapsListError("fetch_failed", `HTTP ${res.status}`);
     if (!location) {
       const body = (await res.text()).replace(/\\\//g, "/").replace(/\\u002F/gi, "/");
-      const m = body.match(LIST_RE) ?? safeDecode(body).match(LIST_RE);
-      if (m) return m[1];
+      const m = matchRef(body);
+      if (m) return m;
       break;
     }
     current = new URL(location, current).toString();
-    const m = current.match(LIST_RE) ?? safeDecode(current).match(LIST_RE);
-    if (m) return m[1];
+    const m = matchRef(current);
+    if (m) return m;
   }
   throw new MapsListError("not_a_list"); // a single place or something else — let the normal importer handle it
 }
@@ -157,8 +172,82 @@ export function parseMapsListResponse(text: string): MapsListResult {
   return { title, places };
 }
 
+// ---- Google My Maps (KML export) ----
+
+function decodeXml(s: string): string {
+  return s
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+    .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCodePoint(parseInt(n, 16)))
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&");
+}
+
+function tag(xml: string, name: string): string | undefined {
+  const m = xml.match(new RegExp(`<${name}(?:\\s[^>]*)?>([\\s\\S]*?)</${name}>`));
+  return m ? decodeXml(m[1]).trim() : undefined;
+}
+
+/** Description text: My Maps keeps HTML (often <br>) inside; we want plain lines. */
+function plainText(html: string): string {
+  return decodeXml(
+    html
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<\/(?:p|div|li)>/gi, "\n")
+      .replace(/<img[^>]*>/gi, "")
+      .replace(/<[^>]+>/g, ""),
+  )
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/** Parse a My Maps KML export. Only Point placemarks become places (lines/areas are skipped). */
+export function parseMyMapsKml(kml: string): MapsListResult {
+  if (!/<kml[\s>]/i.test(kml)) throw new MapsListError("private"); // Google sent a sign-in page instead
+  const docHead = kml.split(/<(?:Folder|Placemark)[\s>]/)[0];
+  const title = tag(docHead, "name") || undefined;
+  const places: MapsListPlace[] = [];
+  for (const m of kml.matchAll(/<Placemark[\s>][\s\S]*?<\/Placemark>/g)) {
+    const pm = m[0];
+    const point = pm.match(/<Point[\s>][\s\S]*?<coordinates>\s*([-\d.eE+]+)\s*,\s*([-\d.eE+]+)/);
+    if (!point) continue;
+    const lng = Number(point[1]);
+    const lat = Number(point[2]);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) continue;
+    const name = (tag(pm, "name") ?? "").replace(/\s+/g, " ").trim();
+    if (!name) continue;
+    const rawDesc = pm.match(/<description>([\s\S]*?)<\/description>/)?.[1];
+    const note = rawDesc ? plainText(decodeXml(rawDesc)).slice(0, 1000) || undefined : undefined;
+    const address = tag(pm, "address") || undefined;
+    places.push({ name, lat, lng, address, note });
+  }
+  const out = dedupe(places).slice(0, MAX_PLACES);
+  if (!out.length) throw new MapsListError("empty");
+  return { title, places: out };
+}
+
+async function fetchMyMap(mid: string): Promise<MapsListResult> {
+  const endpoint = `https://www.google.com/maps/d/kml?mid=${encodeURIComponent(mid)}&forcekml=1`;
+  let res: Response;
+  try {
+    res = await fetch(endpoint, { headers: HEADERS, signal: AbortSignal.timeout(12_000) });
+  } catch (e) {
+    throw new MapsListError("fetch_failed", String(e));
+  }
+  if (res.status === 401 || res.status === 403) throw new MapsListError("private", `HTTP ${res.status}`);
+  if (!res.ok) throw new MapsListError("fetch_failed", `HTTP ${res.status}`);
+  return parseMyMapsKml(await res.text());
+}
+
 export async function fetchGoogleMapsList(url: string): Promise<MapsListResult> {
-  const listId = await resolveListId(url.trim());
+  const ref = await resolveListRef(url.trim());
+  if (ref.kind === "mymaps") return fetchMyMap(ref.id);
+  const listId = ref.id;
   const endpoint =
     "https://www.google.com/maps/preview/entitylist/getlist?authuser=0&hl=en&gl=us" +
     `&pb=!1m4!1s${encodeURIComponent(listId)}!2e1!3m1!1e1!2e2!3e2!4i${MAX_PLACES}!16b1`;

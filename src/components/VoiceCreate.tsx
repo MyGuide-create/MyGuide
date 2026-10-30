@@ -33,6 +33,8 @@ type DraftPlace = ParsedPlacesResponse["places"][number] & {
 const MATCH_BATCH = 20;
 const MATCH_PARALLEL = 2;
 const SINGLE_PLACE_MSG = "This looks like a single place, not a list. Paste it in the box below instead.";
+const PRIVATE_MAP_MSG =
+  "That map is private, so we can't read it. In Google My Maps, tap Share and turn on \u201cAnyone with this link can view\u201d, then paste the link again.";
 
 export interface ForWish {
   ids: string[];
@@ -157,6 +159,7 @@ export function VoiceCreate({
         listPlaces.push(...list.places);
       }
       if (!listPlaces.length) {
+        if (codes.length && codes.every((c) => c === "private")) return fail(PRIVATE_MAP_MSG);
         return fail(opts.fromLinkField && codes.length && codes.every((c) => c === "not_a_list") ? SINGLE_PLACE_MSG : MAPS_LIST_FALLBACK);
       }
 
