@@ -159,6 +159,14 @@ export const EyeOffIcon = ({ size, ...p }: P) => (
 export const BookmarkIcon = ({ size, filled, ...p }: P & { filled?: boolean }) => (
   <svg {...base(size, p)} fill={filled ? "currentColor" : "none"}><path d="M6.5 3.5h11a1 1 0 0 1 1 1v16l-6.5-4.2-6.5 4.2v-16a1 1 0 0 1 1-1Z" /></svg>
 );
+/** Must try (1 Nov 2026): a spot you want to prioritise. */
+export const StarIcon = ({ size, filled, ...p }: P & { filled?: boolean }) => (
+  <svg {...base(size, p)} fill={filled ? "currentColor" : "none"}><path d="m12 3.2 2.7 5.6 6.1.8-4.5 4.2 1.1 6.1L12 17l-5.4 2.9 1.1-6.1-4.5-4.2 6.1-.8L12 3.2Z" strokeLinejoin="round" /></svg>
+);
+/** Top pick (1 Nov 2026): one of your best vouched spots in a city. */
+export const CrownIcon = ({ size, filled, ...p }: P & { filled?: boolean }) => (
+  <svg {...base(size, p)} fill={filled ? "currentColor" : "none"}><path d="M3.5 8 8 11.5 12 5l4 6.5L20.5 8l-1.8 10H5.3L3.5 8Z" strokeLinejoin="round" /><path d="M5.5 20.5h13" /></svg>
+);
 export const HeartIcon = ({ size, filled, ...p }: P & { filled?: boolean }) => (
   <svg {...base(size, p)} fill={filled ? "currentColor" : "none"}><path d="M12 20.5s-7.5-4.6-9.3-9.4C1.5 7.8 3.6 4.5 7 4.5c2 0 3.4 1.1 5 3 1.6-1.9 3-3 5-3 3.4 0 5.5 3.3 4.3 6.6-1.8 4.8-9.3 9.4-9.3 9.4Z" /></svg>
 );

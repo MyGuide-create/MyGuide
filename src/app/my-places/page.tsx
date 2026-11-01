@@ -160,8 +160,10 @@ export default async function MyPlacesPage({ searchParams }: { searchParams: Pro
         shared: !!it.place.sharedAt,
         inStash: it.inStash,
         alsoBy: alsoBy.get(spotKey(it.place)) ?? [],
+        topPick: it.recommended && !!it.place.topPickAt,
+        mustTry: !it.recommended && !!it.place.mustTryAt,
       }));
-    const savedSpots: MySpot[] = savedHere.map(({ place, guide }) => ({
+    const savedSpots: MySpot[] = savedHere.map(({ place, guide, mustTryAt }) => ({
       id: place.id,
       name: place.name,
       category: place.category,
@@ -178,6 +180,8 @@ export default async function MyPlacesPage({ searchParams }: { searchParams: Pro
       shared: false,
       inStash: false,
       saved: { from: savedOwners.get(guide.ownerId) ?? "", been: beenIds.has(place.id) },
+      topPick: false,
+      mustTry: !!mustTryAt,
     }));
     const cityLink = `/city?${new URLSearchParams({ name: focusCity }).toString()}`;
     return (

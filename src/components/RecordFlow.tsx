@@ -143,7 +143,7 @@ export function RecordFlow({
           });
           const data = (await res.json()) as { results: NearbyResult[] };
           if (data.results?.length) {
-            setNearby(data.results);
+            setNearby(data.results.slice(0, 3)); // three keeps "Yes, that's it" on screen
             setLocate("found");
           } else {
             setLocate("empty");

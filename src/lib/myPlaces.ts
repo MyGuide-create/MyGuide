@@ -167,7 +167,8 @@ export async function addToStash(
     const [{ min }] = await db.select({ min: sql<number>`coalesce(min(${places.position}), 0)` }).from(places).where(eq(places.guideId, stash.id));
     const start = Number(min) - fresh.length;
     const now = new Date();
-    const values = fresh.map((r, i) => ({ ...r, position: start + i, createdAt: now, sharedAt: opts.share ? now : null }));
+    // From an imported list (1 Nov 2026): a Must try stays private (you haven't been); a Top pick is always vouched.
+    const values = fresh.map((r, i) => ({ ...r, position: start + i, createdAt: now, sharedAt: r.topPickAt || (opts.share && !r.mustTryAt) ? now : null }));
     for (let i = 0; i < values.length; i += 50) await db.insert(places).values(values.slice(i, i + 50));
     await db.update(guides).set({ updatedAt: now }).where(eq(guides.id, stash.id));
     await settleGuides(db, [stash.id]);

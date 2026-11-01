@@ -71,7 +71,7 @@ export async function vouchForPlace(placeId: string, input: { note?: string; tip
     const existing = (await db.select().from(places).where(eq(places.guideId, stash.id))).find((p) => spotKey(p) === k);
     if (!existing) throw new UserError("Couldn't add it. Try again.");
     mineId = existing.id;
-    await db.update(places).set({ sharedAt: now }).where(and(eq(places.id, mineId), isNull(places.sharedAt)));
+    await db.update(places).set({ sharedAt: now, mustTryAt: null }).where(and(eq(places.id, mineId), isNull(places.sharedAt)));
   }
   if (note) await db.update(places).set({ note, noteAuthorId: user.id }).where(eq(places.id, mineId));
   if (tip) await db.insert(placeTips).values({ id: newId(), placeId: mineId, body: tip, position: 0, createdAt: now });

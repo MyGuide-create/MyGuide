@@ -3,7 +3,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { AppShell, TopBar } from "@/components/AppShell";
 import { GuideCover } from "@/components/GuideCover";
-import { BookmarkIcon, ChevronDown, LockIcon, MapIcon, SparkleIcon } from "@/components/Icons";
+import { BookmarkIcon, ChevronDown, CrownIcon, LockIcon, MapIcon, SparkleIcon } from "@/components/Icons";
 import { WhoPicker, type WhoOption } from "@/components/WhoPicker";
 import { findCity, metroOfDistrict } from "@/lib/places/cities";
 import { placeArea } from "@/lib/places/neighbourhood";
@@ -132,7 +132,11 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
   const isMe = false;
   const picked = friends.find((f) => f.user.username.toLowerCase() === friendParam)?.user ?? null;
 
-  const bySomeone = picked ? newSpots.filter((s) => s.recommenders.some((r) => r.user.id === picked.id)) : newSpots;
+  // A friend picked: their top picks (crowns, 1 Nov 2026) lead, in the order they're already in.
+  const crownedBy = (s: CitySpot, id: string) => s.recommenders.some((r) => r.user.id === id && r.topPick);
+  const bySomeone = picked
+    ? newSpots.filter((s) => s.recommenders.some((r) => r.user.id === picked.id)).sort((a, b) => Number(crownedBy(b, picked.id)) - Number(crownedBy(a, picked.id)))
+    : newSpots;
   const cats = CATEGORIES.filter((c) => bySomeone.some((s) => s.place.category === c));
   const cat = cats.find((c) => c === catParam) ?? null;
   const shownSpots = cat ? bySomeone.filter((s) => s.place.category === cat) : bySomeone;
@@ -146,7 +150,7 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
       : [];
   const capLead = (list: CitySpot[]) => capRuns(list, (s) => leadFor(s, null, viewerId).user.id);
   // No category chip → both lists are grouped by category (same fixed order as guide pages), every
-  // spot shown, most recommended then most recent within each group. A chip → one flat list.
+  // spot shown, most recently vouched first within each group (1 Nov 2026). A chip → one flat list.
   const spotGroups = groupSpots(shownSpots, !cat);
   const moreGroups = groupSpots(moreAll, !cat).map((g) => ({ ...g, spots: capLead(g.spots) }));
   // Headings only when the page has more than one category (like a guide with one category).
@@ -636,6 +640,12 @@ function SpotRow({
       <span className="flex-1 min-w-0 flex flex-col gap-1">
         <span className={cx("font-semibold text-[15px] leading-snug", showMarks && "pr-10")}>{p.name}</span>
         {subline && <span className={cx("text-[12.5px] text-ink-muted truncate", showMarks && "pr-10")}>{subline}</span>}
+        {lead.topPick && (
+          <span className={cx("inline-flex items-center gap-1 text-[12px] font-semibold text-ink", showMarks && "pr-10")}>
+            <CrownIcon size={13} filled className="text-ochre" />
+            {lead.user.id === viewerId ? "Your top pick" : `${first(lead.user)}’s top pick`}
+          </span>
+        )}
         {lead.tip && (
           <span className="text-[13px] leading-snug text-ink/85 line-clamp-2">
             &ldquo;{lead.tip}&rdquo; <span className="text-ink-muted">{nm(lead.user, viewerId)}</span>

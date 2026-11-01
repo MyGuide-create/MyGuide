@@ -726,13 +726,15 @@ export interface SavedPlaceView {
   place: Place;
   guide: Pick<Guide, "id" | "slug" | "title" | "shareToken" | "visibility" | "ownerId">;
   savedAt: Date;
+  /** Your Must try star on it (1 Nov 2026). Never the place owner's own marks. */
+  mustTryAt: Date | null;
 }
 
 /** A reader's saved places, newest first, limited to guides they can still open. */
 export async function listSavedPlaces(userId: string): Promise<SavedPlaceView[]> {
   const db = await getDb();
   const rows = await db
-    .select({ place: places, guide: guides, savedAt: savedPlaces.createdAt })
+    .select({ place: places, guide: guides, savedAt: savedPlaces.createdAt, mustTryAt: savedPlaces.mustTryAt })
     .from(savedPlaces)
     .innerJoin(places, eq(places.id, savedPlaces.placeId))
     .innerJoin(guides, eq(guides.id, places.guideId))
@@ -752,7 +754,7 @@ export async function listSavedPlaces(userId: string): Promise<SavedPlaceView[]>
     }
     if (!ok) continue;
     const { id, slug, title, shareToken, visibility, ownerId } = r.guide;
-    out.push({ place: r.place, guide: { id, slug, title, shareToken, visibility, ownerId }, savedAt: r.savedAt });
+    out.push({ place: r.place, guide: { id, slug, title, shareToken, visibility, ownerId }, savedAt: r.savedAt, mustTryAt: r.mustTryAt });
   }
   return out;
 }

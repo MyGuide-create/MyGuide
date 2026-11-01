@@ -165,6 +165,10 @@ export const places = sqliteTable(
     sharedAt: integer("shared_at", { mode: "timestamp_ms" }),
     /** Last time the owner shared it or wrote/changed its description or a tip (src/lib/fresh.ts). */
     freshAt: integer("fresh_at", { mode: "timestamp_ms" }),
+    /** Top pick (crown, 1 Nov 2026): one of the owner's best vouched spots in this city. Public; up to 10 per city. */
+    topPickAt: integer("top_pick_at", { mode: "timestamp_ms" }),
+    /** Must try (star, 1 Nov 2026): the owner hasn't been yet and wants to prioritise it. Private; cleared on vouching. */
+    mustTryAt: integer("must_try_at", { mode: "timestamp_ms" }),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   },
   (t) => [index("places_guide_idx").on(t.guideId, t.position)],
@@ -398,6 +402,8 @@ export const savedPlaces = sqliteTable(
     placeId: text("place_id")
       .notNull()
       .references(() => places.id, { onDelete: "cascade" }),
+    /** Must try (star, 1 Nov 2026): a saved spot you want to prioritise. */
+    mustTryAt: integer("must_try_at", { mode: "timestamp_ms" }),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   },
   (t) => [primaryKey({ columns: [t.userId, t.placeId] }), index("saved_places_place_idx").on(t.placeId)],

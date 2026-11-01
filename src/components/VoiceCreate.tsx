@@ -12,7 +12,8 @@ import type { MapsListResult } from "@/lib/places/googleMapsList";
 import { findMapsListLink, hasMapsLink, listTitleFromCaption, MAPS_LIST_FALLBACK } from "@/lib/places/importText";
 import { formatCoords } from "@/lib/places/pins";
 import { mapLimit } from "@/lib/utils";
-import { CheckIcon, ListIcon, PinIcon, XIcon } from "./Icons";
+import { noteWithLabel, readStar, splitLabel } from "@/lib/places/listMarks";
+import { CheckIcon, CrownIcon, ListIcon, PinIcon, StarIcon, XIcon } from "./Icons";
 import { useExitFlow } from "./BackButton";
 import { CityPicker, type PickedCity } from "./CityPicker";
 import { PlaceSearch } from "./PlaceSearch";
@@ -27,6 +28,8 @@ type DraftPlace = ParsedPlacesResponse["places"][number] & {
   pin?: { lat: number; lng: number; address?: string } | null;
   /** The list owner's note → "Description - What Makes It Special". */
   note?: string;
+  /** Starred in their list ("Kyubey Sushi*", 1 Nov 2026). Nothing happens unless they say what their stars mean. */
+  starred?: boolean;
 };
 
 /** Google Maps list places per /api/import/match-places request, and requests in flight at once. */
@@ -91,6 +94,8 @@ export function VoiceCreate({
   const [share, setShare] = useState(!forSomeone);
   /** "Also make a guide from these" — on when they started from "Create a guide" and typed a title. */
   const [alsoGuide, setAlsoGuide] = useState(false);
+  /** What the stars in their imported list mean (1 Nov 2026): spots to try, their top picks, or nothing. */
+  const [starsMean, setStarsMean] = useState<"" | "try" | "top">("");
   /** A list's own name (Google Maps list title), offered as an example, never filled in for them. */
   const [suggestedTitle, setSuggestedTitle] = useState("");
 
@@ -163,8 +168,15 @@ export function VoiceCreate({
         return fail(opts.fromLinkField && codes.length && codes.every((c) => c === "not_a_list") ? SINGLE_PLACE_MSG : MAPS_LIST_FALLBACK);
       }
 
+      // Marks typed into the names (1 Nov 2026): "Kyubey Sushi*" → Must try; "Ginza Kojyu - TWO Michelin
+      // Star" → matched as "Ginza Kojyu", with "TWO Michelin Star" as the note unless it's part of the real name.
+      const marks = listPlaces.map((p) => {
+        const { name, star } = readStar(p.name);
+        return { name, star, ...splitLabel(name) };
+      });
+      const forMatch = listPlaces.map((p, i) => ({ ...p, name: marks[i].base }));
       const batches: MapsListResult["places"][] = [];
-      for (let i = 0; i < listPlaces.length; i += MATCH_BATCH) batches.push(listPlaces.slice(i, i + MATCH_BATCH));
+      for (let i = 0; i < forMatch.length; i += MATCH_BATCH) batches.push(forMatch.slice(i, i + MATCH_BATCH));
       let done = 0;
       setImportMsg(`Matching ${listPlaces.length} places on Google…`);
       const matched = await mapLimit(batches, MATCH_PARALLEL, async (batch) => {
@@ -191,10 +203,11 @@ export function VoiceCreate({
       setDraft([
         ...places.map(({ list, match }, i) => ({
           key: `${i}-${list.name}`,
-          name: list.name,
+          name: marks[i].name,
           resolved: match,
           pin: match ? null : { lat: list.lat, lng: list.lng, address: list.address },
-          note: list.note,
+          note: noteWithLabel(marks[i].label, match?.name ?? null, list.note),
+          starred: marks[i].star,
         })),
         ...extraPlaces.map((p, i) => ({ ...p, key: `x${i}-${p.name}` })),
       ]);
@@ -220,6 +233,7 @@ export function VoiceCreate({
       cityHint: p.cityHint,
       pin: p.resolved ? null : p.pin,
       note: p.note,
+      mark: !forSomeone && p.starred && starsMean ? starsMean : undefined,
     }));
     setCreating(true);
     try {
@@ -489,6 +503,12 @@ export function VoiceCreate({
                         ? `Dropped pin · ${p.pin.address || formatCoords(p.pin.lat, p.pin.lng)}`
                         : `“${p.name}” — couldn't match it to a place`}
                   </div>
+                  {p.starred && !forSomeone && (
+                    <div className={cx("mt-0.5 text-[11.5px] font-semibold", starsMean === "top" ? "text-ink" : starsMean === "try" ? "text-terracotta-deep" : "text-ink-muted")}>
+                      {starsMean === "top" ? <CrownIcon size={12} filled className="inline -mt-0.5 mr-1 text-ochre" /> : <StarIcon size={12} filled={!!starsMean} className="inline -mt-0.5 mr-1" />}
+                      {starsMean === "top" ? "Top pick" : starsMean === "try" ? "Must try" : "Starred in your list"}
+                    </div>
+                  )}
                   {p.note && <div className="mt-1 text-[12px] text-ink-muted italic line-clamp-2">“{p.note}”</div>}
                   {!p.removed && (
                     <button type="button" onClick={() => setFixingKey(fixingKey === p.key ? null : p.key)} className="mt-1 text-[11.5px] font-medium text-terracotta">
@@ -576,6 +596,39 @@ export function VoiceCreate({
             </>
           )}
         </div>
+        {!forSomeone && kept.some((p) => p.starred) && (
+          // Stars in their list (1 Nov 2026): they say what they mean; nothing is marked until they do.
+          <div className="rounded-2xl border border-line bg-paper p-3.5 flex flex-col gap-3">
+            <div>
+              <div className="text-[13.5px] font-semibold">
+                {kept.filter((p) => p.starred).length} place{kept.filter((p) => p.starred).length === 1 ? " is" : "s are"} starred in your list. What do your stars mean?
+              </div>
+              <p className="mt-0.5 text-[12px] text-ink-muted leading-snug">You can change any of them later in My spots.</p>
+            </div>
+            <div role="radiogroup" aria-label="What your stars mean" className="flex flex-col gap-2">
+              {[
+                { v: "try" as const, t: "Places I want to try", d: "Starred as Must try. Only you see this.", icon: <StarIcon size={18} filled className="text-terracotta" /> },
+                { v: "top" as const, t: "My favourites", d: `Crowned as your top picks and vouched for, so friends see them. Up to 10 per city.`, icon: <CrownIcon size={18} filled className="text-ochre" /> },
+                { v: "" as const, t: "Nothing, ignore them", d: "Bring them in like the rest.", icon: <XIcon size={18} className="text-ink-faint" /> },
+              ].map((o) => (
+                <button
+                  key={o.v || "none"}
+                  type="button"
+                  role="radio"
+                  aria-checked={starsMean === o.v}
+                  onClick={() => setStarsMean(o.v)}
+                  className={cx("flex items-start gap-2.5 rounded-xl border px-3 py-2 text-left", starsMean === o.v ? "border-terracotta bg-terracotta-tint/40" : "border-line")}
+                >
+                  <span className="mt-0.5 shrink-0">{o.icon}</span>
+                  <span>
+                    <span className="block text-[13.5px] font-semibold">{o.t}</span>
+                    <span className="block text-[11.5px] text-ink-muted">{o.d}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         {error && <p className="text-[12.5px] text-danger">{error}</p>}
         <div className="fixed bottom-0 inset-x-0 z-30 flex justify-center pointer-events-none">
           <div className="pointer-events-auto w-full max-w-[480px] safe-bottom bg-paper/95 backdrop-blur border-t border-line px-4 py-3 flex items-center gap-2">

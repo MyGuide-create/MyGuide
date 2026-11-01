@@ -26,6 +26,8 @@ export interface SpotRecommender {
   freshAt: Date;
   /** The viewer's own place that nobody else can see (draft/private guide, unshared Saved place). */
   isPrivate?: boolean;
+  /** One of their top picks here (crown, 1 Nov 2026). */
+  topPick?: boolean;
 }
 
 export interface CitySpot {
@@ -70,6 +72,8 @@ export interface Recommendation {
   city: string;
   /** The viewer's own place that only they can see. */
   isPrivate?: boolean;
+  /** One of their top picks here (crown, 1 Nov 2026). */
+  topPick?: boolean;
 }
 
 /**
@@ -132,7 +136,9 @@ export async function loadRecommendations(opts: { viewerId?: string | null; owne
     const rawCity = r.place.city.trim() || r.guide.city.trim();
     const { forkedFrom: _f, ...guide } = r.guide;
     void _f;
-    out.push({ place: r.place, guide, owner: toPublicUser(r.owner), tip, at: r.place.sharedAt ?? r.place.createdAt, freshAt: freshOf(r.place), city: rawCity ? canonicalCity(rawCity) : "" });
+    // Must try (star) is the owner's private mark: never sent to anyone else.
+    const place = r.owner.id === viewerId ? r.place : { ...r.place, mustTryAt: null };
+    out.push({ place, guide, owner: toPublicUser(r.owner), tip, at: r.place.sharedAt ?? r.place.createdAt, freshAt: freshOf(r.place), city: rawCity ? canonicalCity(rawCity) : "", topPick: !!r.place.topPickAt });
   }
   return out;
 }
@@ -174,11 +180,12 @@ export async function loadOwnPlaces(viewerId: string, city: string): Promise<Rec
       freshAt: freshOf(r.place),
       city: canonicalCity(r.place.city.trim() || r.guide.city.trim() || city),
       isPrivate: !isPublic && !r.place.sharedAt,
+      topPick: !!r.place.topPickAt && (isPublic || !!r.place.sharedAt),
     };
   });
 }
 
-/** Merge recommendations into one spot per place, most recommended first. */
+/** Merge recommendations into one spot per place, most recently vouched first. */
 export function mergeSpots(recs: Recommendation[]): CitySpot[] {
   const groups = new Map<string, CitySpot>();
   for (const r of recs) {
@@ -191,23 +198,27 @@ export function mergeSpots(recs: Recommendation[]): CitySpot[] {
     const existing = g.recommenders.find((x) => x.user.id === r.owner.id);
     if (existing) {
       // Prefer the copy others can see, then one with words.
+      if (r.topPick) existing.topPick = true;
       if ((existing.isPrivate && !r.isPrivate) || (!existing.tip && r.tip && !!existing.isPrivate === !!r.isPrivate))
         Object.assign(existing, { tip: r.tip || existing.tip, placeId: r.place.id, guideSlug: r.guide.slug, guideTitle: r.guide.title, isPrivate: r.isPrivate, freshAt: r.freshAt > existing.freshAt ? r.freshAt : existing.freshAt });
       continue;
     }
-    g.recommenders.push({ user: r.owner, placeId: r.place.id, guideSlug: r.guide.slug, guideTitle: r.guide.title, tip: r.tip, addedAt: r.at, freshAt: r.freshAt, isPrivate: r.isPrivate });
+    g.recommenders.push({ user: r.owner, placeId: r.place.id, guideSlug: r.guide.slug, guideTitle: r.guide.title, tip: r.tip, addedAt: r.at, freshAt: r.freshAt, isPrivate: r.isPrivate, topPick: r.topPick });
     // Prefer a copy with a photo for the card.
     if (!g.place.photoMediaId && !g.place.photoUrl && (r.place.photoMediaId || r.place.photoUrl)) g.place = r.place;
   }
-  // Most recommended, then the most recently shared/updated (dated tips sink, 14 Oct 2026).
   const latest = (s: CitySpot) => Math.max(...s.recommenders.map((x) => x.freshAt.getTime()));
-  for (const g of groups.values()) g.recommenders.sort((a, b) => Number(!!b.tip) - Number(!!a.tip) || b.freshAt.getTime() - a.freshAt.getTime());
-  return [...groups.values()].filter((g) => g.recommenders.length > 0).sort((a, b) => b.recommenders.length - a.recommenders.length || latest(b) - latest(a));
+  // Top picks (crowns, 1 Nov 2026) break ties: a friend's best-of beats a plain vouch.
+  const crowns = (s: CitySpot) => s.recommenders.filter((x) => x.topPick).length;
+  for (const g of groups.values()) g.recommenders.sort((a, b) => Number(!!b.topPick) - Number(!!a.topPick) || Number(!!b.tip) - Number(!!a.tip) || b.freshAt.getTime() - a.freshAt.getTime());
+  // Newest vouch first (1 Nov 2026, Mona: "I want to see the most recent picks first"; Hisham: for every
+  // category). A spot moves up whenever someone vouches for it or updates their words.
+  return [...groups.values()].filter((g) => g.recommenders.length > 0).sort((a, b) => latest(b) - latest(a) || b.recommenders.length - a.recommenders.length || crowns(b) - crowns(a));
 }
 
 /**
  * Spots in `city`. With `ownerIds`, only those people's (friends); without, everyone's (the
- * fallback when you don't follow anyone there). Sorted by how many people recommend the spot.
+ * fallback when you don't follow anyone there). Newest vouch first.
  */
 export async function citySpots(opts: { city: string; viewerId?: string | null; ownerIds?: string[]; withOwn?: boolean }): Promise<CitySpot[]> {
   if (!opts.city) return [];

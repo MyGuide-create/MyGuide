@@ -194,7 +194,8 @@ export async function setPlacesShared(placeIds: string[], shared: boolean): Prom
   if (!stash) return 0;
   const res = await db
     .update(places)
-    .set({ sharedAt: shared ? new Date() : null })
+    // Vouching for a Must try (star) clears it: you've been (1 Nov 2026).
+    .set(shared ? { sharedAt: new Date(), mustTryAt: null } : { sharedAt: null })
     .where(and(eq(places.guideId, stash.id), inArray(places.id, ids)));
   revalidatePath("/my-places");
   revalidatePath("/city");

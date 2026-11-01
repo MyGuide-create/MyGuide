@@ -22,7 +22,8 @@ import { claimUnsplashPhoto } from "../covers/unsplash";
 import { mapLimit, newId, newToken, slugify } from "../utils";
 import { addNotifications } from "../notifications";
 import { isReservedTitle, isStash } from "../stash";
-import { addToStash, copyPlaceExtras } from "../myPlaces";
+import { addToStash, copyPlaceExtras, loadMyPlaces } from "../myPlaces";
+import { TOP_PICK_MAX } from "../topPicks";
 import { settleGuides } from "../settleCities";
 import { spotKey } from "../citySpots";
 import { normaliseInstagram, normaliseReserve, normaliseWebsite, normaliseWhatsapp, type Normalised } from "@/lib/placeLinks";
@@ -77,6 +78,11 @@ export interface DraftPlaceInput {
   pin?: { lat: number; lng: number; address?: string } | null;
   /** "Description - What Makes It Special", e.g. the note from a Google Maps list. */
   note?: string;
+  /**
+   * Starred in an imported list, and the person said what their stars mean (1 Nov 2026): "try" →
+   * Must try (kept private); "top" → Top pick (vouched; up to TOP_PICK_MAX per city).
+   */
+  mark?: "try" | "top";
 }
 
 /** Google lookups in flight at once while creating a guide (big imported lists have 100+ places). */
@@ -127,6 +133,8 @@ export async function createGuide(input: {
 
   const { rows } = await resolveDrafts(id, input.places ?? [], user.id, input.city, known);
   // Insert in chunks to keep each statement a reasonable size.
+  // A guide made here (often for someone else) never carries list marks (1 Nov 2026).
+  for (const r of rows) Object.assign(r, { mustTryAt: null, topPickAt: null });
   for (let i = 0; i < rows.length; i += 50) await db.insert(places).values(rows.slice(i, i + 50));
   // If the guide city was unknown, borrow it from the first place (in list order) that has one.
   const derivedCity = rows.find((r) => r.city);
@@ -181,6 +189,19 @@ export async function importToMyPlaces(input: {
   if (!rows.length && notAdded.length) {
     throw new UserError(`Not added: ${notAdded.join(", ")} (${notAdded.length === 1 ? "a city" : "cities"}, not ${notAdded.length === 1 ? "a place" : "places"}).`, "invalid");
   }
+  // Top picks from the list: at most TOP_PICK_MAX per city, counting the ones you already have (list order wins).
+  if (rows.some((r) => r.topPickAt)) {
+    const { items } = await loadMyPlaces(user.id);
+    const used = new Map<string, number>();
+    for (const it of items) if (it.recommended && it.place.topPickAt) used.set(it.city.toLowerCase(), (used.get(it.city.toLowerCase()) ?? 0) + 1);
+    for (const r of rows) {
+      if (!r.topPickAt) continue;
+      const k = (r.city?.trim() ? canonicalCity(r.city) : "").toLowerCase();
+      const n = used.get(k) ?? 0;
+      if (n >= TOP_PICK_MAX) r.topPickAt = null;
+      else used.set(k, n + 1);
+    }
+  }
   const { stash, skipped } = await addToStash(user.id, rows, { share: input.share });
 
   // The most common city among them: where they land on My places, and the guide's city.
@@ -213,7 +234,7 @@ export async function importToMyPlaces(input: {
       createdAt: now,
       updatedAt: now,
     });
-    const copies = rows.map((r, i) => ({ ...r, id: newId(), guideId: id, position: i, createdAt: now, sharedAt: null }));
+    const copies = rows.map((r, i) => ({ ...r, id: newId(), guideId: id, position: i, createdAt: now, sharedAt: null, mustTryAt: null, topPickAt: null }));
     for (let i = 0; i < copies.length; i += 50) await db.insert(places).values(copies.slice(i, i + 50));
     await settleGuides(db, [id]);
   }
@@ -241,6 +262,8 @@ async function resolveDrafts(
   const rows = await mapLimit(drafts, CREATE_CONCURRENCY, async (p, position) => {
     const name = p.name.trim().slice(0, 120) || "Unnamed place";
     const note = (p.note ?? "").trim().slice(0, 5000);
+    const mustTryAt = p.mark === "try" ? new Date() : null;
+    const topPickAt = p.mark === "top" ? new Date() : null;
     if (p.pin && validPin(p.pin.lat, p.pin.lng)) {
       const where = await reverseGeocode(p.pin.lat, p.pin.lng).catch(() => null);
       return {
@@ -253,6 +276,8 @@ async function resolveDrafts(
         lng: p.pin.lng,
         category: "Scenic Spots",
         note,
+        mustTryAt,
+        topPickAt,
       };
     }
     let resolved: PlaceResult | null = null;
@@ -263,7 +288,7 @@ async function resolveDrafts(
       console.warn("[createGuide] resolve failed", e);
     }
     if (resolved && isRegionResult(resolved.types)) return { region: resolved.name || name };
-    return { ...placeValues(id, position, name, resolved, user.id), note };
+    return { ...placeValues(id, position, name, resolved, user.id), note, mustTryAt, topPickAt };
   });
   const kept: (typeof places.$inferInsert)[] = [];
   const notAdded: string[] = [];

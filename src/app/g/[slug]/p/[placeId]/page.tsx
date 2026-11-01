@@ -12,7 +12,7 @@ import { GuideMap } from "@/components/GuideMap";
 import { PlaceTile } from "@/components/PlaceTile";
 import { TipsEditor } from "@/components/TipsEditor";
 import { TrackView } from "@/components/Tracking";
-import { AlertIcon, CalendarIcon, CheckIcon, GlobeIcon, InstagramIcon, PinIcon, SparkleIcon, WhatsAppIcon } from "@/components/Icons";
+import { AlertIcon, CalendarIcon, CheckIcon, CrownIcon, GlobeIcon, InstagramIcon, PinIcon, SparkleIcon, WhatsAppIcon } from "@/components/Icons";
 import { HoursSummary } from "@/components/HoursSummary";
 import { SaveButton } from "@/components/SaveButton";
 import { orderPlaces } from "@/lib/places/order";
@@ -170,6 +170,13 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
           <div className="mt-2 flex items-start gap-3">
             <h1 className="flex-1 font-display text-[28px] leading-[1.05]">{place.name}</h1>
           </div>
+          {/* Top pick (crown, 1 Nov 2026): one of the owner's best vouched spots in this city. */}
+          {place.topPickAt && (place.sharedAt || (guide.visibility === "public" && guide.publishedAt)) && (
+            <p className="mt-1.5 inline-flex items-center gap-1.5 rounded-full bg-ochre-soft/40 px-2.5 py-1 text-[12.5px] font-semibold">
+              <CrownIcon size={14} filled className="text-ochre" />
+              {detail.viewerCanEdit ? "Your top pick" : `${detail.owner.displayName.split(" ")[0]}’s top pick`}
+            </p>
+          )}
           {stashPlace && detail.viewerCanEdit && (
             <div className="mt-2"><RecommendToggle placeIds={[place.id]} shared={!!place.sharedAt} city={place.city} /></div>
           )}
